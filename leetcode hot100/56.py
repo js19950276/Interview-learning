@@ -1,13 +1,20 @@
-import math
 from typing import List
 
 
 class Solution:
-    def maxSubArray(self, nums: List[int]) -> int:
-        num_tmp = [-math.inf] * len(nums)
-        for i, num in enumerate(nums):
+    def merge(self, intervals: List[List[int]]) -> List[List[int]]:
+        intervals.sort(key=lambda x:x[0])
+        res = []
+        for i, interval in enumerate(intervals):
             if i == 0:
-                num_tmp[i] = num
+                res.append(interval)
                 continue
-            num_tmp[i] = max(num_tmp[i-1] + num, num)
-        return max(num_tmp)
+            if interval[0] > res[-1][1]:
+                res.append(interval)
+            else:
+                if interval[1] <= res[-1][1]:
+                    continue
+                else:
+                    res[-1][1] = max(res[-1][1], interval[1])
+        else:
+            return res
