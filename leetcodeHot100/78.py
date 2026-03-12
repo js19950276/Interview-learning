@@ -7,7 +7,8 @@ class Solution:
         def backtrace(sub_nums, sub_res):
             if len(sub_res) < len(nums):
                 sub_res = sorted(sub_res)
-                if sub_res not in res: res.append(sub_res)
+                if sub_res not in res:
+                    res.append(sub_res)
             else:
                 return
             for i in range(len(sub_nums)):
