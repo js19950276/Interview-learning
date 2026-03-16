@@ -8,8 +8,6 @@ class Solution:
         for i in range(len(nums) - 1):
             tmp.append(nums[i] + tmp[i])
 
-        print(tmp)
-
         for i in range(len(nums)):
             for j in range(i, len(nums)):
                 if tmp[j] - tmp[i] == k:
