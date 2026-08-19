@@ -7,5 +7,9 @@ class Solution:
                 sub_s += _s
             else:
                 res = max(res, len(sub_s))
-                sub_s = sub_s[sub_s.index(_s): len(sub_s)]
+                sub_s = sub_s[sub_s.index(_s):]
         return res
+
+if __name__ == '__main__':
+    a = Solution()
+    print(a.lengthOfLongestSubstring("abcdabcbb"))
