@@ -1,0 +1,16 @@
+from typing import Optional
+
+class ListNode:
+    def __init__(self, val=0, next=None):
+        self.val = val
+        self.next = next
+
+class Solution:
+    def isPalindrome(self, head: Optional[ListNode]) -> bool:
+        tmp = []
+        while head:
+            tmp.append(head.val)
+            head = head.next
+        if tmp[::-1] == tmp:
+            return True
+        return False
