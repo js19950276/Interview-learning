@@ -44,4 +44,13 @@ struct MatchLayoutMetricsTests {
         #expect(tablet.mapLegendInsets.top == 58)
         #expect(tablet.mapLegendInsets.trailing == 210)
     }
+
+    @Test func mapLegendInsetsAlsoClearLandscapeSafeArea() {
+        let phone = MatchLayoutMetrics(
+            viewport: CGSize(width: 852, height: 393),
+            safeAreaTrailing: 59
+        )
+
+        #expect(phone.mapLegendInsets.trailing == 103)
+    }
 }

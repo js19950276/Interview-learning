@@ -19,14 +19,16 @@ nonisolated struct MatchLayoutMetrics: Equatable {
     let rightRailWidth: CGFloat
     let handHeight: CGFloat
     let mapTopInset: CGFloat
+    let safeAreaTrailing: CGFloat
     let marketPlacement: MarketPlacement
 
     var mapLegendInsets: MapLegendInsets {
-        MapLegendInsets(top: mapTopInset, trailing: rightRailWidth)
+        MapLegendInsets(top: mapTopInset, trailing: rightRailWidth + safeAreaTrailing)
     }
 
-    init(viewport: CGSize) {
+    init(viewport: CGSize, safeAreaTrailing: CGFloat = 0) {
         self.viewport = viewport
+        self.safeAreaTrailing = max(0, safeAreaTrailing)
 
         if viewport.width >= Self.tabletWidthThreshold {
             formFactor = .tablet

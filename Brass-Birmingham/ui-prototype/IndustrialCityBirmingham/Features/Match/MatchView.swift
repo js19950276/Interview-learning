@@ -11,7 +11,10 @@ struct RealMatchView: View {
 #if DEBUG
     private var legacyDebugPreviewBody: some View {
         GeometryReader { proxy in
-            let metrics = MatchLayoutMetrics(viewport: proxy.size)
+            let metrics = MatchLayoutMetrics(
+                viewport: proxy.size,
+                safeAreaTrailing: proxy.safeAreaInsets.trailing
+            )
             let preview = Self.debugBoardPlaceholder
             ZStack {
                 GameMapView(state: preview, highlightedIDs: [], onTargetTap: { _ in }, onBackgroundTap: {},
@@ -208,7 +211,10 @@ struct MatchView: View {
     var body: some View {
         ZStack {
             GeometryReader { proxy in
-                let metrics = MatchLayoutMetrics(viewport: proxy.size)
+                let metrics = MatchLayoutMetrics(
+                    viewport: proxy.size,
+                    safeAreaTrailing: proxy.safeAreaInsets.trailing
+                )
                 let state = fixtureState(
                     renderedState ?? store.match ?? DemoFixture.match(playerCount: playerCount)
                 )

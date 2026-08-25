@@ -9,7 +9,10 @@ struct AuthoritativeMatchBoardView: View {
 
     var body: some View {
         GeometryReader { proxy in
-            let metrics = MatchLayoutMetrics(viewport: proxy.size)
+            let metrics = MatchLayoutMetrics(
+                viewport: proxy.size,
+                safeAreaTrailing: proxy.safeAreaInsets.trailing
+            )
             if let snapshot = store.snapshot, let catalog = store.presentationCatalog {
                 switch Result(catching: {
                     try RealMatchViewModel.make(
@@ -23,7 +26,10 @@ struct AuthoritativeMatchBoardView: View {
                         highlightedIDs: highlightedIDs,
                         onTargetTap: selectMapTarget,
                         onBackgroundTap: interaction.dismissOverlay,
-                        legendInsets: MapLegendInsets(top: 0, trailing: metrics.rightRailWidth)
+                        legendInsets: MapLegendInsets(
+                            top: 0,
+                            trailing: metrics.mapLegendInsets.trailing
+                        )
                     )
                     .padding(.top, metrics.mapTopInset)
                     .background(BrassColor.coal.color)
