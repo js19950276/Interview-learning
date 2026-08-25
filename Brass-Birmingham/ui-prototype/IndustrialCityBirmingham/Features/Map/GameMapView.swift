@@ -1,6 +1,13 @@
 import SpriteKit
 import SwiftUI
 
+nonisolated struct MapLegendInsets: Equatable, Sendable {
+    static let zero = MapLegendInsets(top: 0, trailing: 0)
+
+    let top: CGFloat
+    let trailing: CGFloat
+}
+
 @MainActor
 struct GameMapView: View {
     let state: DemoMatchState
@@ -8,6 +15,7 @@ struct GameMapView: View {
     let onTargetTap: (String) -> Void
     let onBackgroundTap: () -> Void
     let accessibilityEnabled: Bool
+    let legendInsets: MapLegendInsets
 
     @State private var scene: GameMapScene
     @State private var committedTranslation: CGPoint = .zero
@@ -23,13 +31,15 @@ struct GameMapView: View {
         highlightedIDs: Set<String>,
         onTargetTap: @escaping (String) -> Void,
         onBackgroundTap: @escaping () -> Void = {},
-        accessibilityEnabled: Bool = true
+        accessibilityEnabled: Bool = true,
+        legendInsets: MapLegendInsets = .zero
     ) {
         self.state = state
         self.highlightedIDs = highlightedIDs
         self.onTargetTap = onTargetTap
         self.onBackgroundTap = onBackgroundTap
         self.accessibilityEnabled = accessibilityEnabled
+        self.legendInsets = legendInsets
         _scene = State(initialValue: GameMapScene())
     }
 
@@ -53,7 +63,8 @@ struct GameMapView: View {
                     .onChange(of: highlightedIDs) { _, _ in synchronizeScene(viewportSize: proxy.size) }
 
                 MapRouteLegend()
-                    .padding(8)
+                    .padding(.top, 8 + legendInsets.top)
+                    .padding(.trailing, 8 + legendInsets.trailing)
             }
             .accessibilityRepresentation {
                 if accessibilityEnabled {
