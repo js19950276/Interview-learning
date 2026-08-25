@@ -76,6 +76,23 @@ struct GameMapSceneTests {
         #expect(GameMapScene.targetID(fromNodeName: "decoration:spur:kidderminster-worcester") == nil)
     }
 
+    @Test func longChineseLocationNameUsesCompleteTextAcrossAtMostTwoLines() throws {
+        let location = try #require(
+            BoardPresentationCatalog.standard.locations.first { $0.id == "stoke-on-trent" }
+        )
+        let marker = MapNodeFactory.locationNode(
+            for: location,
+            in: GameMapScene.logicalSize,
+            isHighlighted: false
+        )
+        let badge = try #require(marker.childNode(withName: "location-label"))
+        let lines = badge.children.compactMap { ($0 as? SKLabelNode)?.text }
+
+        #expect(lines.count == 2)
+        #expect(lines.joined() == location.name)
+        #expect(lines.allSatisfy { $0.contains("…") == false })
+    }
+
     @Test func configureRendersPublicIndustryAndOwnedLinkMarkers() throws {
         var state = DemoFixture.match(playerCount: 4)
         let locationID = try #require(state.locations.first?.id)

@@ -100,10 +100,11 @@ enum MapNodeFactory {
         hitArea.zPosition = -1
         hitArea.isUserInteractionEnabled = false
         marker.addChild(hitArea)
+        let locationLabelLines = labelLines(for: location.name)
         marker.addChild(nameBadge(
-            text: shortName(location.name),
+            text: location.name,
             name: "location-label",
-            position: CGPoint(x: 0, y: 26),
+            position: CGPoint(x: 0, y: locationLabelLines.count == 1 ? 26 : 34),
             highlighted: isHighlighted
         ))
         for (index, placement) in location.industryPlacements.enumerated() {
@@ -176,7 +177,7 @@ enum MapNodeFactory {
                 presentation: presentation
             )
             routeNode.addChild(nameBadge(
-                text: "\(shortName(start.name))—\(shortName(end.name))",
+                text: "\(start.name)—\(end.name)",
                 name: "route-label",
                 position: CGPoint(
                     x: midpoint.x,
@@ -239,8 +240,13 @@ enum MapNodeFactory {
         }
     }
 
-    private static func shortName(_ name: String) -> String {
-        name.count <= 5 ? name : "\(name.prefix(4))…"
+    private static func labelLines(for text: String) -> [String] {
+        guard text.count > 7 else { return [text] }
+        if let separator = text.firstIndex(of: "—") {
+            return [String(text[..<separator]), String(text[text.index(after: separator)...])]
+        }
+        let split = text.index(text.startIndex, offsetBy: (text.count + 1) / 2)
+        return [String(text[..<split]), String(text[split...])]
     }
 
     private static func ownerColor(_ color: PlayerColor) -> UIColor {
@@ -258,8 +264,15 @@ enum MapNodeFactory {
         position: CGPoint,
         highlighted: Bool
     ) -> SKShapeNode {
-        let width = max(34, CGFloat(text.count) * 11 + 12)
-        let badge = SKShapeNode(rectOf: CGSize(width: width, height: 20), cornerRadius: 6)
+        let lines = labelLines(for: text)
+        let longestLineCount = lines.map(\.count).max() ?? 1
+        let fontSize: CGFloat = longestLineCount <= 4 ? 10 : (longestLineCount <= 7 ? 9 : 8)
+        let width = max(34, CGFloat(longestLineCount) * fontSize + 14)
+        let height: CGFloat = lines.count == 1 ? 20 : 34
+        let badge = SKShapeNode(
+            rectOf: CGSize(width: width, height: height),
+            cornerRadius: 6
+        )
         badge.name = name
         badge.position = position
         badge.zPosition = 5
@@ -268,14 +281,19 @@ enum MapNodeFactory {
         badge.lineWidth = 1
         badge.isUserInteractionEnabled = false
 
-        let label = SKLabelNode(text: text)
-        label.fontName = "PingFangSC-Semibold"
-        label.fontSize = 10
-        label.fontColor = highlighted ? ink : porcelain
-        label.verticalAlignmentMode = .center
-        label.horizontalAlignmentMode = .center
-        label.isUserInteractionEnabled = false
-        badge.addChild(label)
+        let lineHeight = fontSize + 2
+        for (index, line) in lines.enumerated() {
+            let label = SKLabelNode(text: line)
+            label.name = "text-line-\(index)"
+            label.fontName = "PingFangSC-Semibold"
+            label.fontSize = fontSize
+            label.fontColor = highlighted ? ink : porcelain
+            label.verticalAlignmentMode = .center
+            label.horizontalAlignmentMode = .center
+            label.position.y = (CGFloat(lines.count - 1) / 2 - CGFloat(index)) * lineHeight
+            label.isUserInteractionEnabled = false
+            badge.addChild(label)
+        }
         return badge
     }
 }
