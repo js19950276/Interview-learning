@@ -353,4 +353,53 @@ struct GameMapSceneTests {
         #expect(phoneOffset.y > 0)
         #expect(resizedOffset == .zero)
     }
+
+    @Test func routeEraStyleClassifiesAllThreeAllowedEraShapes() {
+        #expect(MapRouteEraStyle.resolve(
+            route: route(eras: [.canal]), currentEra: .canal
+        ).kind == .canalOnly)
+        #expect(MapRouteEraStyle.resolve(
+            route: route(eras: [.rail]), currentEra: .rail
+        ).kind == .railOnly)
+        #expect(MapRouteEraStyle.resolve(
+            route: route(eras: [.canal, .rail]), currentEra: .canal
+        ).kind == .both)
+    }
+
+    @Test func unavailableUnbuiltRouteDimsButBuiltAndUnknownEraRoutesDoNot() {
+        #expect(MapRouteEraStyle.resolve(
+            route: route(eras: [.rail]), currentEra: .canal
+        ).opacity == 0.25)
+        #expect(MapRouteEraStyle.resolve(
+            route: route(eras: [.rail], placed: true), currentEra: .canal
+        ).opacity == 1)
+        #expect(MapRouteEraStyle.resolve(
+            route: route(eras: [.rail]), currentEra: nil
+        ).opacity == 1)
+    }
+
+    @Test func visibleMatchEraMapsToPresentationEra() {
+        #expect(MapRouteEraStyle.currentEra(from: "运河时代") == .canal)
+        #expect(MapRouteEraStyle.currentEra(from: "铁路时代") == .rail)
+        #expect(MapRouteEraStyle.currentEra(from: "unknown") == nil)
+    }
+
+    private func route(
+        eras: [MapPlacedLink.Era], placed: Bool = false
+    ) -> MapRoute {
+        let placedLink: MapPlacedLink?
+        if placed {
+            guard let era = eras.first else {
+                preconditionFailure("A placed test route requires an available era")
+            }
+            placedLink = .init(ownerID: "owner", ownerColor: .amber, era: era)
+        } else {
+            placedLink = nil
+        }
+
+        return MapRoute(
+            id: "test-route", fromLocationID: "a", toLocationID: "b",
+            availableEras: eras, placedLink: placedLink
+        )
+    }
 }
