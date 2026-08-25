@@ -83,10 +83,21 @@ nonisolated struct BoardPresentationCatalog: Equatable, Sendable {
             guard route.endpoints.count == 2 else {
                 throw ValidationError.routeMismatch(route.id)
             }
+            let allowed = route.eras.map { era in
+                switch era {
+                case .canal: MapPlacedLink.Era.canal
+                case .rail: MapPlacedLink.Era.rail
+                }
+            }
+            let availableEras = MapPlacedLink.Era.allCases.filter(allowed.contains)
+            guard availableEras.isEmpty == false else {
+                throw ValidationError.missingRouteEra(route.id)
+            }
             return MapRoute(
                 id: route.id,
                 fromLocationID: route.endpoints[0],
-                toLocationID: route.endpoints[1]
+                toLocationID: route.endpoints[1],
+                availableEras: availableEras
             )
         }
     }
@@ -97,6 +108,7 @@ nonisolated struct BoardPresentationCatalog: Equatable, Sendable {
         case routePresentationMismatch
         case invalidRoutePresentation(String)
         case invalidRouteSpur(String)
+        case missingRouteEra(String)
     }
 
     static let standard = BoardPresentationCatalog(

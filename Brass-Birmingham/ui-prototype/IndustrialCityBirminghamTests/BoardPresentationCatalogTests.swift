@@ -18,6 +18,16 @@ struct BoardPresentationCatalogTests {
         ))
     }
 
+    @Test func rulesRouteErasProjectIntoPresentationRoutesExactly() throws {
+        let routes = try BoardPresentationCatalog.standard.routes(for: bundledBoard())
+
+        #expect(routes.filter { $0.availableEras == [.canal] }.map(\.id) == ["burton-on-trent-walsall"])
+        #expect(routes.filter { $0.availableEras == [.rail] }.count == 8)
+        #expect(routes.filter { $0.availableEras == [.canal, .rail] }.count == 30)
+        #expect(routes.first { $0.id == "belper-leek" }?.availableEras == [.rail])
+        #expect(routes.first { $0.id == "birmingham-coventry" }?.availableEras == [.canal, .rail])
+    }
+
     @Test func southernBreweryAssociationDoesNotReplaceTheRouteEndpoint() throws {
         let routes = try BoardPresentationCatalog.standard.routes(for: bundledBoard())
         let route = try #require(routes.first { $0.id == "kidderminster-worcester" })
