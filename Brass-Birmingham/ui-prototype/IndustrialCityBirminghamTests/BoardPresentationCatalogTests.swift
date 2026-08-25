@@ -25,6 +25,29 @@ struct BoardPresentationCatalogTests {
         #expect(Set([route.fromLocationID, route.toLocationID]) == ["kidderminster", "worcester"])
     }
 
+    @Test func routePresentationCoversEveryRulesRouteExactly() throws {
+        let board = try bundledBoard()
+        let presentations = BoardPresentationCatalog.standard.routePresentations
+
+        #expect(presentations.count == 39)
+        #expect(Set(presentations.map(\.id)) == Set(board.routes.map(\.id)))
+        #expect(try BoardPresentationCatalog.standard.validate(board: board))
+    }
+
+    @Test func ruralBreweryPresentationsPreserveDifferentRuleSemantics() throws {
+        let board = try bundledBoard()
+        let north = try #require(board.routes.first { $0.id == "cannock-cannock-farm" })
+        let south = try #require(board.routes.first { $0.id == "kidderminster-worcester" })
+        let southPresentation = try #require(
+            BoardPresentationCatalog.standard.presentation(forRouteID: south.id)
+        )
+
+        #expect(Set(north.endpoints) == ["cannock", "cannock-farm"])
+        #expect(Set(south.endpoints) == ["kidderminster", "worcester"])
+        #expect(southPresentation.spur?.locationID == "kidderminster-worcester-farm")
+        #expect(southPresentation.spur?.t == 0.5)
+    }
+
     @Test func everyBundledCardDefinitionHasAReadableNonRawTitle() throws {
         let url = try #require(Bundle.main.url(forResource: "cards", withExtension: "json"))
         let objects = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [[String: Any]])
