@@ -51,3 +51,24 @@ enum MapRouteEraPalette {
     static let canal = UIColor(red: 0.24, green: 0.73, blue: 0.76, alpha: 1)
     static let rail = UIColor(red: 0.64, green: 0.69, blue: 0.72, alpha: 1)
 }
+
+nonisolated enum MapRouteAccessibility {
+    static func label(
+        route: MapRoute,
+        startName: String,
+        endName: String,
+        currentEra: MapPlacedLink.Era?,
+        ownerName: String?
+    ) -> String {
+        let style = MapRouteEraStyle.resolve(route: route, currentEra: currentEra)
+        var parts = ["\(startName)至\(endName)", style.kind.chineseLabel]
+        if let link = route.placedLink {
+            let owner = ownerName ?? link.ownerID
+            let era = link.era == .canal ? "运河" : "铁路"
+            parts.append("\(owner) 已建\(era)")
+        } else if style.isAvailableNow == false {
+            parts.append("当前时代不可修")
+        }
+        return parts.joined(separator: "，")
+    }
+}

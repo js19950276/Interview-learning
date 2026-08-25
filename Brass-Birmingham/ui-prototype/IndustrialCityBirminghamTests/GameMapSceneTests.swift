@@ -452,6 +452,27 @@ struct GameMapSceneTests {
         #expect(MapRouteEraStyle.currentEra(from: "unknown") == nil)
     }
 
+    @Test func routeAccessibilityExplainsTypeAvailabilityAndPlacedOwner() {
+        let unavailable = MapRoute(
+            id: "rail", fromLocationID: "a", toLocationID: "b",
+            availableEras: [.rail]
+        )
+        #expect(MapRouteAccessibility.label(
+            route: unavailable, startName: "伯明翰", endName: "雷迪奇",
+            currentEra: .canal, ownerName: nil
+        ) == "伯明翰至雷迪奇，铁路专用，当前时代不可修")
+
+        let placed = MapRoute(
+            id: "canal", fromLocationID: "a", toLocationID: "b",
+            availableEras: [.canal],
+            placedLink: .init(ownerID: "p1", ownerColor: .amber, era: .canal)
+        )
+        #expect(MapRouteAccessibility.label(
+            route: placed, startName: "伯顿", endName: "沃尔索尔",
+            currentEra: .rail, ownerName: "Owen"
+        ) == "伯顿至沃尔索尔，运河专用，Owen 已建运河")
+    }
+
     private func route(
         eras: [MapPlacedLink.Era], placed: Bool = false
     ) -> MapRoute {
