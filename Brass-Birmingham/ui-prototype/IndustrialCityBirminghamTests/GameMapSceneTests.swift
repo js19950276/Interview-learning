@@ -40,6 +40,42 @@ struct GameMapSceneTests {
         #expect(stokePoint.y > worcesterPoint.y)
     }
 
+    @Test func routePathUsesCalibratedCurveAndCorrectEndpoints() throws {
+        let state = DemoFixture.match(playerCount: 4)
+        let route = try #require(state.routes.first { $0.id == "birmingham-worcester" })
+        let start = try #require(state.locations.first { $0.id == route.fromLocationID })
+        let end = try #require(state.locations.first { $0.id == route.toLocationID })
+        let presentation = try #require(
+            BoardPresentationCatalog.standard.presentation(forRouteID: route.id)
+        )
+
+        let path = MapNodeFactory.routePath(
+            from: start, to: end, in: GameMapScene.logicalSize, presentation: presentation
+        )
+        var elementTypes: [CGPathElementType] = []
+        path.applyWithBlock { elementTypes.append($0.pointee.type) }
+
+        #expect(elementTypes.contains(.addCurveToPoint))
+        #expect(path.currentPoint == MapNodeFactory.point(for: end, in: GameMapScene.logicalSize))
+    }
+
+    @Test func configureCreatesNonTargetSouthernBrewerySpur() {
+        var state = DemoFixture.match(playerCount: 4)
+        state.locations = BoardPresentationCatalog.standard.locations
+        state.routes = [
+            .init(
+                id: "kidderminster-worcester",
+                fromLocationID: "kidderminster",
+                toLocationID: "worcester"
+            )
+        ]
+        let scene = GameMapScene()
+        scene.configure(state: state, highlightedIDs: [])
+
+        #expect(scene.childNode(withName: "//decoration:spur:kidderminster-worcester") != nil)
+        #expect(GameMapScene.targetID(fromNodeName: "decoration:spur:kidderminster-worcester") == nil)
+    }
+
     @Test func configureRendersPublicIndustryAndOwnedLinkMarkers() throws {
         var state = DemoFixture.match(playerCount: 4)
         let locationID = try #require(state.locations.first?.id)
@@ -233,9 +269,15 @@ struct GameMapSceneTests {
         scene.configure(state: state, highlightedIDs: [])
 
         let locationPoint = MapNodeFactory.point(for: location, in: GameMapScene.logicalSize)
-        let start = MapNodeFactory.point(for: routeStart, in: GameMapScene.logicalSize)
-        let end = MapNodeFactory.point(for: routeEnd, in: GameMapScene.logicalSize)
-        let routePoint = CGPoint(x: (start.x + end.x) / 2, y: (start.y + end.y) / 2)
+        let presentation = BoardPresentationCatalog.standard.presentation(forRouteID: route.id)
+            ?? .init(id: route.id)
+        let routePoint = MapNodeFactory.routePoint(
+            t: 0.5,
+            from: routeStart,
+            to: routeEnd,
+            in: GameMapScene.logicalSize,
+            presentation: presentation
+        )
 
         #expect(scene.targetID(atScenePoint: locationPoint) == location.id)
         #expect(scene.targetID(atScenePoint: routePoint) == route.id)

@@ -12,6 +12,65 @@ enum MapNodeFactory {
         CGPoint(x: location.x * size.width, y: (1 - location.y) * size.height)
     }
 
+    static func routePath(
+        from start: MapLocation,
+        to end: MapLocation,
+        in size: CGSize,
+        presentation: MapRoutePresentation
+    ) -> CGPath {
+        let startPoint = point(for: start, in: size)
+        let endPoint = point(for: end, in: size)
+        let controls = presentation.controlPoints.map { $0.point(in: size) }
+        let path = CGMutablePath()
+        path.move(to: startPoint)
+        switch controls.count {
+        case 1:
+            path.addQuadCurve(to: endPoint, control: controls[0])
+        case 2:
+            path.addCurve(to: endPoint, control1: controls[0], control2: controls[1])
+        default:
+            path.addLine(to: endPoint)
+        }
+        return path
+    }
+
+    static func routePoint(
+        t rawT: Double,
+        from start: MapLocation,
+        to end: MapLocation,
+        in size: CGSize,
+        presentation: MapRoutePresentation
+    ) -> CGPoint {
+        let t = CGFloat(min(max(rawT, 0), 1))
+        let inverse = 1 - t
+        let startPoint = point(for: start, in: size)
+        let endPoint = point(for: end, in: size)
+        let controls = presentation.controlPoints.map { $0.point(in: size) }
+        switch controls.count {
+        case 1:
+            return CGPoint(
+                x: inverse * inverse * startPoint.x + 2 * inverse * t * controls[0].x + t * t * endPoint.x,
+                y: inverse * inverse * startPoint.y + 2 * inverse * t * controls[0].y + t * t * endPoint.y
+            )
+        case 2:
+            return CGPoint(
+                x: inverse * inverse * inverse * startPoint.x
+                    + 3 * inverse * inverse * t * controls[0].x
+                    + 3 * inverse * t * t * controls[1].x
+                    + t * t * t * endPoint.x,
+                y: inverse * inverse * inverse * startPoint.y
+                    + 3 * inverse * inverse * t * controls[0].y
+                    + 3 * inverse * t * t * controls[1].y
+                    + t * t * t * endPoint.y
+            )
+        default:
+            return CGPoint(
+                x: inverse * startPoint.x + t * endPoint.x,
+                y: inverse * startPoint.y + t * endPoint.y
+            )
+        }
+    }
+
     static func locationNode(
         for location: MapLocation,
         in size: CGSize,
@@ -80,11 +139,10 @@ enum MapNodeFactory {
         from start: MapLocation,
         to end: MapLocation,
         in size: CGSize,
+        presentation: MapRoutePresentation,
         isHighlighted: Bool
     ) -> SKShapeNode {
-        let path = CGMutablePath()
-        path.move(to: point(for: start, in: size))
-        path.addLine(to: point(for: end, in: size))
+        let path = routePath(from: start, to: end, in: size, presentation: presentation)
 
         let routeNode = SKShapeNode(path: path)
         routeNode.name = "route:\(route.id)"
@@ -110,12 +168,19 @@ enum MapNodeFactory {
         hitArea.isUserInteractionEnabled = false
         routeNode.addChild(hitArea)
         if isHighlighted {
+            let midpoint = routePoint(
+                t: 0.5,
+                from: start,
+                to: end,
+                in: size,
+                presentation: presentation
+            )
             routeNode.addChild(nameBadge(
                 text: "\(shortName(start.name))—\(shortName(end.name))",
                 name: "route-label",
                 position: CGPoint(
-                    x: (point(for: start, in: size).x + point(for: end, in: size).x) / 2,
-                    y: (point(for: start, in: size).y + point(for: end, in: size).y) / 2 + 18
+                    x: midpoint.x,
+                    y: midpoint.y + 18
                 ),
                 highlighted: true
             ))
@@ -123,10 +188,41 @@ enum MapNodeFactory {
         return routeNode
     }
 
+    static func brewerySpurNode(
+        routeID: String,
+        from farm: MapLocation,
+        to routePoint: CGPoint,
+        in size: CGSize
+    ) -> SKShapeNode {
+        let farmPoint = point(for: farm, in: size)
+        let path = CGMutablePath()
+        path.move(to: farmPoint)
+        path.addQuadCurve(
+            to: routePoint,
+            control: CGPoint(
+                x: (farmPoint.x + routePoint.x) / 2,
+                y: routePoint.y
+            )
+        )
+        let node = SKShapeNode(path: path)
+        node.name = "decoration:spur:\(routeID)"
+        node.zPosition = 9
+        node.strokeColor = brass.withAlphaComponent(0.8)
+        node.lineWidth = 2.5
+        node.lineCap = .round
+        return node
+    }
+
     static func applyInteractionMetrics(to contentLayer: SKNode, metrics: MapViewportMetrics) {
         for node in contentLayer.children {
             if node.name?.hasPrefix("location:") == true {
                 node.setScale(metrics.sceneUnitsPerPoint)
+                continue
+            }
+
+            if node.name?.hasPrefix("decoration:spur:") == true,
+               let spur = node as? SKShapeNode {
+                spur.lineWidth = 2.5 * metrics.sceneUnitsPerPoint
                 continue
             }
 
