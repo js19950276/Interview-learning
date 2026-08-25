@@ -1,4 +1,5 @@
 import CoreGraphics
+import Foundation
 import SpriteKit
 import Testing
 @testable import IndustrialCityBirmingham
@@ -105,7 +106,7 @@ struct GameMapSceneTests {
         scene.configure(state: state, highlightedIDs: [])
 
         #expect(scene.childNode(withName: "//location:\(locationID)/industry:placed-cotton") != nil)
-        let route = try #require(scene.childNode(withName: "//route:\(state.routes[0].id)") as? SKShapeNode)
+        let route = try #require(scene.childNode(withName: "//route:\(state.routes[0].id)"))
         #expect(route.userData?["ownerID"] as? String == "player-crimson")
         #expect(route.userData?["era"] as? String == "rail")
     }
@@ -146,13 +147,77 @@ struct GameMapSceneTests {
 
         scene.configure(state: state, highlightedIDs: [highlightedID])
 
-        let highlighted = try #require(scene.childNode(withName: "//route:\(highlightedID)") as? SKShapeNode)
-        let plain = try #require(scene.childNode(withName: "//route:\(plainID)") as? SKShapeNode)
-        #expect(highlighted.glowWidth > 0)
-        #expect(plain.glowWidth == 0)
-        #expect(highlighted.lineWidth > plain.lineWidth)
+        let highlighted = try #require(scene.childNode(withName: "//route:\(highlightedID)"))
+        let plain = try #require(scene.childNode(withName: "//route:\(plainID)"))
+        let highlight = try #require(
+            highlighted.childNode(withName: "route-highlight") as? SKShapeNode
+        )
+        #expect(highlight.glowWidth > 0)
+        #expect(highlight.lineWidth > 0)
+        #expect(plain.childNode(withName: "route-highlight") == nil)
         #expect(highlighted.childNode(withName: "route-label") != nil)
         #expect(plain.childNode(withName: "route-label") == nil)
+    }
+
+    @Test func configureRendersEraLayersAndDimsOnlyUnavailableUnbuiltRoutes() throws {
+        var state = DemoFixture.match(playerCount: 4, era: "运河时代")
+        state.locations = BoardPresentationCatalog.standard.locations
+        state.routes = try BoardPresentationCatalog.standard.routes(for: bundledBoard())
+        let scene = GameMapScene()
+
+        scene.configure(state: state, highlightedIDs: [])
+
+        let canal = try #require(scene.childNode(withName: "//route:burton-on-trent-walsall"))
+        let rail = try #require(scene.childNode(withName: "//route:belper-leek"))
+        let both = try #require(scene.childNode(withName: "//route:birmingham-coventry"))
+        #expect(canal.childNode(withName: "route-era-canal") != nil)
+        #expect(canal.childNode(withName: "route-era-rail") == nil)
+        #expect(rail.childNode(withName: "route-era-rail") != nil)
+        #expect(rail.alpha == 0.25)
+        #expect(both.childNode(withName: "route-era-canal") != nil)
+        #expect(both.childNode(withName: "route-era-rail") != nil)
+        #expect(both.alpha == 1)
+    }
+
+    @Test func placedAndHighlightedRouteKeepsOwnerEraAndGlowLayers() throws {
+        var state = DemoFixture.match(playerCount: 4, era: "铁路时代")
+        state.locations = BoardPresentationCatalog.standard.locations
+        state.routes = try BoardPresentationCatalog.standard.routes(for: bundledBoard())
+        let index = try #require(state.routes.firstIndex { $0.id == "burton-on-trent-walsall" })
+        state.routes[index].placedLink = .init(
+            ownerID: "player-crimson", ownerColor: .crimson, era: .canal
+        )
+        let scene = GameMapScene()
+
+        scene.configure(state: state, highlightedIDs: ["burton-on-trent-walsall"])
+
+        let route = try #require(scene.childNode(withName: "//route:burton-on-trent-walsall"))
+        #expect(route.alpha == 1)
+        #expect(route.childNode(withName: "route-highlight") != nil)
+        #expect(route.childNode(withName: "route-era-canal") != nil)
+        #expect(route.childNode(withName: "route-owner") != nil)
+        #expect(route.childNode(withName: "route-label") != nil)
+        #expect(route.userData?["ownerID"] as? String == "player-crimson")
+    }
+
+    @Test func railOnlyCurvedRouteUsesMultipleDashedPathSegments() throws {
+        var state = DemoFixture.match(playerCount: 4, era: "铁路时代")
+        state.locations = BoardPresentationCatalog.standard.locations
+        state.routes = try BoardPresentationCatalog.standard.routes(for: bundledBoard())
+        let scene = GameMapScene()
+        scene.configure(state: state, highlightedIDs: [])
+
+        let route = try #require(scene.childNode(withName: "//route:belper-leek"))
+        let rail = try #require(route.childNode(withName: "route-era-rail") as? SKShapeNode)
+        let path = try #require(rail.path)
+        var moveCount = 0
+        var lineCount = 0
+        path.applyWithBlock { element in
+            if element.pointee.type == .moveToPoint { moveCount += 1 }
+            if element.pointee.type == .addLineToPoint { lineCount += 1 }
+        }
+        #expect(moveCount > 1)
+        #expect(lineCount > 1)
     }
 
     @Test func cameraUsesAspectFillAndSemanticZoomMapsInversely() throws {
@@ -215,8 +280,11 @@ struct GameMapSceneTests {
 
             let location = try #require(scene.childNode(withName: "//location:\(locationID)") as? SKShapeNode)
             let locationHit = try #require(location.childNode(withName: "location-hit-area") as? SKShapeNode)
-            let route = try #require(scene.childNode(withName: "//route:\(routeID)") as? SKShapeNode)
+            let route = try #require(scene.childNode(withName: "//route:\(routeID)"))
             let routeHit = try #require(route.childNode(withName: "route-hit-area") as? SKShapeNode)
+            let routeHighlight = try #require(
+                route.childNode(withName: "route-highlight") as? SKShapeNode
+            )
             let metrics = scene.viewportMetrics
 
             let locationDiameterInPoints = locationHit.frame.width * location.xScale / metrics.sceneUnitsPerPoint
@@ -224,7 +292,7 @@ struct GameMapSceneTests {
             #expect(locationDiameterInPoints >= 44)
             #expect(routeWidthInPoints >= 44)
             #expect(location.glowWidth > 0)
-            #expect(route.glowWidth > 0)
+            #expect(routeHighlight.glowWidth > 0)
         }
     }
 
@@ -401,5 +469,10 @@ struct GameMapSceneTests {
             id: "test-route", fromLocationID: "a", toLocationID: "b",
             availableEras: eras, placedLink: placedLink
         )
+    }
+
+    private func bundledBoard() throws -> GameCore.BoardDefinition {
+        let url = try #require(Bundle.main.url(forResource: "map", withExtension: "json"))
+        return try JSONDecoder().decode(GameCore.BoardDefinition.self, from: Data(contentsOf: url))
     }
 }

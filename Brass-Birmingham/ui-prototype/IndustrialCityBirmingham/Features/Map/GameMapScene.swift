@@ -117,6 +117,7 @@ final class GameMapScene: SKScene {
     func configure(state: DemoMatchState, highlightedIDs: Set<String>) {
         contentLayer.removeAllChildren()
         let locationsByID = Dictionary(uniqueKeysWithValues: state.locations.map { ($0.id, $0) })
+        let currentEra = MapRouteEraStyle.currentEra(from: state.era)
 
         for route in state.routes {
             guard
@@ -148,6 +149,7 @@ final class GameMapScene: SKScene {
                     to: end,
                     in: Self.logicalSize,
                     presentation: presentation,
+                    currentEra: currentEra,
                     isHighlighted: highlightedIDs.contains(route.id)
                 )
             )

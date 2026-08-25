@@ -141,33 +141,62 @@ enum MapNodeFactory {
         to end: MapLocation,
         in size: CGSize,
         presentation: MapRoutePresentation,
+        currentEra: MapPlacedLink.Era?,
         isHighlighted: Bool
-    ) -> SKShapeNode {
+    ) -> SKNode {
         let path = routePath(from: start, to: end, in: size, presentation: presentation)
+        let style = MapRouteEraStyle.resolve(route: route, currentEra: currentEra)
 
-        let routeNode = SKShapeNode(path: path)
+        let routeNode = SKNode()
         routeNode.name = "route:\(route.id)"
         routeNode.zPosition = 10
-        let placedColor = route.placedLink.map { ownerColor($0.ownerColor) }
-        routeNode.strokeColor = isHighlighted ? brass : placedColor ?? porcelain.withAlphaComponent(0.78)
-        routeNode.lineWidth = isHighlighted ? 5 : (route.placedLink == nil ? 3 : 6)
-        routeNode.glowWidth = isHighlighted ? 5 : 0
-        routeNode.lineCap = .round
-        routeNode.userData = ["isHighlighted": isHighlighted]
+        routeNode.alpha = CGFloat(style.opacity)
+        routeNode.userData = [
+            "isHighlighted": isHighlighted,
+            "eraKind": style.kind.rawValue,
+            "sourcePath": UIBezierPath(cgPath: path),
+        ]
+
+        if isHighlighted {
+            let highlight = strokeNode(
+                name: "route-highlight", path: path, color: brass,
+                width: 11, zPosition: -3
+            )
+            highlight.glowWidth = 5
+            routeNode.addChild(highlight)
+        }
+
+        if style.kind != .railOnly {
+            routeNode.addChild(strokeNode(
+                name: "route-era-canal", path: path, color: MapRouteEraPalette.canal,
+                width: style.kind == .both ? 8 : 6, zPosition: -2
+            ))
+        }
+
+        if style.kind != .canalOnly {
+            let railPath = style.kind == .railOnly
+                ? dashedPath(path, dash: 9, gap: 6)
+                : path
+            routeNode.addChild(strokeNode(
+                name: "route-era-rail", path: railPath, color: MapRouteEraPalette.rail,
+                width: style.kind == .both ? 3 : 5, zPosition: -1
+            ))
+        }
+
         if let link = route.placedLink {
             routeNode.userData?["ownerID"] = link.ownerID
             routeNode.userData?["era"] = link.era.rawValue
-            if link.era == .canal { routeNode.alpha = 0.78 }
+            routeNode.addChild(strokeNode(
+                name: "route-owner", path: path, color: ownerColor(link.ownerColor),
+                width: 4, zPosition: 1
+            ))
         }
 
-        let hitArea = SKShapeNode(path: path)
-        hitArea.name = routeHitAreaName
-        hitArea.strokeColor = UIColor.white.withAlphaComponent(0.001)
-        hitArea.lineWidth = 44
-        hitArea.lineCap = .round
-        hitArea.zPosition = -1
-        hitArea.isUserInteractionEnabled = false
-        routeNode.addChild(hitArea)
+        routeNode.addChild(strokeNode(
+            name: routeHitAreaName, path: path,
+            color: UIColor.white.withAlphaComponent(0.001),
+            width: 44, zPosition: 2
+        ))
         if isHighlighted {
             let midpoint = routePoint(
                 t: 0.5,
@@ -228,16 +257,121 @@ enum MapNodeFactory {
             }
 
             guard
-                node.name?.hasPrefix("route:") == true,
-                let route = node as? SKShapeNode,
-                let hitArea = route.childNode(withName: routeHitAreaName) as? SKShapeNode
+                node.name?.hasPrefix("route:") == true
             else { continue }
-            let isHighlighted = route.userData?["isHighlighted"] as? Bool == true
-            route.lineWidth = (isHighlighted ? 5 : 3) * metrics.sceneUnitsPerPoint
-            route.glowWidth = (isHighlighted ? 5 : 0) * metrics.sceneUnitsPerPoint
-            hitArea.lineWidth = 45 * metrics.sceneUnitsPerPoint
-            route.childNode(withName: "route-label")?.setScale(metrics.sceneUnitsPerPoint)
+            let unit = metrics.sceneUnitsPerPoint
+            let kind = (node.userData?["eraKind"] as? String)
+                .flatMap(MapRouteEraKind.init(rawValue:)) ?? .both
+            if let highlight = node.childNode(withName: "route-highlight") as? SKShapeNode {
+                highlight.lineWidth = 11 * unit
+                highlight.glowWidth = 5 * unit
+            }
+            if let canal = node.childNode(withName: "route-era-canal") as? SKShapeNode {
+                canal.lineWidth = (kind == .both ? 8 : 6) * unit
+            }
+            if let rail = node.childNode(withName: "route-era-rail") as? SKShapeNode {
+                rail.lineWidth = (kind == .both ? 3 : 5) * unit
+                if kind == .railOnly,
+                   let sourcePath = node.userData?["sourcePath"] as? UIBezierPath {
+                    rail.path = dashedPath(sourcePath.cgPath, dash: 9 * unit, gap: 6 * unit)
+                }
+            }
+            if let owner = node.childNode(withName: "route-owner") as? SKShapeNode {
+                owner.lineWidth = 4 * unit
+            }
+            if let hitArea = node.childNode(withName: routeHitAreaName) as? SKShapeNode {
+                hitArea.lineWidth = 45 * unit
+            }
+            node.childNode(withName: "route-label")?.setScale(unit)
         }
+    }
+
+    private static func strokeNode(
+        name: String,
+        path: CGPath,
+        color: UIColor,
+        width: CGFloat,
+        zPosition: CGFloat
+    ) -> SKShapeNode {
+        let node = SKShapeNode(path: path)
+        node.name = name
+        node.strokeColor = color
+        node.lineWidth = width
+        node.lineCap = .round
+        node.zPosition = zPosition
+        node.isUserInteractionEnabled = false
+        return node
+    }
+
+    private static func dashedPath(
+        _ path: CGPath,
+        dash: CGFloat,
+        gap: CGFloat
+    ) -> CGPath {
+        flattenedPath(path).copy(dashingWithPhase: 0, lengths: [dash, gap])
+    }
+
+    private static func flattenedPath(_ path: CGPath) -> CGPath {
+        let flattened = CGMutablePath()
+        let subdivisions = 64
+        var currentPoint = CGPoint.zero
+        var subpathStart = CGPoint.zero
+
+        path.applyWithBlock { elementPointer in
+            let element = elementPointer.pointee
+            switch element.type {
+            case .moveToPoint:
+                currentPoint = element.points[0]
+                subpathStart = currentPoint
+                flattened.move(to: currentPoint)
+            case .addLineToPoint:
+                currentPoint = element.points[0]
+                flattened.addLine(to: currentPoint)
+            case .addQuadCurveToPoint:
+                let start = currentPoint
+                let control = element.points[0]
+                let end = element.points[1]
+                for index in 1...subdivisions {
+                    let t = CGFloat(index) / CGFloat(subdivisions)
+                    let inverse = 1 - t
+                    flattened.addLine(to: CGPoint(
+                        x: inverse * inverse * start.x
+                            + 2 * inverse * t * control.x
+                            + t * t * end.x,
+                        y: inverse * inverse * start.y
+                            + 2 * inverse * t * control.y
+                            + t * t * end.y
+                    ))
+                }
+                currentPoint = end
+            case .addCurveToPoint:
+                let start = currentPoint
+                let firstControl = element.points[0]
+                let secondControl = element.points[1]
+                let end = element.points[2]
+                for index in 1...subdivisions {
+                    let t = CGFloat(index) / CGFloat(subdivisions)
+                    let inverse = 1 - t
+                    flattened.addLine(to: CGPoint(
+                        x: inverse * inverse * inverse * start.x
+                            + 3 * inverse * inverse * t * firstControl.x
+                            + 3 * inverse * t * t * secondControl.x
+                            + t * t * t * end.x,
+                        y: inverse * inverse * inverse * start.y
+                            + 3 * inverse * inverse * t * firstControl.y
+                            + 3 * inverse * t * t * secondControl.y
+                            + t * t * t * end.y
+                    ))
+                }
+                currentPoint = end
+            case .closeSubpath:
+                flattened.closeSubpath()
+                currentPoint = subpathStart
+            @unknown default:
+                break
+            }
+        }
+        return flattened
     }
 
     private static func labelLines(for text: String) -> [String] {
