@@ -62,4 +62,17 @@ struct ActiveTurnIndicatorTests {
         #expect(!recoveringGuestTurn)
         #expect(recoveredGuestTurn)
     }
+
+    @Test func playerRailNamesBothTheCurrentAndLocalPlayers() {
+        let label = PlayerRailView.accessibilitySummary(
+            players: players,
+            showsColorAssistSymbols: true,
+            localPlayerID: "guest"
+        )
+
+        #expect(label.contains("host，深红色，三角形标记"))
+        #expect(label.contains("当前玩家"))
+        #expect(label.contains("guest，青绿色，圆形标记"))
+        #expect(label.contains("，你"))
+    }
 }
