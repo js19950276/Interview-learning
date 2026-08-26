@@ -47,7 +47,8 @@ struct AuthoritativeMatchBoardView: View {
                         legendInsets: MapLegendInsets(
                             top: 0,
                             trailing: metrics.mapLegendInsets.trailing
-                        )
+                        ),
+                        viewportInsets: metrics.mapViewportInsets
                     )
                     .padding(.top, metrics.mapTopInset)
                     .background(BrassColor.coal.color)

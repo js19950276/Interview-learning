@@ -53,4 +53,27 @@ struct MatchLayoutMetricsTests {
 
         #expect(phone.mapLegendInsets.trailing == 103)
     }
+
+    @Test func phoneMapViewportInsetsClearHeaderHandAndMiniRails() {
+        let metrics = MatchLayoutMetrics(
+            viewport: CGSize(width: 852, height: 393),
+            safeAreaTrailing: 59
+        )
+
+        #expect(metrics.mapViewportInsets == MapViewportInsets(
+            top: 76,
+            leading: 44,
+            bottom: 92,
+            trailing: 103
+        ))
+    }
+
+    @Test func tabletKeepsLegacyZeroMapViewportInsets() {
+        let metrics = MatchLayoutMetrics(
+            viewport: CGSize(width: 1_194, height: 834),
+            safeAreaTrailing: 24
+        )
+
+        #expect(metrics.mapViewportInsets == .zero)
+    }
 }

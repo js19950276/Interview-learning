@@ -26,6 +26,16 @@ nonisolated struct MatchLayoutMetrics: Equatable {
         MapLegendInsets(top: mapTopInset, trailing: rightRailWidth + safeAreaTrailing)
     }
 
+    var mapViewportInsets: MapViewportInsets {
+        guard formFactor == .phone else { return .zero }
+        return MapViewportInsets(
+            top: mapTopInset,
+            leading: leftRailWidth,
+            bottom: handHeight,
+            trailing: rightRailWidth + safeAreaTrailing
+        )
+    }
+
     init(viewport: CGSize, safeAreaTrailing: CGFloat = 0) {
         self.viewport = viewport
         self.safeAreaTrailing = max(0, safeAreaTrailing)

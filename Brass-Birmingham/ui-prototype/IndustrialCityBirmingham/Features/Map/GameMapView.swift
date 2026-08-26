@@ -16,6 +16,7 @@ struct GameMapView: View {
     let onBackgroundTap: () -> Void
     let accessibilityEnabled: Bool
     let legendInsets: MapLegendInsets
+    let viewportInsets: MapViewportInsets
 
     @State private var scene: GameMapScene
     @State private var committedTranslation: CGPoint = .zero
@@ -32,7 +33,8 @@ struct GameMapView: View {
         onTargetTap: @escaping (String) -> Void,
         onBackgroundTap: @escaping () -> Void = {},
         accessibilityEnabled: Bool = true,
-        legendInsets: MapLegendInsets = .zero
+        legendInsets: MapLegendInsets = .zero,
+        viewportInsets: MapViewportInsets = .zero
     ) {
         self.state = state
         self.highlightedIDs = highlightedIDs
@@ -40,6 +42,7 @@ struct GameMapView: View {
         self.onBackgroundTap = onBackgroundTap
         self.accessibilityEnabled = accessibilityEnabled
         self.legendInsets = legendInsets
+        self.viewportInsets = viewportInsets
         _scene = State(initialValue: GameMapScene())
     }
 
@@ -53,7 +56,20 @@ struct GameMapView: View {
                     .simultaneousGesture(tapGesture)
                     .onAppear { synchronizeScene(viewportSize: proxy.size) }
                     .onChange(of: proxy.size) { _, newSize in
-                        let appliedTranslation = scene.updateViewport(size: newSize)
+                        let appliedTranslation = scene.updateViewport(
+                            size: newSize,
+                            insets: viewportInsets
+                        )
+                        if !isDragging {
+                            committedTranslation = appliedTranslation
+                        }
+                        updateCamera()
+                    }
+                    .onChange(of: viewportInsets) { _, newInsets in
+                        let appliedTranslation = scene.updateViewport(
+                            size: proxy.size,
+                            insets: newInsets
+                        )
                         if !isDragging {
                             committedTranslation = appliedTranslation
                         }
@@ -150,7 +166,10 @@ struct GameMapView: View {
     private func synchronizeScene(viewportSize: CGSize) {
         scene.onTargetTap = onTargetTap
         scene.configure(state: state, highlightedIDs: highlightedIDs)
-        let appliedTranslation = scene.updateViewport(size: viewportSize)
+        let appliedTranslation = scene.updateViewport(
+            size: viewportSize,
+            insets: viewportInsets
+        )
         if !isDragging {
             committedTranslation = appliedTranslation
         }
