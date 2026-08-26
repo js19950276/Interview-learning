@@ -2,6 +2,17 @@ import XCTest
 
 final class FriendsPlayableUITests: XCTestCase {
     @MainActor
+    private func launchLocalFixture() -> XCUIApplication {
+        XCUIDevice.shared.orientation = .landscapeLeft
+        let app = XCUIApplication()
+        app.launchArguments = ["-local-ui-fixture", "-reduce-motion", "YES"]
+        app.launch()
+        XCTAssertTrue(app.otherElements["real.match"].waitForExistence(timeout: 5))
+        XCUIDevice.shared.orientation = .landscapeLeft
+        return app
+    }
+
+    @MainActor
     func testRealFixtureLandscapeVisualEvidence() throws {
         XCUIDevice.shared.orientation = .landscapeLeft
         let app = XCUIApplication()
@@ -133,9 +144,103 @@ final class FriendsPlayableUITests: XCTestCase {
         XCTAssertTrue(status.label.contains("轮到你"))
         XCTAssertTrue(status.label.contains("host"))
 
-        let current = app.descendants(matching: .any)["match.player.host"]
+        let current: XCUIElement
+        if app.buttons["real.playerRail.toggle"].exists {
+            current = app.buttons["real.playerRail.toggle"]
+        } else {
+            current = app.descendants(matching: .any)["match.player.host"]
+        }
         XCTAssertTrue(current.waitForExistence(timeout: 2))
         XCTAssertTrue(current.label.contains("当前玩家"))
         XCTAssertTrue(current.label.contains("你"))
+    }
+
+    @MainActor
+    func testPhoneAuthoritativeRailsToggleAndStayMutuallyExclusive() {
+        let app = launchLocalFixture()
+        XCTAssertLessThan(app.windows.firstMatch.frame.width, 1_000)
+
+        let playerToggle = app.buttons["real.playerRail.toggle"]
+        let industryToggle = app.buttons["real.industryRail.toggle"]
+        XCTAssertTrue(playerToggle.waitForExistence(timeout: 2))
+        XCTAssertTrue(industryToggle.exists)
+        XCTAssertEqual(playerToggle.value as? String, "已收起")
+
+        playerToggle.tap()
+        XCTAssertTrue(
+            app.descendants(matching: .any)["overlay.playerRail"]
+                .waitForExistence(timeout: 1)
+        )
+        XCTAssertEqual(playerToggle.value as? String, "已展开")
+
+        industryToggle.tap()
+        XCTAssertTrue(
+            app.descendants(matching: .any)["overlay.playerRail"]
+                .waitForNonExistence(timeout: 1)
+        )
+        XCTAssertTrue(
+            app.descendants(matching: .any)["overlay.industryRail"]
+                .waitForExistence(timeout: 1)
+        )
+
+        industryToggle.tap()
+        XCTAssertTrue(
+            app.descendants(matching: .any)["overlay.industryRail"]
+                .waitForNonExistence(timeout: 1)
+        )
+        XCTAssertEqual(industryToggle.value as? String, "已收起")
+    }
+
+    @MainActor
+    func testTabletAuthoritativeRailsRemainPermanent() {
+        let app = launchLocalFixture()
+        XCTAssertGreaterThanOrEqual(app.windows.firstMatch.frame.width, 1_000)
+        XCTAssertFalse(app.buttons["real.playerRail.toggle"].exists)
+        XCTAssertFalse(app.buttons["real.industryRail.toggle"].exists)
+        XCTAssertTrue(app.descendants(matching: .any)["match.playerRail.content"].exists)
+        XCTAssertTrue(app.descendants(matching: .any)["match.industryRail.content"].exists)
+    }
+
+    @MainActor
+    func testPhoneMapPansAndExpandedDrawersStayClearOfTheHand() {
+        let app = launchLocalFixture()
+        XCTAssertLessThan(app.windows.firstMatch.frame.width, 1_000)
+
+        let map = app.descendants(matching: .any)["match.map"]
+        let hand = app.descendants(matching: .any)["real.hand"]
+        XCTAssertTrue(map.waitForExistence(timeout: 2))
+        XCTAssertTrue(hand.exists)
+
+        let start = map.coordinate(withNormalizedOffset: CGVector(dx: 0.55, dy: 0.68))
+        let end = map.coordinate(withNormalizedOffset: CGVector(dx: 0.55, dy: 0.24))
+        start.press(forDuration: 0.1, thenDragTo: end)
+        XCTAssertTrue(map.isHittable)
+
+        let panned = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        panned.name = "iphone-map-panned-above-hand"
+        panned.lifetime = .keepAlways
+        add(panned)
+
+        app.buttons["real.playerRail.toggle"].tap()
+        let playerDrawer = app.descendants(matching: .any)["overlay.playerRail"]
+        XCTAssertTrue(playerDrawer.waitForExistence(timeout: 1))
+        XCTAssertGreaterThanOrEqual(playerDrawer.frame.minY, 52)
+        XCTAssertLessThanOrEqual(playerDrawer.frame.maxY, hand.frame.minY + 1)
+
+        let players = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        players.name = "iphone-player-drawer"
+        players.lifetime = .keepAlways
+        add(players)
+
+        app.buttons["real.industryRail.toggle"].tap()
+        let industryDrawer = app.descendants(matching: .any)["overlay.industryRail"]
+        XCTAssertTrue(industryDrawer.waitForExistence(timeout: 1))
+        XCTAssertGreaterThanOrEqual(industryDrawer.frame.minY, 52)
+        XCTAssertLessThanOrEqual(industryDrawer.frame.maxY, hand.frame.minY + 1)
+
+        let industries = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        industries.name = "iphone-industry-drawer"
+        industries.lifetime = .keepAlways
+        add(industries)
     }
 }

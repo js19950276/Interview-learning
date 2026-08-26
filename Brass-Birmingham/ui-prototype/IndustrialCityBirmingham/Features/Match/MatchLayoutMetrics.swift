@@ -29,7 +29,9 @@ nonisolated struct MatchLayoutMetrics: Equatable {
     var mapViewportInsets: MapViewportInsets {
         guard formFactor == .phone else { return .zero }
         return MapViewportInsets(
-            top: mapTopInset,
+            // The map view itself is already laid out below the header. Only
+            // overlays inside that local viewport belong in the camera inset.
+            top: 0,
             leading: leftRailWidth,
             bottom: handHeight,
             trailing: rightRailWidth + safeAreaTrailing

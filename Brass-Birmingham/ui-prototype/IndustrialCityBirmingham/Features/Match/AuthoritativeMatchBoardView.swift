@@ -43,7 +43,7 @@ struct AuthoritativeMatchBoardView: View {
                         state: state,
                         highlightedIDs: highlightedIDs,
                         onTargetTap: selectMapTarget,
-                        onBackgroundTap: interaction.dismissOverlay,
+                        onBackgroundTap: dismissTransientOverlay,
                         legendInsets: MapLegendInsets(
                             top: 0,
                             trailing: metrics.mapLegendInsets.trailing
@@ -55,6 +55,7 @@ struct AuthoritativeMatchBoardView: View {
                     .ignoresSafeArea(edges: [.horizontal, .bottom])
 
                     activeTurnNoticeLayer(metrics: metrics)
+                    transientRailLayer(state: state, metrics: metrics)
                     leftRail(state: state, metrics: metrics)
                     rightRail(state: state, metrics: metrics)
                     header(state: state, activeTurn: activeTurn, metrics: metrics)
@@ -142,11 +143,36 @@ struct AuthoritativeMatchBoardView: View {
 
     private func leftRail(state: DemoMatchState, metrics: MatchLayoutMetrics) -> some View {
         VStack(spacing: 0) {
-            PlayerRailView(
-                players: state.players,
-                metrics: metrics,
-                localPlayerID: store.localPlayerID.rawValue
-            )
+            if metrics.formFactor == .phone {
+                Button {
+                    toggleRailOverlay(.playerRail)
+                } label: {
+                    PlayerRailView(
+                        players: state.players,
+                        metrics: metrics,
+                        localPlayerID: store.localPlayerID.rawValue,
+                        accessibilityEnabled: false
+                    )
+                    .frame(maxHeight: .infinity)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(PlayerRailView.accessibilitySummary(
+                    players: state.players,
+                    showsColorAssistSymbols: preferences.colorAssistEnabled,
+                    localPlayerID: store.localPlayerID.rawValue
+                ))
+                .accessibilityValue(
+                    interaction.overlay == .playerRail ? "已展开" : "已收起"
+                )
+                .accessibilityIdentifier("real.playerRail.toggle")
+            } else {
+                PlayerRailView(
+                    players: state.players,
+                    metrics: metrics,
+                    localPlayerID: store.localPlayerID.rawValue,
+                    showsColorAssistSymbols: preferences.colorAssistEnabled
+                )
+            }
             if metrics.marketPlacement == .underPlayerRail {
                 ResourceMarketView(
                     coal: state.coalMarket, iron: state.ironMarket,
@@ -160,9 +186,96 @@ struct AuthoritativeMatchBoardView: View {
     }
 
     private func rightRail(state: DemoMatchState, metrics: MatchLayoutMetrics) -> some View {
-        IndustryRailView(industries: state.industries, metrics: metrics, reduceMotion: true)
+        Group {
+            if metrics.formFactor == .phone {
+                Button {
+                    toggleRailOverlay(.industryRail)
+                } label: {
+                    IndustryRailView(
+                        industries: state.industries,
+                        metrics: metrics,
+                        reduceMotion: true,
+                        accessibilityEnabled: false
+                    )
+                    .frame(maxHeight: .infinity)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("产业板块，点按展开详情")
+                .accessibilityValue(
+                    interaction.overlay == .industryRail ? "已展开" : "已收起"
+                )
+                .accessibilityIdentifier("real.industryRail.toggle")
+            } else {
+                IndustryRailView(
+                    industries: state.industries,
+                    metrics: metrics,
+                    reduceMotion: true
+                )
+            }
+        }
             .padding(.top, 52).padding(.bottom, metrics.handHeight + 8)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
+    }
+
+    @ViewBuilder
+    private func transientRailLayer(
+        state: DemoMatchState,
+        metrics: MatchLayoutMetrics
+    ) -> some View {
+        if metrics.formFactor == .phone {
+            switch interaction.overlay {
+            case .playerRail:
+                AuthoritativePlayerDrawer(
+                    players: state.players,
+                    localPlayerID: store.localPlayerID.rawValue,
+                    showsColorAssistSymbols: preferences.colorAssistEnabled
+                )
+                .frame(width: MatchInteractionReducer.drawerWidth(
+                    viewportWidth: metrics.viewport.width
+                ))
+                .padding(.leading, metrics.leftRailWidth)
+                .padding(.top, metrics.mapTopInset)
+                .padding(.bottom, metrics.handHeight)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+                .transition(railTransition(edge: .leading))
+            case .industryRail:
+                AuthoritativeIndustryDrawer(industries: state.industries)
+                    .frame(width: MatchInteractionReducer.drawerWidth(
+                        viewportWidth: metrics.viewport.width
+                    ))
+                    .padding(.trailing, metrics.rightRailWidth)
+                    .padding(.top, metrics.mapTopInset)
+                    .padding(.bottom, metrics.handHeight)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
+                    .transition(railTransition(edge: .trailing))
+            case .resourceMarket, .actionGrid, nil:
+                EmptyView()
+            }
+        }
+    }
+
+    private func toggleRailOverlay(_ overlay: MatchOverlay) {
+        withAnimation(railAnimation) {
+            interaction.toggleOverlay(overlay)
+        }
+    }
+
+    private func dismissTransientOverlay() {
+        withAnimation(railAnimation) {
+            interaction.dismissOverlay()
+        }
+    }
+
+    private var railAnimation: Animation {
+        preferences.reduceMotion || systemReduceMotion
+            ? .easeOut(duration: 0.1)
+            : .snappy(duration: 0.22)
+    }
+
+    private func railTransition(edge: Edge) -> AnyTransition {
+        preferences.reduceMotion || systemReduceMotion
+            ? .opacity
+            : .move(edge: edge).combined(with: .opacity)
     }
 
     private func header(

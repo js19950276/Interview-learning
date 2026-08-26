@@ -54,14 +54,14 @@ struct MatchLayoutMetricsTests {
         #expect(phone.mapLegendInsets.trailing == 103)
     }
 
-    @Test func phoneMapViewportInsetsClearHeaderHandAndMiniRails() {
+    @Test func phoneMapViewportInsetsClearHandAndMiniRailsWithoutDoubleCountingHeader() {
         let metrics = MatchLayoutMetrics(
             viewport: CGSize(width: 852, height: 393),
             safeAreaTrailing: 59
         )
 
         #expect(metrics.mapViewportInsets == MapViewportInsets(
-            top: 76,
+            top: 0,
             leading: 44,
             bottom: 92,
             trailing: 103

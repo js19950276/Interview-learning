@@ -234,7 +234,7 @@ git commit -m "fix: account for covered map viewport"
     )
 
     #expect(metrics.mapViewportInsets == MapViewportInsets(
-        top: 76, leading: 44, bottom: 92, trailing: 103
+        top: 0, leading: 44, bottom: 92, trailing: 103
     ))
 }
 
@@ -271,7 +271,8 @@ Add to `MatchLayoutMetrics`:
 var mapViewportInsets: MapViewportInsets {
     guard formFactor == .phone else { return .zero }
     return MapViewportInsets(
-        top: mapTopInset,
+        // The outer layout already places GameMapView below the header.
+        top: 0,
         leading: leftRailWidth,
         bottom: handHeight,
         trailing: rightRailWidth + safeAreaTrailing
