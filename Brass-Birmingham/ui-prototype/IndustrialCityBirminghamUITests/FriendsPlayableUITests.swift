@@ -156,9 +156,11 @@ final class FriendsPlayableUITests: XCTestCase {
     }
 
     @MainActor
-    func testPhoneAuthoritativeRailsToggleAndStayMutuallyExclusive() {
+    func testPhoneAuthoritativeRailsToggleAndStayMutuallyExclusive() throws {
         let app = launchLocalFixture()
-        XCTAssertLessThan(app.windows.firstMatch.frame.width, 1_000)
+        guard app.windows.firstMatch.frame.width < 1_000 else {
+            throw XCTSkip("iPhone-only rail behavior")
+        }
 
         let playerToggle = app.buttons["real.playerRail.toggle"]
         let industryToggle = app.buttons["real.industryRail.toggle"]
@@ -192,9 +194,11 @@ final class FriendsPlayableUITests: XCTestCase {
     }
 
     @MainActor
-    func testTabletAuthoritativeRailsRemainPermanent() {
+    func testTabletAuthoritativeRailsRemainPermanent() throws {
         let app = launchLocalFixture()
-        XCTAssertGreaterThanOrEqual(app.windows.firstMatch.frame.width, 1_000)
+        guard app.windows.firstMatch.frame.width >= 1_000 else {
+            throw XCTSkip("iPad-only rail behavior")
+        }
         XCTAssertFalse(app.buttons["real.playerRail.toggle"].exists)
         XCTAssertFalse(app.buttons["real.industryRail.toggle"].exists)
         XCTAssertTrue(app.descendants(matching: .any)["match.playerRail.content"].exists)
@@ -202,9 +206,11 @@ final class FriendsPlayableUITests: XCTestCase {
     }
 
     @MainActor
-    func testPhoneMapPansAndExpandedDrawersStayClearOfTheHand() {
+    func testPhoneMapPansAndExpandedDrawersStayClearOfTheHand() throws {
         let app = launchLocalFixture()
-        XCTAssertLessThan(app.windows.firstMatch.frame.width, 1_000)
+        guard app.windows.firstMatch.frame.width < 1_000 else {
+            throw XCTSkip("iPhone-only map and drawer behavior")
+        }
 
         let map = app.descendants(matching: .any)["match.map"]
         let hand = app.descendants(matching: .any)["real.hand"]
