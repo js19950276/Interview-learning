@@ -1,11 +1,21 @@
 import SwiftUI
+import UIKit
 
 struct AuthoritativeMatchBoardView: View {
     @Bindable var store: SessionViewStore
+    @Environment(MotionPreferences.self) private var preferences
+    @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
     @State private var interaction = MatchInteractionReducer()
     @State private var selections: [GameCore.LegalChoiceValue] = []
     @State private var selectionLabels: [String] = []
     @State private var forcedSaleIDs: [String] = []
+    @State private var activeTurnNotice: ActiveTurnPresentation?
+    @State private var activeTurnNoticeTracker = ActiveTurnNoticeTracker()
+
+    private struct ActiveTurnNoticeTaskID: Hashable {
+        let activePlayerID: String?
+        let isSynchronized: Bool
+    }
 
     var body: some View {
         GeometryReader { proxy in
@@ -20,6 +30,14 @@ struct AuthoritativeMatchBoardView: View {
                     )
                 }) {
                 case .success(let state):
+                    let activeTurn = ActiveTurnPresentation.make(
+                        players: state.players,
+                        localPlayerID: store.localPlayerID.rawValue
+                    )
+                    let noticeTaskID = ActiveTurnNoticeTaskID(
+                        activePlayerID: activeTurn?.playerID,
+                        isSynchronized: store.syncStatus == .synchronized
+                    )
                     ZStack {
                     GameMapView(
                         state: state,
@@ -35,9 +53,10 @@ struct AuthoritativeMatchBoardView: View {
                     .background(BrassColor.coal.color)
                     .ignoresSafeArea(edges: [.horizontal, .bottom])
 
+                    activeTurnNoticeLayer(metrics: metrics)
                     leftRail(state: state, metrics: metrics)
                     rightRail(state: state, metrics: metrics)
-                    header(state: state, metrics: metrics)
+                    header(state: state, activeTurn: activeTurn, metrics: metrics)
                     hand(state: state, metrics: metrics)
                     if metrics.marketPlacement == .bottomLeftCompact {
                         compactMarket(state: state, metrics: metrics)
@@ -73,6 +92,9 @@ struct AuthoritativeMatchBoardView: View {
                             .accessibilityIdentifier("real.recovery.advance")
                     }
 #endif
+                    }
+                    .task(id: noticeTaskID) {
+                        await presentActiveTurnNotice(activeTurn, taskID: noticeTaskID)
                     }
                     .accessibilityElement(children: .contain)
                     .accessibilityIdentifier("real.match")
@@ -119,7 +141,11 @@ struct AuthoritativeMatchBoardView: View {
 
     private func leftRail(state: DemoMatchState, metrics: MatchLayoutMetrics) -> some View {
         VStack(spacing: 0) {
-            PlayerRailView(players: state.players, metrics: metrics)
+            PlayerRailView(
+                players: state.players,
+                metrics: metrics,
+                localPlayerID: store.localPlayerID.rawValue
+            )
             if metrics.marketPlacement == .underPlayerRail {
                 ResourceMarketView(
                     coal: state.coalMarket, iron: state.ironMarket,
@@ -138,13 +164,19 @@ struct AuthoritativeMatchBoardView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
     }
 
-    private func header(state: DemoMatchState, metrics: MatchLayoutMetrics) -> some View {
+    private func header(
+        state: DemoMatchState,
+        activeTurn: ActiveTurnPresentation?,
+        metrics: MatchLayoutMetrics
+    ) -> some View {
         VStack(spacing: 4) {
             HStack(spacing: 8) {
                 Text("房间 \(store.roomID.rawValue)")
                     .accessibilityIdentifier("real.room")
-                Text("当前：\(store.snapshot?.activePlayerID.rawValue ?? "-")")
-                    .accessibilityIdentifier("real.turn")
+                if let activeTurn {
+                    ActiveTurnStatusView(presentation: activeTurn)
+                        .layoutPriority(2)
+                }
                 Spacer(minLength: 4)
                 Text("v\(store.version.rawValue) · \(store.syncStatus.rawValue)")
                     .accessibilityIdentifier("real.sync")
@@ -160,6 +192,62 @@ struct AuthoritativeMatchBoardView: View {
         .padding(.horizontal, max(metrics.leftRailWidth, metrics.rightRailWidth) + 8)
         .padding(.top, 4)
         .frame(maxHeight: .infinity, alignment: .top)
+    }
+
+    @ViewBuilder
+    private func activeTurnNoticeLayer(metrics: MatchLayoutMetrics) -> some View {
+        if let activeTurnNotice {
+            ActiveTurnNoticeView(
+                presentation: activeTurnNotice,
+                reduceMotion: preferences.reduceMotion || systemReduceMotion
+            )
+            .allowsHitTesting(false)
+            .padding(.horizontal, max(metrics.leftRailWidth, metrics.rightRailWidth) + 8)
+            .padding(.top, 52)
+            .padding(.bottom, metrics.handHeight + 8)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+        }
+    }
+
+    @MainActor
+    private func presentActiveTurnNotice(
+        _ presentation: ActiveTurnPresentation?,
+        taskID: ActiveTurnNoticeTaskID
+    ) async {
+        let shouldPresent = activeTurnNoticeTracker.consume(
+            playerID: taskID.activePlayerID,
+            isSynchronized: taskID.isSynchronized
+        )
+        guard shouldPresent, let presentation else {
+            if !taskID.isSynchronized { activeTurnNotice = nil }
+            return
+        }
+
+        let reduceMotion = preferences.reduceMotion || systemReduceMotion
+        withAnimation(
+            reduceMotion
+                ? .easeOut(duration: 0.1)
+                : .spring(response: 0.28, dampingFraction: 0.82)
+        ) {
+            activeTurnNotice = presentation
+        }
+        UIAccessibility.post(
+            notification: .announcement,
+            argument: presentation.accessibilityLabel
+        )
+        if presentation.isLocalPlayer && preferences.isHapticsEnabled {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        }
+
+        do {
+            try await Task<Never, Never>.sleep(for: .milliseconds(1_200))
+        } catch {
+            return
+        }
+        guard !Task.isCancelled else { return }
+        withAnimation(.easeOut(duration: reduceMotion ? 0.1 : 0.2)) {
+            activeTurnNotice = nil
+        }
     }
 
     private func hand(state: DemoMatchState, metrics: MatchLayoutMetrics) -> some View {

@@ -45,7 +45,7 @@ final class FriendsPlayableUITests: XCTestCase {
 
         XCTAssertTrue(app.otherElements["real.match"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["real.room"].exists)
-        XCTAssertTrue(app.staticTexts["real.turn"].exists)
+        XCTAssertTrue(app.descendants(matching: .any)["real.turn.status"].exists)
         let sync = app.descendants(matching: .any)["real.sync"]
         XCTAssertTrue(sync.exists)
         XCTAssertTrue(sync.label.contains("synchronized"))
@@ -119,5 +119,23 @@ final class FriendsPlayableUITests: XCTestCase {
         }
         XCTAssertTrue(app.buttons["action.confirm"].waitForNonExistence(timeout: 2))
         XCTAssertFalse(app.buttons["action.build"].exists, "Accepted version clears the local action reducer")
+    }
+
+    @MainActor
+    func testLocalUIFixtureMakesTheCurrentPlayerUnmistakable() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-local-ui-fixture", "-reduce-motion", "YES"]
+        app.launch()
+
+        XCTAssertTrue(app.otherElements["real.match"].waitForExistence(timeout: 5))
+        let status = app.descendants(matching: .any)["real.turn.status"]
+        XCTAssertTrue(status.waitForExistence(timeout: 2))
+        XCTAssertTrue(status.label.contains("轮到你"))
+        XCTAssertTrue(status.label.contains("host"))
+
+        let current = app.descendants(matching: .any)["match.player.host"]
+        XCTAssertTrue(current.waitForExistence(timeout: 2))
+        XCTAssertTrue(current.label.contains("当前玩家"))
+        XCTAssertTrue(current.label.contains("你"))
     }
 }
