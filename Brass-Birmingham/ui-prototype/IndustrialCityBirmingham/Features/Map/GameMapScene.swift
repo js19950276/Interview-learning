@@ -1,5 +1,29 @@
 import SpriteKit
 
+nonisolated struct MapViewportInsets: Equatable, Sendable {
+    static let zero = MapViewportInsets(top: 0, leading: 0, bottom: 0, trailing: 0)
+
+    let top: CGFloat
+    let leading: CGFloat
+    let bottom: CGFloat
+    let trailing: CGFloat
+
+    func clamped(to viewportSize: CGSize) -> MapViewportInsets {
+        let width = max(viewportSize.width, 1)
+        let height = max(viewportSize.height, 1)
+        let leading = min(max(self.leading, 0), max(width - 1, 0))
+        let trailing = min(max(self.trailing, 0), max(width - leading - 1, 0))
+        let top = min(max(self.top, 0), max(height - 1, 0))
+        let bottom = min(max(self.bottom, 0), max(height - top - 1, 0))
+        return MapViewportInsets(
+            top: top,
+            leading: leading,
+            bottom: bottom,
+            trailing: trailing
+        )
+    }
+}
+
 struct MapViewportMetrics: Equatable {
     static let minimumZoom: CGFloat = 0.75
     static let maximumZoom: CGFloat = 2.8
@@ -7,14 +31,21 @@ struct MapViewportMetrics: Equatable {
     let logicalSize: CGSize
     let viewportSize: CGSize
     let semanticZoom: CGFloat
+    let viewportInsets: MapViewportInsets
 
-    init(logicalSize: CGSize, viewportSize: CGSize, semanticZoom: CGFloat) {
+    init(
+        logicalSize: CGSize,
+        viewportSize: CGSize,
+        semanticZoom: CGFloat,
+        viewportInsets: MapViewportInsets = .zero
+    ) {
         self.logicalSize = logicalSize
         self.viewportSize = CGSize(
             width: max(viewportSize.width, 1),
             height: max(viewportSize.height, 1)
         )
         self.semanticZoom = min(max(semanticZoom, Self.minimumZoom), Self.maximumZoom)
+        self.viewportInsets = viewportInsets.clamped(to: self.viewportSize)
     }
 
     var aspectFillPointsPerSceneUnit: CGFloat {
@@ -36,6 +67,36 @@ struct MapViewportMetrics: Equatable {
         )
     }
 
+    var unobscuredViewportRect: CGRect {
+        CGRect(
+            x: viewportInsets.leading,
+            y: viewportInsets.top,
+            width: max(
+                viewportSize.width - viewportInsets.leading - viewportInsets.trailing,
+                1
+            ),
+            height: max(
+                viewportSize.height - viewportInsets.top - viewportInsets.bottom,
+                1
+            )
+        )
+    }
+
+    var unobscuredSceneSize: CGSize {
+        CGSize(
+            width: unobscuredViewportRect.width * sceneUnitsPerPoint,
+            height: unobscuredViewportRect.height * sceneUnitsPerPoint
+        )
+    }
+
+    var unobscuredSceneCenterOffset: CGPoint {
+        let viewCenter = CGPoint(x: viewportSize.width / 2, y: viewportSize.height / 2)
+        return CGPoint(
+            x: (unobscuredViewportRect.midX - viewCenter.x) * sceneUnitsPerPoint,
+            y: -(unobscuredViewportRect.midY - viewCenter.y) * sceneUnitsPerPoint
+        )
+    }
+
     func sceneTranslation(forDrag drag: CGSize) -> CGPoint {
         CGPoint(
             x: -drag.width * sceneUnitsPerPoint,
@@ -44,17 +105,39 @@ struct MapViewportMetrics: Equatable {
     }
 
     func clampedCameraCenter(_ proposedCenter: CGPoint) -> CGPoint {
-        CGPoint(
+        let offset = unobscuredSceneCenterOffset
+        let proposedUnobscuredCenter = CGPoint(
+            x: proposedCenter.x + offset.x,
+            y: proposedCenter.y + offset.y
+        )
+        let clampedUnobscuredCenter = CGPoint(
             x: clampedCoordinate(
-                proposedCenter.x,
+                proposedUnobscuredCenter.x,
                 logicalLength: logicalSize.width,
-                visibleLength: visibleSceneSize.width
+                visibleLength: unobscuredSceneSize.width
             ),
             y: clampedCoordinate(
-                proposedCenter.y,
+                proposedUnobscuredCenter.y,
                 logicalLength: logicalSize.height,
-                visibleLength: visibleSceneSize.height
+                visibleLength: unobscuredSceneSize.height
             )
+        )
+        return CGPoint(
+            x: clampedUnobscuredCenter.x - offset.x,
+            y: clampedUnobscuredCenter.y - offset.y
+        )
+    }
+
+    func unobscuredSceneRect(cameraCenter: CGPoint) -> CGRect {
+        let center = CGPoint(
+            x: cameraCenter.x + unobscuredSceneCenterOffset.x,
+            y: cameraCenter.y + unobscuredSceneCenterOffset.y
+        )
+        return CGRect(
+            x: center.x - unobscuredSceneSize.width / 2,
+            y: center.y - unobscuredSceneSize.height / 2,
+            width: unobscuredSceneSize.width,
+            height: unobscuredSceneSize.height
         )
     }
 
@@ -168,11 +251,15 @@ final class GameMapScene: SKScene {
     }
 
     @discardableResult
-    func updateViewport(size: CGSize) -> CGPoint {
+    func updateViewport(
+        size: CGSize,
+        insets: MapViewportInsets = .zero
+    ) -> CGPoint {
         viewportMetrics = MapViewportMetrics(
             logicalSize: Self.logicalSize,
             viewportSize: size,
-            semanticZoom: semanticZoom
+            semanticZoom: semanticZoom,
+            viewportInsets: insets
         )
         return applyCameraState()
     }
@@ -187,7 +274,8 @@ final class GameMapScene: SKScene {
         viewportMetrics = MapViewportMetrics(
             logicalSize: Self.logicalSize,
             viewportSize: viewportMetrics.viewportSize,
-            semanticZoom: semanticZoom
+            semanticZoom: semanticZoom,
+            viewportInsets: viewportMetrics.viewportInsets
         )
         return applyCameraState()
     }

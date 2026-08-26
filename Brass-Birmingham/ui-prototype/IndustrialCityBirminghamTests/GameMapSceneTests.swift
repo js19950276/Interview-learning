@@ -422,6 +422,62 @@ struct GameMapSceneTests {
         #expect(resizedOffset == .zero)
     }
 
+    @Test func viewportInsetsClampToANonemptyInteractiveRect() {
+        let metrics = MapViewportMetrics(
+            logicalSize: GameMapScene.logicalSize,
+            viewportSize: CGSize(width: 200, height: 100),
+            semanticZoom: MapViewportMetrics.minimumZoom,
+            viewportInsets: .init(top: -10, leading: 500, bottom: 500, trailing: -4)
+        )
+
+        #expect(metrics.viewportInsets.top == 0)
+        #expect(metrics.viewportInsets.trailing == 0)
+        #expect(metrics.unobscuredViewportRect.width >= 1)
+        #expect(metrics.unobscuredViewportRect.height >= 1)
+    }
+
+    @Test func bottomEdgeCanReachAbovePhoneHandAtMinimumZoom() throws {
+        let insets = MapViewportInsets(top: 76, leading: 44, bottom: 92, trailing: 44)
+        let state = DemoFixture.match(playerCount: 4)
+        let gloucester = try #require(state.locations.first { $0.id == "gloucester" })
+        let scene = GameMapScene()
+        let camera = try #require(scene.camera)
+        scene.updateViewport(size: CGSize(width: 852, height: 393), insets: insets)
+        scene.configure(state: state, highlightedIDs: [gloucester.id])
+
+        scene.updateCamera(
+            scale: MapViewportMetrics.minimumZoom,
+            translation: CGPoint(x: 0, y: -100_000)
+        )
+
+        let clearRect = scene.viewportMetrics.unobscuredSceneRect(cameraCenter: camera.position)
+        let gloucesterPoint = MapNodeFactory.point(for: gloucester, in: GameMapScene.logicalSize)
+        #expect(abs(clearRect.minY) < 0.0001)
+        #expect(camera.position.y < GameMapScene.logicalSize.height / 2)
+        #expect(clearRect.contains(gloucesterPoint))
+        #expect(scene.targetID(atScenePoint: gloucesterPoint) == gloucester.id)
+    }
+
+    @Test func zeroInsetsPreserveLegacyCameraBounds() {
+        let legacy = MapViewportMetrics(
+            logicalSize: GameMapScene.logicalSize,
+            viewportSize: CGSize(width: 852, height: 393),
+            semanticZoom: 1
+        )
+        let explicitZero = MapViewportMetrics(
+            logicalSize: GameMapScene.logicalSize,
+            viewportSize: CGSize(width: 852, height: 393),
+            semanticZoom: 1,
+            viewportInsets: .zero
+        )
+
+        #expect(legacy == explicitZero)
+        #expect(
+            legacy.clampedCameraCenter(CGPoint(x: -10_000, y: 10_000))
+                == explicitZero.clampedCameraCenter(CGPoint(x: -10_000, y: 10_000))
+        )
+    }
+
     @Test func routeEraStyleClassifiesAllThreeAllowedEraShapes() {
         #expect(MapRouteEraStyle.resolve(
             route: route(eras: [.canal]), currentEra: .canal
