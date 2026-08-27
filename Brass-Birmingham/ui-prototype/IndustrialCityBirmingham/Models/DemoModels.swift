@@ -75,12 +75,56 @@ nonisolated struct HandCard: Identifiable, Equatable, Codable, Sendable {
     let allowedActions: Set<GameAction>
 }
 
+nonisolated enum MerchantBonusKind: String, Codable, Equatable, Sendable {
+    case develop, income, money, victoryPoints
+}
+
+nonisolated struct MapMerchantPlacement: Identifiable, Equatable, Codable, Sendable {
+    var id: String { slotID }
+    let slotID: String
+    let acceptedIndustries: [IndustryKind]
+    let hasBeer: Bool
+    let bonusKind: MerchantBonusKind
+    let bonusAmount: Int
+}
+
 nonisolated struct MapLocation: Identifiable, Equatable, Codable, Sendable {
     let id: String
     let name: String
     let x: Double
     let y: Double
     var industryPlacements: [MapIndustryPlacement] = []
+    var merchantPlacements: [MapMerchantPlacement] = []
+
+    init(
+        id: String,
+        name: String,
+        x: Double,
+        y: Double,
+        industryPlacements: [MapIndustryPlacement] = [],
+        merchantPlacements: [MapMerchantPlacement] = []
+    ) {
+        self.id = id
+        self.name = name
+        self.x = x
+        self.y = y
+        self.industryPlacements = industryPlacements
+        self.merchantPlacements = merchantPlacements
+    }
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        x = try container.decode(Double.self, forKey: .x)
+        y = try container.decode(Double.self, forKey: .y)
+        industryPlacements = try container.decodeIfPresent(
+            [MapIndustryPlacement].self, forKey: .industryPlacements
+        ) ?? []
+        merchantPlacements = try container.decodeIfPresent(
+            [MapMerchantPlacement].self, forKey: .merchantPlacements
+        ) ?? []
+    }
 }
 
 nonisolated struct MapIndustryPlacement: Identifiable, Equatable, Codable, Sendable {

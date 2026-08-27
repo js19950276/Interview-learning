@@ -1,0 +1,2 @@
+Hello, write_file!
+这是一次整体写入演示。

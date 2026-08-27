@@ -1,0 +1,5 @@
+.omx/
+.superpowers/
+.DS_Store
+*.xcuserstate
+Tests/Snapshots/Current/

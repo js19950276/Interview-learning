@@ -48,8 +48,8 @@ nonisolated struct MapRouteEraStyle: Equatable, Sendable {
 
 @MainActor
 enum MapRouteEraPalette {
-    static let canal = UIColor(red: 0.24, green: 0.73, blue: 0.76, alpha: 1)
-    static let rail = UIColor(red: 0.64, green: 0.69, blue: 0.72, alpha: 1)
+    static let canal = UIColor(red: 0.16, green: 0.36, blue: 0.40, alpha: 1)
+    static let rail = UIColor(red: 0.19, green: 0.21, blue: 0.21, alpha: 1)
 }
 
 nonisolated enum MapRouteAccessibility {

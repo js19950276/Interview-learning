@@ -50,13 +50,15 @@ struct IndustrialCityBirminghamApp: App {
                 RootView(
                     launchConfiguration: launchConfiguration,
                     fixtureSession: session,
-                    nearbyPersistenceState: nearbyPersistenceState
+                    nearbyPersistenceState: nearbyPersistenceState,
+                    nearbyCatalogSource: environment.nearbyCatalogSource
                 )
                     .environment(session).environment(preferences)
             } else {
                 RootView(
                     launchConfiguration: launchConfiguration,
-                    nearbyPersistenceState: nearbyPersistenceState
+                    nearbyPersistenceState: nearbyPersistenceState,
+                    nearbyCatalogSource: environment.nearbyCatalogSource
                 )
                     .environment(preferences)
             }

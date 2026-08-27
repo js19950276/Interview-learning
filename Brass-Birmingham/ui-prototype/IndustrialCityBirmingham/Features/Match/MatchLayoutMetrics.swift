@@ -18,12 +18,17 @@ nonisolated struct MatchLayoutMetrics: Equatable {
     let leftRailWidth: CGFloat
     let rightRailWidth: CGFloat
     let handHeight: CGFloat
+    let headerHeight: CGFloat
     let mapTopInset: CGFloat
     let safeAreaTrailing: CGFloat
     let marketPlacement: MarketPlacement
 
     var mapLegendInsets: MapLegendInsets {
         MapLegendInsets(top: mapTopInset, trailing: rightRailWidth + safeAreaTrailing)
+    }
+
+    var mapLegendInsetsWithinPaddedViewport: MapLegendInsets {
+        MapLegendInsets(top: 0, trailing: mapLegendInsets.trailing)
     }
 
     var mapViewportInsets: MapViewportInsets {
@@ -44,17 +49,19 @@ nonisolated struct MatchLayoutMetrics: Equatable {
 
         if viewport.width >= Self.tabletWidthThreshold {
             formFactor = .tablet
-            leftRailWidth = 220
-            rightRailWidth = 210
+            leftRailWidth = 184
+            rightRailWidth = 176
             handHeight = 132
-            mapTopInset = 58
+            headerHeight = 48
+            mapTopInset = 48
             marketPlacement = .underPlayerRail
         } else {
             formFactor = .phone
             leftRailWidth = 44
             rightRailWidth = 44
             handHeight = 92
-            mapTopInset = 76
+            headerHeight = 44
+            mapTopInset = 44
             marketPlacement = .bottomLeftCompact
         }
     }

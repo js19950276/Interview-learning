@@ -232,7 +232,9 @@ struct MatchView: View {
                         legendInsets: metrics.mapLegendInsets
                     )
                     .background(BrassColor.coal.color)
-                    .ignoresSafeArea()
+                    .ignoresSafeArea(
+                        edges: metrics.formFactor == .phone ? .horizontal : .all
+                    )
                     .allowsHitTesting(isSubmitting == false)
                     .prototypeRenderAcknowledgement(
                         renderAcknowledgements.ticket(for: .targetGlow),
@@ -278,6 +280,7 @@ struct MatchView: View {
                             .accessibilityIdentifier("submission.blocker")
                     }
                 }
+                .frame(width: proxy.size.width, height: proxy.size.height)
                 .background(BrassColor.coal.color)
                 .clipped()
                 .accessibilityElement(children: .contain)
@@ -315,7 +318,7 @@ struct MatchView: View {
                     )
                 }
                 .buttonStyle(.plain)
-                .frame(maxHeight: .infinity)
+                .frame(height: phoneRailHeight(metrics: metrics))
                 .accessibilityLabel(PlayerRailView.accessibilitySummary(
                     players: state.players,
                     showsColorAssistSymbols: preferences.colorAssistEnabled
@@ -351,10 +354,10 @@ struct MatchView: View {
             }
         }
         .frame(width: metrics.leftRailWidth)
-        .frame(maxHeight: .infinity)
-        .padding(.top, 52)
+        .frame(maxHeight: metrics.formFactor == .tablet ? .infinity : nil)
+        .padding(.top, metrics.headerHeight + 8)
         .padding(.bottom, metrics.handHeight + 8)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
     }
 
     private func industryRail(state: DemoMatchState, metrics: MatchLayoutMetrics) -> some View {
@@ -364,18 +367,27 @@ struct MatchView: View {
                     toggleMeasuredOverlay(.industryRail)
                 } label: {
                     industryRailContent(state: state, metrics: metrics)
+                        .frame(height: phoneRailHeight(metrics: metrics), alignment: .top)
+                        .clipped()
                 }
                 .buttonStyle(.plain)
+                .frame(height: phoneRailHeight(metrics: metrics))
                 .accessibilityLabel("展开产业板块")
                 .accessibilityIdentifier("match.industryRail")
+            } else if metrics.formFactor == .phone {
+                ScrollView(.vertical) {
+                    industryRailContent(state: state, metrics: metrics)
+                }
+                .scrollIndicators(.hidden)
+                .frame(height: phoneRailHeight(metrics: metrics))
             } else {
                 industryRailContent(state: state, metrics: metrics)
             }
         }
-            .frame(maxHeight: .infinity)
-            .padding(.top, 52)
+            .frame(maxHeight: metrics.formFactor == .tablet ? .infinity : nil)
+            .padding(.top, metrics.headerHeight + 8)
             .padding(.bottom, metrics.handHeight + 8)
-            .frame(maxWidth: .infinity, alignment: .trailing)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
             .overlay(alignment: .topTrailing) {
                 if metrics.formFactor == .tablet {
                     Color.clear
@@ -386,6 +398,13 @@ struct MatchView: View {
                         .allowsHitTesting(false)
                 }
             }
+    }
+
+    private func phoneRailHeight(metrics: MatchLayoutMetrics) -> CGFloat {
+        max(
+            44,
+            metrics.viewport.height - metrics.headerHeight - 8 - metrics.handHeight - 8
+        )
     }
 
     private var industrySelectionIsActive: Bool {

@@ -8,6 +8,96 @@ nonisolated struct MapLegendInsets: Equatable, Sendable {
     let trailing: CGFloat
 }
 
+nonisolated struct GameMapAccessibilityTarget: Identifiable, Equatable, Sendable {
+    let id: String
+    let label: String
+}
+
+nonisolated enum MapMerchantAccessibility {
+    static func label(locationName: String, merchant: MapMerchantPlacement) -> String {
+        let beerAndReward = merchant.hasBeer
+            ? "贸易商啤酒可用，\(rewardLabel(for: merchant))"
+            : "贸易商啤酒已用尽，奖励不可用"
+        return [locationName, acceptanceLabel(for: merchant), beerAndReward]
+            .joined(separator: "，")
+    }
+
+    private static func acceptanceLabel(for merchant: MapMerchantPlacement) -> String {
+        let industries = merchant.acceptedIndustries
+        if industries.isEmpty {
+            return "空白贸易商"
+        }
+        if industries.contains(.cotton),
+           industries.contains(.manufacturer),
+           industries.contains(.pottery) {
+            return "任意制成品"
+        }
+        return industries.map(industryLabel).joined(separator: "、")
+    }
+
+    private static func industryLabel(_ industry: IndustryKind) -> String {
+        switch industry {
+        case .cotton: "棉纺厂"
+        case .manufacturer: "制造厂"
+        case .pottery: "陶瓷厂"
+        case .coal: "煤矿"
+        case .iron: "炼铁厂"
+        case .brewery: "啤酒厂"
+        }
+    }
+
+    private static func rewardLabel(for merchant: MapMerchantPlacement) -> String {
+        switch merchant.bonusKind {
+        case .develop: "开发 +\(merchant.bonusAmount)"
+        case .income: "收入 +\(merchant.bonusAmount)"
+        case .money: "金钱 +\(merchant.bonusAmount)"
+        case .victoryPoints: "胜利点 +\(merchant.bonusAmount)"
+        }
+    }
+}
+
+nonisolated enum GameMapAccessibility {
+    static func targets(
+        state: DemoMatchState,
+        highlightedIDs: Set<String>
+    ) -> [GameMapAccessibilityTarget] {
+        let locations = state.locations
+            .filter { highlightedIDs.contains($0.id) }
+            .map { GameMapAccessibilityTarget(id: $0.id, label: $0.name) }
+        let namesByID = Dictionary(uniqueKeysWithValues: state.locations.map { ($0.id, $0.name) })
+        let playersByID = Dictionary(uniqueKeysWithValues: state.players.map { ($0.id, $0.name) })
+        let currentEra = MapRouteEraStyle.currentEra(from: state.era)
+        let routes = state.routes
+            .filter { highlightedIDs.contains($0.id) }
+            .map { route in
+                let start = namesByID[route.fromLocationID] ?? route.fromLocationID
+                let end = namesByID[route.toLocationID] ?? route.toLocationID
+                let owner = route.placedLink.flatMap { playersByID[$0.ownerID] }
+                return GameMapAccessibilityTarget(
+                    id: route.id,
+                    label: MapRouteAccessibility.label(
+                        route: route, startName: start, endName: end,
+                        currentEra: currentEra, ownerName: owner
+                    )
+                )
+            }
+        let merchants = state.locations.flatMap { location in
+            location.merchantPlacements
+                .filter { highlightedIDs.contains($0.slotID) }
+                .map { merchant in
+                    GameMapAccessibilityTarget(
+                        id: merchant.slotID,
+                        label: MapMerchantAccessibility.label(
+                            locationName: location.name,
+                            merchant: merchant
+                        )
+                    )
+                }
+        }
+        return locations + routes + merchants
+    }
+}
+
 @MainActor
 struct GameMapView: View {
     let state: DemoMatchState
@@ -195,28 +285,8 @@ struct GameMapView: View {
         min(max(value, MapViewportMetrics.minimumZoom), MapViewportMetrics.maximumZoom)
     }
 
-    private var accessibleTargets: [(id: String, label: String)] {
-        let locations = state.locations
-            .filter { highlightedIDs.contains($0.id) }
-            .map { (id: $0.id, label: $0.name) }
-        let namesByID = Dictionary(uniqueKeysWithValues: state.locations.map { ($0.id, $0.name) })
-        let playersByID = Dictionary(uniqueKeysWithValues: state.players.map { ($0.id, $0.name) })
-        let currentEra = MapRouteEraStyle.currentEra(from: state.era)
-        let routes = state.routes
-            .filter { highlightedIDs.contains($0.id) }
-            .map { route in
-                let start = namesByID[route.fromLocationID] ?? route.fromLocationID
-                let end = namesByID[route.toLocationID] ?? route.toLocationID
-                let owner = route.placedLink.flatMap { playersByID[$0.ownerID] }
-                return (
-                    id: route.id,
-                    label: MapRouteAccessibility.label(
-                        route: route, startName: start, endName: end,
-                        currentEra: currentEra, ownerName: owner
-                    )
-                )
-            }
-        return locations + routes
+    private var accessibleTargets: [GameMapAccessibilityTarget] {
+        GameMapAccessibility.targets(state: state, highlightedIDs: highlightedIDs)
     }
 }
 

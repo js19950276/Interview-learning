@@ -30,8 +30,7 @@ struct PlayerRailView: View {
             }
         }
         .frame(width: metrics.leftRailWidth)
-        .background(.ultraThinMaterial)
-        .background(BrassColor.coal.color.opacity(0.86))
+        .modifier(IndustrialPanelSurface(axis: .vertical))
         .overlay(alignment: .trailing) {
             Rectangle()
                 .fill(BrassColor.brass.color.opacity(0.45))
@@ -43,7 +42,7 @@ struct PlayerRailView: View {
             showsColorAssistSymbols: showsColorAssistSymbols,
             localPlayerID: localPlayerID
         ))
-        .accessibilityValue("\(players.count) 位玩家")
+        .accessibilityValue(Self.railAccessibilityValue(players: players))
         .accessibilityIdentifier(accessibilityEnabled ? "match.playerRail.content" : "")
         .accessibilityHidden(!accessibilityEnabled)
     }
@@ -89,18 +88,18 @@ struct PlayerRailView: View {
                 }
                 .foregroundStyle(BrassColor.paper.color)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(player.isCurrent ? BrassColor.brass.color.opacity(0.22) : Color.clear)
+                .background(player.isCurrent ? BrassColor.legalGreen.color.opacity(0.16) : Color.clear)
                 .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
                 .overlay {
                     RoundedRectangle(cornerRadius: 7, style: .continuous)
                         .stroke(
                             player.isCurrent ? BrassColor.brass.color : BrassColor.fog.color.opacity(0.2),
-                            lineWidth: player.isCurrent ? 2 : 1
+                            lineWidth: player.isCurrent ? 3 : 1
                         )
                 }
                 .shadow(
-                    color: player.isCurrent ? BrassColor.brass.color.opacity(0.32) : Color.clear,
-                    radius: 5
+                    color: player.isCurrent ? BrassColor.legalGreen.color.opacity(0.58) : Color.clear,
+                    radius: 8
                 )
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel(Self.playerAccessibilityLabel(
@@ -108,6 +107,7 @@ struct PlayerRailView: View {
                     showsColorAssistSymbols: showsColorAssistSymbols,
                     localPlayerID: localPlayerID
                 ))
+                .accessibilityValue(Self.playerAccessibilityValue(player))
                 .accessibilityIdentifier(accessibilityEnabled ? "match.player.\(player.id)" : "")
                 .accessibilityHidden(!accessibilityEnabled)
             }
@@ -138,24 +138,25 @@ struct PlayerRailView: View {
             }
             Spacer(minLength: 0)
             if player.isCurrent {
-                status("行动中", icon: "play.fill")
+                status("行动", icon: "play.fill")
                     .foregroundStyle(BrassColor.brass.color)
             }
         }
         .foregroundStyle(BrassColor.paper.color)
         .padding(7)
-        .background(player.isCurrent ? BrassColor.brass.color.opacity(0.22) : Color.clear)
+        .frame(minHeight: 44)
+        .background(player.isCurrent ? BrassColor.legalGreen.color.opacity(0.16) : Color.clear)
         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .stroke(
                     player.isCurrent ? BrassColor.brass.color : BrassColor.fog.color.opacity(0.25),
-                    lineWidth: player.isCurrent ? 2 : 1
+                    lineWidth: player.isCurrent ? 3 : 1
                 )
         }
         .shadow(
-            color: player.isCurrent ? BrassColor.brass.color.opacity(0.3) : Color.clear,
-            radius: 6
+            color: player.isCurrent ? BrassColor.legalGreen.color.opacity(0.58) : Color.clear,
+            radius: 9
         )
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Self.playerAccessibilityLabel(
@@ -163,6 +164,7 @@ struct PlayerRailView: View {
             showsColorAssistSymbols: showsColorAssistSymbols,
             localPlayerID: localPlayerID
         ))
+        .accessibilityValue(Self.playerAccessibilityValue(player))
         .accessibilityIdentifier(accessibilityEnabled ? "match.player.\(player.id)" : "")
         .accessibilityHidden(!accessibilityEnabled)
     }
@@ -224,6 +226,17 @@ struct PlayerRailView: View {
             )
         }
         .joined(separator: "；")
+    }
+
+    nonisolated static func railAccessibilityValue(players: [PlayerSummary]) -> String {
+        guard let current = players.first(where: { $0.isCurrent }) else {
+            return "\(players.count) 位玩家"
+        }
+        return "\(players.count) 位玩家，行动：\(current.name)"
+    }
+
+    nonisolated static func playerAccessibilityValue(_ player: PlayerSummary) -> String {
+        player.isCurrent ? "行动" : "等待"
     }
 
     nonisolated private static func playerAccessibilityLabel(
