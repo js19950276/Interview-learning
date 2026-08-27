@@ -1,0 +1,41 @@
+随便写两行测试。
+hello from codex.
+# greeter
+def hello(name):
+    return f"hello, {name}"
+
+
+def add(a, b):
+    return a + b
+
+
+def multiply(a, b):
+    return a * b
+
+
+def subtract(a, b):
+    return a - b
+
+
+def divide(a, b):
+    return a / b
+
+
+def modulo(a, b):
+    return a % b
+
+
+def power(a, b):
+    return a ** b
+
+
+def square(a):
+    return a * a
+
+
+def cube(a):
+    return a * a * a
+
+
+def isqrt(n):
+    return int(n ** 0.5)
