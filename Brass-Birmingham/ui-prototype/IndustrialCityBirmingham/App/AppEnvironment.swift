@@ -29,9 +29,7 @@ nonisolated struct AppEnvironment: Equatable, Sendable {
 
     init(arguments: [String]) {
 #if DEBUG
-        nearbyCatalogSource = arguments.contains("-nearby-fixture-catalog")
-            ? .debugFixture
-            : .packagedRules
+        nearbyCatalogSource = .debugFixture
         localUIFixturePresentationEraOverride = arguments.contains("-rail-fixture") ? .rail : nil
         usesFixtureSession = arguments.contains("-ui-testing")
             || arguments.contains("-snapshot-testing")

@@ -94,8 +94,8 @@ final class AppSmokeUITests: XCTestCase {
     }
 
     @MainActor
-    func testDebugNearbyFixtureCatalogEnablesRealCreateRoomControl() throws {
-        let app = launchProductionApp(arguments: ["-nearby-fixture-catalog"])
+    func testDebugNearbyRoomNeedsNoLaunchSwitchToEnableRealCreateRoomControl() throws {
+        let app = launchProductionApp(arguments: [])
 
         app.buttons["home.nearby"].tap()
 
@@ -103,6 +103,13 @@ final class AppSmokeUITests: XCTestCase {
         XCTAssertTrue(createButton.waitForExistence(timeout: 3))
         XCTAssertTrue(createButton.isEnabled)
         XCTAssertFalse(app.staticTexts["游戏数据不可用"].exists)
+
+        createButton.tap()
+
+        XCTAssertTrue(
+            app.descendants(matching: .any)["real.room"].waitForExistence(timeout: 8),
+            "Creating a Debug nearby room without launch switches must open the real lobby"
+        )
     }
 
     @MainActor

@@ -634,6 +634,18 @@ nonisolated struct SessionPersistenceFactory: Sendable {
         self.failureTracker = failureTracker
     }
 
+    static var nearbyRuntime: Self {
+#if DEBUG && targetEnvironment(simulator)
+        let adapter = DebugMemorySecureItemAdapter()
+        return .init(
+            tokenStore: RoomTokenStore(adapter: adapter),
+            keyProvider: KeychainSnapshotKeyProvider(adapter: adapter)
+        )
+#else
+        return .init()
+#endif
+    }
+
     func directory(roomID: GameCore.RoomID, playerID: GameCore.PlayerID) -> URL {
         let canonical = Data("\(roomID.rawValue)\u{001F}\(playerID.rawValue)".utf8)
         let identifier = SHA256.hash(data: canonical).map { String(format: "%02x", $0) }.joined()

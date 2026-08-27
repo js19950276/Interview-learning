@@ -20,6 +20,7 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>NSBonjourServices</key>
 	<array>
+		<string>_industrialcity-dev._tcp</string>
 		<string>_industrialcity._tcp</string>
 	</array>
 	<key>NSLocalNetworkUsageDescription</key>

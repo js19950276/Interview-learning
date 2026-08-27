@@ -1,5 +1,6 @@
 import Foundation
 import Network
+import OSLog
 
 nonisolated struct ConnectionTerminationRegistry: Sendable {
     private struct Entry: @unchecked Sendable { let connection: AnyObject }
@@ -34,6 +35,16 @@ actor LocalNetworkTransport: Transport {
     private var terminationRegistry = ConnectionTerminationRegistry()
     private var hostingContinuation: CheckedContinuation<Void, any Error>?
     private var connectionContinuations: [GameCore.PlayerID: CheckedContinuation<Void, any Error>] = [:]
+    private let logger = Logger(
+        subsystem: "com.didi.prototype.IndustrialCityBirmingham",
+        category: "SimulatorNearbyTransport"
+    )
+
+    nonisolated static func makeParameters() -> NWParameters {
+        let parameters = NWParameters.tcp
+        parameters.preferNoProxies = true
+        return parameters
+    }
 
     init(serviceName: String? = nil, queue: DispatchQueue = .init(label: "IndustrialCity.LocalNetworkTransport")) {
         self.serviceName = serviceName
@@ -42,7 +53,7 @@ actor LocalNetworkTransport: Transport {
     }
 
     func startHosting(roomID: GameCore.RoomID, port: UInt16?) async throws {
-        let parameters = NWParameters.tcp
+        let parameters = Self.makeParameters()
         let listener: NWListener
         if let port {
             guard let nwPort = NWEndpoint.Port(rawValue: port) else { throw TransportError.invalidPort }
@@ -66,7 +77,10 @@ actor LocalNetworkTransport: Transport {
     }
 
     func browse() async throws {
-        let browser = NWBrowser(for: .bonjour(type: Self.serviceType, domain: nil), using: .tcp)
+        let browser = NWBrowser(
+            for: .bonjour(type: Self.serviceType, domain: nil),
+            using: Self.makeParameters()
+        )
         browser.browseResultsChangedHandler = { [weak self] results, _ in
             for result in results {
                 guard case let .service(name, _, _, _) = result.endpoint else { continue }
@@ -79,7 +93,7 @@ actor LocalNetworkTransport: Transport {
 
     func connect(to peer: GameCore.PlayerID) async throws {
         let endpoint = NWEndpoint.service(name: serviceName ?? peer.rawValue, type: Self.serviceType, domain: "local", interface: nil)
-        let connection = NWConnection(to: endpoint, using: .tcp)
+        let connection = NWConnection(to: endpoint, using: Self.makeParameters())
         connections[peer] = connection
         terminationRegistry.register(connection, for: peer)
         decoders[peer] = .init()
@@ -180,7 +194,14 @@ actor LocalNetworkTransport: Transport {
         case .ready:
             hostingContinuation?.resume()
             hostingContinuation = nil
-        case .failed, .cancelled:
+        case let .waiting(error):
+            logger.error("Listener waiting: \(String(reflecting: error), privacy: .public)")
+        case let .failed(error):
+            logger.error("Listener failed: \(String(reflecting: error), privacy: .public)")
+            hostingContinuation?.resume(throwing: TransportError.connectionFailed)
+            hostingContinuation = nil
+        case .cancelled:
+            logger.error("Listener cancelled before becoming ready")
             hostingContinuation?.resume(throwing: TransportError.connectionFailed)
             hostingContinuation = nil
         default:

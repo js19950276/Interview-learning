@@ -1,3 +1,4 @@
+import OSLog
 import SwiftUI
 import UIKit
 
@@ -42,7 +43,7 @@ struct NearbyProductionState {
         fatalIssue == nil && operationalIssue == nil && catalog != nil
     }
     var canRetryBrowsing: Bool { fatalIssue == nil && catalog != nil }
-    var interactionsDisabled: Bool { !canStartBrowsing }
+    var interactionsDisabled: Bool { fatalIssue != nil || catalog == nil }
 
     func loadingRecoveryPrerequisites(
         catalogLoader: () throws -> GameCore.VerifiedGameDataCatalog,
@@ -423,6 +424,10 @@ private struct ProductionNearbyRoomView: View {
                     activeSession = ActiveSession(store: store)
                 }
             } catch {
+                Logger(
+                    subsystem: "com.didi.prototype.IndustrialCityBirmingham",
+                    category: "NearbyRoom"
+                ).error("Create room failed: \(String(reflecting: error), privacy: .public)")
                 productionState.receiveOperationalFailure(NearbyPreflight.issue(for: error))
             }
             isJoining = false

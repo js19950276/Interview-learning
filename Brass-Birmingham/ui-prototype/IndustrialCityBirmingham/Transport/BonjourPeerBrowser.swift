@@ -160,17 +160,40 @@ actor BonjourPeerBrowser {
 }
 
 nonisolated final class NetworkBonjourBrowserDriver: BonjourBrowserDriving, @unchecked Sendable {
+    static var runtimeServiceType: String {
+#if DEBUG && targetEnvironment(simulator)
+        LocalNetworkTransport.serviceType
+#else
+        NearbyTransport.serviceType
+#endif
+    }
+
     nonisolated let updates: AsyncStream<BonjourBrowserUpdate>
     private let continuation: AsyncStream<BonjourBrowserUpdate>.Continuation
     private let queue = DispatchQueue(label: "IndustrialCity.NearbyBonjourBrowser")
     private let lock = NSLock()
+    private let serviceType: String
+    private let makeParameters: @Sendable () -> NWParameters
     private var browser: NWBrowser?
     private var resultTracker = BonjourResultTracker()
     private var didStart = false
     private var didCancel = false
 
-    init() {
+    init(
+        serviceType: String = NetworkBonjourBrowserDriver.runtimeServiceType,
+        makeParameters: @escaping @Sendable () -> NWParameters = NetworkBonjourBrowserDriver.makeRuntimeParameters
+    ) {
+        self.serviceType = serviceType
+        self.makeParameters = makeParameters
         (updates, continuation) = AsyncStream.makeStream(of: BonjourBrowserUpdate.self)
+    }
+
+    private static func makeRuntimeParameters() -> NWParameters {
+#if DEBUG && targetEnvironment(simulator)
+        LocalNetworkTransport.makeParameters()
+#else
+        NearbyTransport.makeParameters()
+#endif
     }
 
     func start() {
@@ -178,8 +201,8 @@ nonisolated final class NetworkBonjourBrowserDriver: BonjourBrowserDriving, @unc
             guard !didStart, !didCancel else { return nil }
             didStart = true
             let browser = NWBrowser(
-                for: .bonjour(type: NearbyTransport.serviceType, domain: nil),
-                using: NearbyTransport.makeParameters()
+                for: .bonjour(type: serviceType, domain: nil),
+                using: makeParameters()
             )
             self.browser = browser
             return browser

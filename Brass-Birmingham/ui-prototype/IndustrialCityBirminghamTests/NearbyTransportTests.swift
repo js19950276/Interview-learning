@@ -6,6 +6,23 @@ import Testing
 @Suite("Nearby peer-to-peer transport")
 struct NearbyTransportTests {
     @MainActor
+    @Test func debugSimulatorNearbyHostCreatesWithoutLaunchSwitches() async throws {
+        let store = try await SessionViewStore.nearbyHost(
+            roomID: .init(rawValue: "BRASS-UNIT-\(UUID().uuidString.prefix(6))"),
+            identity: NearbySessionIdentity(deviceID: UUID()),
+            catalog: GameCore.GameDataLoader.loadBundledFixtureCatalog()
+        )
+
+        let issue = await store.connect()
+        #expect(issue == nil)
+        await store.disconnect()
+    }
+
+    @Test func debugSimulatorNearbyBrowserUsesLocalServiceWithoutLaunchSwitches() {
+        #expect(NetworkBonjourBrowserDriver.runtimeServiceType == LocalNetworkTransport.serviceType)
+    }
+
+    @MainActor
     @Test func fatalCatalogLoadFailureLatchesAcrossSearchingAndFoundBrowserUpdates() async {
         var state = NearbyProductionState()
         state = await state.loadingRecoveryPrerequisites(
@@ -41,7 +58,7 @@ struct NearbyTransportTests {
         state.receiveBrowserState(.found([try #require(NearbyRoom(serviceName: "BRASS-FOUND"))]))
 
         #expect(state.browseState == .failed(.connectionFailed))
-        #expect(state.interactionsDisabled)
+        #expect(!state.interactionsDisabled)
         #expect(state.canRetryBrowsing)
 
         state.restartSearching()
@@ -53,10 +70,11 @@ struct NearbyTransportTests {
         #expect(state.browseState == .found([room]))
     }
 
-    @Test func ordinaryLaunchUsesProductionNearbyWithoutAFixtureSession() {
+    @Test func ordinaryDebugLaunchUsesProductionNearbyWithFixtureRulesAndNoSwitch() {
         let environment = AppEnvironment(arguments: ["IndustrialCityBirmingham"])
         #expect(environment.usesFixtureSession == false)
         #expect(NearbyRoomPresentationMode.resolve(fixtureSessionAvailable: false) == .production)
+        #expect(environment.nearbyCatalogSource == .debugFixture)
     }
 
     @Test(arguments: [

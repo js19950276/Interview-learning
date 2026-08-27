@@ -1,8 +1,24 @@
 import Foundation
+import Network
 import Testing
 @testable import IndustrialCityBirmingham
 
 struct LocalNetworkTransportTests {
+    @Test func simulatorRoomConnectionsExplicitlyBypassSystemProxies() {
+        #expect(LocalNetworkTransport.makeParameters().preferNoProxies)
+    }
+
+    @Test func simulatorTransportCanHostAnAdvertisedRoomWithoutLaunchSwitches() async throws {
+        let transport = LocalNetworkTransport()
+        do {
+            try await transport.startHosting(roomID: .init(rawValue: "BRASS-UNIT-HOST"), port: nil)
+            await transport.disconnect()
+        } catch {
+            await transport.disconnect()
+            throw error
+        }
+    }
+
     @Test func frameUsesFourByteBigEndianLengthPrefix() throws {
         let framed = try LengthPrefixedFrameCodec.frame(Data([0xAA, 0xBB, 0xCC]))
         #expect(Array(framed) == [0, 0, 0, 3, 0xAA, 0xBB, 0xCC])
