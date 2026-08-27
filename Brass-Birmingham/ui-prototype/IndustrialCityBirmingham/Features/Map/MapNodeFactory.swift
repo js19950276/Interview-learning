@@ -2,9 +2,21 @@ import SpriteKit
 
 @MainActor
 enum MapNodeFactory {
+    private struct MerchantLayout {
+        let horizontalOffset: CGFloat
+        let merchantCenterY: CGFloat
+        let labelPosition: CGPoint
+    }
+
     private static let locationHitAreaName = "location-hit-area"
     private static let routeHitAreaName = "route-hit-area"
-    private static let brass = UIColor(red: 0.93, green: 0.67, blue: 0.25, alpha: 1)
+    private static let merchantHitAreaName = "merchant-hit-area"
+    private static let brass = uiColor(.brass)
+    private static let legalGreen = uiColor(.legalGreen)
+    private static let darkWood = uiColor(.darkWood)
+    private static let forgedIron = uiColor(.forgedIron)
+    private static let parchment = uiColor(.paper)
+    private static let parchmentShadow = uiColor(.parchmentShadow)
     private static let ink = UIColor(red: 0.08, green: 0.11, blue: 0.13, alpha: 0.95)
     private static let porcelain = UIColor(red: 0.91, green: 0.93, blue: 0.91, alpha: 1)
 
@@ -74,20 +86,36 @@ enum MapNodeFactory {
     static func locationNode(
         for location: MapLocation,
         in size: CGSize,
-        isHighlighted: Bool
+        isHighlighted: Bool,
+        highlightedMerchantIDs: Set<String> = []
     ) -> SKShapeNode {
         let marker = SKShapeNode(circleOfRadius: isHighlighted ? 18 : 15)
         marker.name = "location:\(location.id)"
         marker.position = point(for: location, in: size)
         marker.zPosition = 20
-        marker.fillColor = ink
-        marker.strokeColor = isHighlighted ? brass : porcelain
+        marker.fillColor = forgedIron
+        marker.strokeColor = isHighlighted ? legalGreen : porcelain
         marker.lineWidth = isHighlighted ? 4 : 2
-        marker.glowWidth = isHighlighted ? 6 : 0
-        marker.userData = ["isHighlighted": isHighlighted]
+        marker.glowWidth = 0
+        marker.userData = [
+            "isHighlighted": isHighlighted,
+            "visualState": isHighlighted ? "legal" : "normal",
+        ]
+
+        if isHighlighted {
+            let glow = SKShapeNode(circleOfRadius: 21)
+            glow.name = "location-legal-glow"
+            glow.fillColor = .clear
+            glow.strokeColor = legalGreen
+            glow.lineWidth = 4
+            glow.glowWidth = 8
+            glow.zPosition = -3
+            glow.isUserInteractionEnabled = false
+            marker.addChild(glow)
+        }
 
         let center = SKShapeNode(circleOfRadius: 5)
-        center.fillColor = isHighlighted ? brass : porcelain
+        center.fillColor = isHighlighted ? legalGreen : brass
         center.strokeColor = .clear
         center.isUserInteractionEnabled = false
         marker.addChild(center)
@@ -101,21 +129,26 @@ enum MapNodeFactory {
         hitArea.isUserInteractionEnabled = false
         marker.addChild(hitArea)
         let locationLabelLines = labelLines(for: location.name)
+        let merchantLayout = merchantLayout(
+            for: location,
+            locationLabelLineCount: locationLabelLines.count
+        )
         marker.addChild(nameBadge(
             text: location.name,
             name: "location-label",
-            position: CGPoint(x: 0, y: locationLabelLines.count == 1 ? 26 : 34),
+            position: merchantLayout.labelPosition,
             highlighted: isHighlighted
         ))
         for (index, placement) in location.industryPlacements.enumerated() {
-            let industry = SKShapeNode(rectOf: CGSize(width: 24, height: 24), cornerRadius: 5)
+            let industry = SKShapeNode(rectOf: CGSize(width: 28, height: 30), cornerRadius: 6)
             industry.name = "industry:\(placement.placementID)"
-            industry.position = CGPoint(x: CGFloat(index - location.industryPlacements.count / 2) * 27, y: -28)
+            let centeredIndex = CGFloat(index) - CGFloat(location.industryPlacements.count - 1) / 2
+            industry.position = CGPoint(x: centeredIndex * 31, y: -31)
             industry.zPosition = 6
             industry.fillColor = placement.isFlipped
-                ? ownerColor(placement.ownerColor).withAlphaComponent(0.45)
-                : ownerColor(placement.ownerColor)
-            industry.strokeColor = porcelain
+                ? forgedIron.withAlphaComponent(0.82)
+                : darkWood.withAlphaComponent(0.96)
+            industry.strokeColor = brass.withAlphaComponent(placement.isFlipped ? 0.42 : 0.78)
             industry.lineWidth = placement.isFlipped ? 1 : 2
             industry.userData = [
                 "ownerID": placement.ownerID,
@@ -123,14 +156,58 @@ enum MapNodeFactory {
                 "level": placement.level,
                 "resourceCount": placement.resourceCount,
                 "isFlipped": placement.isFlipped,
+                "industryKind": placement.kind.rawValue,
+                "industryName": industryName(placement.kind),
             ]
-            let label = SKLabelNode(text: "\(placement.level)·\(placement.resourceCount)")
-            label.fontName = "PingFangSC-Semibold"
-            label.fontSize = 8
-            label.fontColor = ink
-            label.verticalAlignmentMode = .center
-            industry.addChild(label)
+            let texture = SKTexture(imageNamed: IndustrialMatchAsset.industryMedallion(placement.kind).name)
+            texture.filteringMode = .linear
+            let medallion = SKSpriteNode(texture: texture, size: CGSize(width: 17, height: 17))
+            medallion.name = "industry-medallion"
+            medallion.position = CGPoint(x: 0, y: 5)
+            medallion.alpha = placement.isFlipped ? 0.72 : 1
+            medallion.zPosition = 1
+            medallion.isUserInteractionEnabled = false
+            medallion.userData = [
+                "assetName": IndustrialMatchAsset.industryMedallion(placement.kind).name,
+            ]
+            industry.addChild(medallion)
+
+            let detail = placement.resourceCount > 0
+                ? "L\(placement.level)·\(placement.resourceCount)"
+                : "L\(placement.level)"
+            let detailLabel = SKLabelNode(text: detail)
+            detailLabel.name = "industry-detail"
+            detailLabel.fontName = "PingFangSC-Medium"
+            detailLabel.fontSize = 6.5
+            detailLabel.fontColor = parchment
+            detailLabel.verticalAlignmentMode = .center
+            detailLabel.position = CGPoint(x: 0, y: -8)
+            detailLabel.isUserInteractionEnabled = false
+            industry.addChild(detailLabel)
+
+            let ownerStrip = SKShapeNode(rectOf: CGSize(width: 20, height: 3), cornerRadius: 1.5)
+            ownerStrip.name = "industry-owner-strip"
+            ownerStrip.position = CGPoint(x: 0, y: -13)
+            ownerStrip.fillColor = ownerColor(placement.ownerColor)
+                .withAlphaComponent(placement.isFlipped ? 0.55 : 0.95)
+            ownerStrip.strokeColor = .clear
+            ownerStrip.lineWidth = 0
+            ownerStrip.zPosition = 1
+            ownerStrip.isUserInteractionEnabled = false
+            industry.addChild(ownerStrip)
             marker.addChild(industry)
+        }
+        for (index, placement) in location.merchantPlacements.enumerated() {
+            let centeredIndex = CGFloat(index) - CGFloat(location.merchantPlacements.count - 1) / 2
+            let merchant = merchantNode(
+                for: placement,
+                position: CGPoint(
+                    x: centeredIndex * 42 + merchantLayout.horizontalOffset,
+                    y: merchantLayout.merchantCenterY
+                ),
+                isHighlighted: highlightedMerchantIDs.contains(placement.slotID)
+            )
+            marker.addChild(merchant)
         }
         return marker
     }
@@ -153,17 +230,18 @@ enum MapNodeFactory {
         routeNode.alpha = CGFloat(style.opacity)
         routeNode.userData = [
             "isHighlighted": isHighlighted,
+            "visualState": isHighlighted ? "legal" : "normal",
             "eraKind": style.kind.rawValue,
             "sourcePath": UIBezierPath(cgPath: path),
         ]
 
         if isHighlighted {
-            let highlight = strokeNode(
-                name: "route-highlight", path: path, color: brass,
+            let glow = strokeNode(
+                name: "route-legal-glow", path: path, color: legalGreen,
                 width: 11, zPosition: -3
             )
-            highlight.glowWidth = 5
-            routeNode.addChild(highlight)
+            glow.glowWidth = 5
+            routeNode.addChild(glow)
         }
 
         if style.kind != .railOnly {
@@ -262,9 +340,9 @@ enum MapNodeFactory {
             let unit = metrics.sceneUnitsPerPoint
             let kind = (node.userData?["eraKind"] as? String)
                 .flatMap(MapRouteEraKind.init(rawValue:)) ?? .both
-            if let highlight = node.childNode(withName: "route-highlight") as? SKShapeNode {
-                highlight.lineWidth = 11 * unit
-                highlight.glowWidth = 5 * unit
+            if let glow = node.childNode(withName: "route-legal-glow") as? SKShapeNode {
+                glow.lineWidth = 11 * unit
+                glow.glowWidth = 5 * unit
             }
             if let canal = node.childNode(withName: "route-era-canal") as? SKShapeNode {
                 canal.lineWidth = (kind == .both ? 8 : 6) * unit
@@ -301,6 +379,15 @@ enum MapNodeFactory {
         node.zPosition = zPosition
         node.isUserInteractionEnabled = false
         return node
+    }
+
+    private static func uiColor(_ color: BrassColor, alpha: CGFloat = 1) -> UIColor {
+        UIColor(
+            red: CGFloat(color.red),
+            green: CGFloat(color.green),
+            blue: CGFloat(color.blue),
+            alpha: alpha
+        )
     }
 
     private static func dashedPath(
@@ -389,6 +476,174 @@ enum MapNodeFactory {
         case .crimson: UIColor(red: 0.72, green: 0.16, blue: 0.18, alpha: 1)
         case .teal: UIColor(red: 0.12, green: 0.58, blue: 0.62, alpha: 1)
         case .violet: UIColor(red: 0.48, green: 0.27, blue: 0.68, alpha: 1)
+        }
+    }
+
+    private static func merchantNode(
+        for placement: MapMerchantPlacement,
+        position: CGPoint,
+        isHighlighted: Bool
+    ) -> SKShapeNode {
+        let merchant = SKShapeNode(
+            rectOf: CGSize(width: 38, height: 46), cornerRadius: 6
+        )
+        merchant.name = "merchant:\(placement.slotID)"
+        merchant.position = position
+        merchant.zPosition = 7
+        merchant.fillColor = darkWood.withAlphaComponent(0.96)
+        merchant.strokeColor = isHighlighted ? legalGreen : brass.withAlphaComponent(0.8)
+        merchant.lineWidth = isHighlighted ? 2.5 : 1.5
+        merchant.glowWidth = 0
+        merchant.userData = [
+            "slotID": placement.slotID,
+            "acceptedIndustryIDs": placement.acceptedIndustries.map(\.rawValue),
+            "hasBeer": placement.hasBeer,
+            "bonusKind": placement.bonusKind.rawValue,
+            "bonusAmount": placement.bonusAmount,
+            "isHighlighted": isHighlighted,
+            "visualState": isHighlighted ? "legal" : "normal",
+        ]
+
+        if isHighlighted {
+            let glow = SKShapeNode(rectOf: CGSize(width: 44, height: 52), cornerRadius: 8)
+            glow.name = "merchant-legal-glow"
+            glow.fillColor = .clear
+            glow.strokeColor = legalGreen
+            glow.lineWidth = 3
+            glow.glowWidth = 7
+            glow.zPosition = -3
+            glow.isUserInteractionEnabled = false
+            merchant.addChild(glow)
+        }
+
+        let hitArea = SKShapeNode(
+            rectOf: CGSize(width: 45, height: 48), cornerRadius: 7
+        )
+        hitArea.name = merchantHitAreaName
+        hitArea.fillColor = UIColor.white.withAlphaComponent(0.001)
+        hitArea.strokeColor = .clear
+        hitArea.lineWidth = 0
+        hitArea.zPosition = -1
+        hitArea.isUserInteractionEnabled = false
+        merchant.addChild(hitArea)
+
+        let parchmentPanel = SKShapeNode(rectOf: CGSize(width: 30, height: 23), cornerRadius: 4)
+        parchmentPanel.name = "merchant-parchment"
+        parchmentPanel.position = CGPoint(x: 0, y: 0)
+        parchmentPanel.fillColor = parchment.withAlphaComponent(0.88)
+        parchmentPanel.strokeColor = parchmentShadow
+        parchmentPanel.lineWidth = 0.8
+        parchmentPanel.zPosition = -0.5
+        parchmentPanel.isUserInteractionEnabled = false
+        merchant.addChild(parchmentPanel)
+
+        merchant.addChild(merchantLabel(
+            text: merchantAcceptanceGlyph(placement.acceptedIndustries),
+            name: "merchant-acceptance",
+            fontSize: 13,
+            color: ink,
+            y: 10
+        ))
+        merchant.addChild(merchantLabel(
+            text: placement.hasBeer ? "酒" : "—",
+            name: "merchant-beer",
+            fontSize: 8,
+            color: placement.hasBeer ? brass : forgedIron.withAlphaComponent(0.65),
+            y: -2
+        ))
+        merchant.addChild(merchantLabel(
+            text: merchantBonusLabel(placement),
+            name: "merchant-bonus",
+            fontSize: 6.5,
+            color: parchment,
+            y: -14
+        ))
+        return merchant
+    }
+
+    private static func merchantLayout(
+        for location: MapLocation,
+        locationLabelLineCount: Int
+    ) -> MerchantLayout {
+        let defaultLabelY: CGFloat = locationLabelLineCount == 1 ? 26 : 34
+        guard !location.merchantPlacements.isEmpty else {
+            return MerchantLayout(
+                horizontalOffset: 0,
+                merchantCenterY: -47,
+                labelPosition: CGPoint(x: 0, y: defaultLabelY)
+            )
+        }
+
+        let isBottomEdgeMarket = location.y >= 0.82
+        let isTopEdgeMarket = location.y <= 0.06
+        let isFarLeftMarket = location.x <= 0.06
+        let horizontalOffset: CGFloat = isFarLeftMarket ? 26 : 0
+        let merchantDistance: CGFloat = location.industryPlacements.isEmpty ? 47 : 80
+        let merchantCenterY = isBottomEdgeMarket ? merchantDistance : -merchantDistance
+        let inwardLabelY: CGFloat = merchantDistance + 45
+        let labelY: CGFloat
+        if isBottomEdgeMarket {
+            labelY = inwardLabelY
+        } else if isTopEdgeMarket {
+            labelY = -inwardLabelY
+        } else {
+            labelY = defaultLabelY
+        }
+        return MerchantLayout(
+            horizontalOffset: horizontalOffset,
+            merchantCenterY: merchantCenterY,
+            labelPosition: CGPoint(x: horizontalOffset, y: labelY)
+        )
+    }
+
+    private static func merchantLabel(
+        text: String,
+        name: String,
+        fontSize: CGFloat,
+        color: UIColor,
+        y: CGFloat
+    ) -> SKLabelNode {
+        let label = SKLabelNode(text: text)
+        label.name = name
+        label.fontName = "PingFangSC-Semibold"
+        label.fontSize = fontSize
+        label.fontColor = color
+        label.verticalAlignmentMode = .center
+        label.position = CGPoint(x: 0, y: y)
+        label.isUserInteractionEnabled = false
+        return label
+    }
+
+    private static func merchantAcceptanceGlyph(_ industries: [IndustryKind]) -> String {
+        guard let industry = industries.first else { return "空" }
+        guard industries.count == 1 else { return "任" }
+        return switch industry {
+        case .cotton: "棉"
+        case .manufacturer: "制"
+        case .pottery: "陶"
+        case .coal: "煤"
+        case .iron: "铁"
+        case .brewery: "酒"
+        }
+    }
+
+    private static func merchantBonusLabel(_ placement: MapMerchantPlacement) -> String {
+        switch placement.bonusKind {
+        case .victoryPoints: "+\(placement.bonusAmount)VP"
+        case .develop: "开发\(placement.bonusAmount)"
+        case .income: "收入\(placement.bonusAmount)"
+        case .money: "£\(placement.bonusAmount)"
+        }
+    }
+
+    private static func industryName(_ kind: IndustryKind) -> String {
+        switch kind {
+        case .cotton: "棉纺厂"
+        case .manufacturer: "制造厂"
+        case .pottery: "陶器厂"
+        case .coal: "煤矿"
+        case .iron: "炼铁厂"
+        case .brewery: "啤酒厂"
         }
     }
 

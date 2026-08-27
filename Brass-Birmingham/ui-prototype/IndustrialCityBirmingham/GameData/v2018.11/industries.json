@@ -1,0 +1,498 @@
+[
+  {
+    "id": "brewery",
+    "levels": [
+      {
+        "level": 1,
+        "copiesPerColor": 2,
+        "buildCost": 5,
+        "coalCost": 0,
+        "ironCost": 1,
+        "beerCost": 0,
+        "incomeReward": 4,
+        "victoryPoints": 4,
+        "linkPoints": 2,
+        "canalEra": true,
+        "railEra": false,
+        "canDevelop": true,
+        "production": {
+          "resource": "beer",
+          "canalCount": 1,
+          "railCount": 0
+        }
+      },
+      {
+        "level": 2,
+        "copiesPerColor": 2,
+        "buildCost": 7,
+        "coalCost": 0,
+        "ironCost": 1,
+        "beerCost": 0,
+        "incomeReward": 5,
+        "victoryPoints": 5,
+        "linkPoints": 2,
+        "canalEra": true,
+        "railEra": true,
+        "canDevelop": true,
+        "production": {
+          "resource": "beer",
+          "canalCount": 1,
+          "railCount": 2
+        }
+      },
+      {
+        "level": 3,
+        "copiesPerColor": 2,
+        "buildCost": 9,
+        "coalCost": 0,
+        "ironCost": 1,
+        "beerCost": 0,
+        "incomeReward": 5,
+        "victoryPoints": 7,
+        "linkPoints": 2,
+        "canalEra": true,
+        "railEra": true,
+        "canDevelop": true,
+        "production": {
+          "resource": "beer",
+          "canalCount": 1,
+          "railCount": 2
+        }
+      },
+      {
+        "level": 4,
+        "copiesPerColor": 1,
+        "buildCost": 9,
+        "coalCost": 0,
+        "ironCost": 1,
+        "beerCost": 0,
+        "incomeReward": 5,
+        "victoryPoints": 10,
+        "linkPoints": 2,
+        "canalEra": false,
+        "railEra": true,
+        "canDevelop": true,
+        "production": {
+          "resource": "beer",
+          "canalCount": 0,
+          "railCount": 2
+        }
+      }
+    ]
+  },
+  {
+    "id": "coal-mine",
+    "levels": [
+      {
+        "level": 1,
+        "copiesPerColor": 1,
+        "buildCost": 5,
+        "coalCost": 0,
+        "ironCost": 0,
+        "beerCost": 0,
+        "incomeReward": 4,
+        "victoryPoints": 1,
+        "linkPoints": 2,
+        "canalEra": true,
+        "railEra": false,
+        "canDevelop": true,
+        "production": {
+          "resource": "coal",
+          "canalCount": 2,
+          "railCount": 0
+        }
+      },
+      {
+        "level": 2,
+        "copiesPerColor": 2,
+        "buildCost": 7,
+        "coalCost": 0,
+        "ironCost": 0,
+        "beerCost": 0,
+        "incomeReward": 7,
+        "victoryPoints": 2,
+        "linkPoints": 1,
+        "canalEra": true,
+        "railEra": true,
+        "canDevelop": true,
+        "production": {
+          "resource": "coal",
+          "canalCount": 3,
+          "railCount": 3
+        }
+      },
+      {
+        "level": 3,
+        "copiesPerColor": 2,
+        "buildCost": 8,
+        "coalCost": 0,
+        "ironCost": 1,
+        "beerCost": 0,
+        "incomeReward": 6,
+        "victoryPoints": 3,
+        "linkPoints": 1,
+        "canalEra": true,
+        "railEra": true,
+        "canDevelop": true,
+        "production": {
+          "resource": "coal",
+          "canalCount": 4,
+          "railCount": 4
+        }
+      },
+      {
+        "level": 4,
+        "copiesPerColor": 2,
+        "buildCost": 10,
+        "coalCost": 0,
+        "ironCost": 1,
+        "beerCost": 0,
+        "incomeReward": 5,
+        "victoryPoints": 4,
+        "linkPoints": 1,
+        "canalEra": true,
+        "railEra": true,
+        "canDevelop": true,
+        "production": {
+          "resource": "coal",
+          "canalCount": 5,
+          "railCount": 5
+        }
+      }
+    ]
+  },
+  {
+    "id": "cotton-mill",
+    "levels": [
+      {
+        "level": 1,
+        "copiesPerColor": 3,
+        "buildCost": 12,
+        "coalCost": 0,
+        "ironCost": 0,
+        "beerCost": 1,
+        "incomeReward": 5,
+        "victoryPoints": 5,
+        "linkPoints": 1,
+        "canalEra": true,
+        "railEra": false,
+        "canDevelop": true
+      },
+      {
+        "level": 2,
+        "copiesPerColor": 2,
+        "buildCost": 14,
+        "coalCost": 1,
+        "ironCost": 0,
+        "beerCost": 1,
+        "incomeReward": 4,
+        "victoryPoints": 5,
+        "linkPoints": 2,
+        "canalEra": true,
+        "railEra": true,
+        "canDevelop": true
+      },
+      {
+        "level": 3,
+        "copiesPerColor": 3,
+        "buildCost": 16,
+        "coalCost": 1,
+        "ironCost": 1,
+        "beerCost": 1,
+        "incomeReward": 3,
+        "victoryPoints": 9,
+        "linkPoints": 1,
+        "canalEra": true,
+        "railEra": true,
+        "canDevelop": true
+      },
+      {
+        "level": 4,
+        "copiesPerColor": 3,
+        "buildCost": 18,
+        "coalCost": 1,
+        "ironCost": 1,
+        "beerCost": 1,
+        "incomeReward": 2,
+        "victoryPoints": 12,
+        "linkPoints": 1,
+        "canalEra": true,
+        "railEra": true,
+        "canDevelop": true
+      }
+    ]
+  },
+  {
+    "id": "iron-works",
+    "levels": [
+      {
+        "level": 1,
+        "copiesPerColor": 1,
+        "buildCost": 5,
+        "coalCost": 1,
+        "ironCost": 0,
+        "beerCost": 0,
+        "incomeReward": 3,
+        "victoryPoints": 3,
+        "linkPoints": 1,
+        "canalEra": true,
+        "railEra": false,
+        "canDevelop": true,
+        "production": {
+          "resource": "iron",
+          "canalCount": 4,
+          "railCount": 0
+        }
+      },
+      {
+        "level": 2,
+        "copiesPerColor": 1,
+        "buildCost": 7,
+        "coalCost": 1,
+        "ironCost": 0,
+        "beerCost": 0,
+        "incomeReward": 3,
+        "victoryPoints": 5,
+        "linkPoints": 1,
+        "canalEra": true,
+        "railEra": true,
+        "canDevelop": true,
+        "production": {
+          "resource": "iron",
+          "canalCount": 4,
+          "railCount": 4
+        }
+      },
+      {
+        "level": 3,
+        "copiesPerColor": 1,
+        "buildCost": 9,
+        "coalCost": 1,
+        "ironCost": 0,
+        "beerCost": 0,
+        "incomeReward": 2,
+        "victoryPoints": 7,
+        "linkPoints": 1,
+        "canalEra": true,
+        "railEra": true,
+        "canDevelop": true,
+        "production": {
+          "resource": "iron",
+          "canalCount": 5,
+          "railCount": 5
+        }
+      },
+      {
+        "level": 4,
+        "copiesPerColor": 1,
+        "buildCost": 12,
+        "coalCost": 1,
+        "ironCost": 0,
+        "beerCost": 0,
+        "incomeReward": 1,
+        "victoryPoints": 9,
+        "linkPoints": 1,
+        "canalEra": true,
+        "railEra": true,
+        "canDevelop": true,
+        "production": {
+          "resource": "iron",
+          "canalCount": 6,
+          "railCount": 6
+        }
+      }
+    ]
+  },
+  {
+    "id": "manufacturer",
+    "levels": [
+      {
+        "level": 1,
+        "copiesPerColor": 1,
+        "buildCost": 8,
+        "coalCost": 1,
+        "ironCost": 0,
+        "beerCost": 1,
+        "incomeReward": 5,
+        "victoryPoints": 3,
+        "linkPoints": 2,
+        "canalEra": true,
+        "railEra": false,
+        "canDevelop": true
+      },
+      {
+        "level": 2,
+        "copiesPerColor": 2,
+        "buildCost": 10,
+        "coalCost": 0,
+        "ironCost": 1,
+        "beerCost": 1,
+        "incomeReward": 1,
+        "victoryPoints": 5,
+        "linkPoints": 1,
+        "canalEra": true,
+        "railEra": true,
+        "canDevelop": true
+      },
+      {
+        "level": 3,
+        "copiesPerColor": 1,
+        "buildCost": 12,
+        "coalCost": 2,
+        "ironCost": 0,
+        "beerCost": 0,
+        "incomeReward": 4,
+        "victoryPoints": 4,
+        "linkPoints": 0,
+        "canalEra": true,
+        "railEra": true,
+        "canDevelop": true
+      },
+      {
+        "level": 4,
+        "copiesPerColor": 1,
+        "buildCost": 8,
+        "coalCost": 0,
+        "ironCost": 1,
+        "beerCost": 1,
+        "incomeReward": 6,
+        "victoryPoints": 3,
+        "linkPoints": 1,
+        "canalEra": true,
+        "railEra": true,
+        "canDevelop": true
+      },
+      {
+        "level": 5,
+        "copiesPerColor": 2,
+        "buildCost": 16,
+        "coalCost": 1,
+        "ironCost": 0,
+        "beerCost": 2,
+        "incomeReward": 2,
+        "victoryPoints": 8,
+        "linkPoints": 2,
+        "canalEra": true,
+        "railEra": true,
+        "canDevelop": true
+      },
+      {
+        "level": 6,
+        "copiesPerColor": 1,
+        "buildCost": 20,
+        "coalCost": 0,
+        "ironCost": 0,
+        "beerCost": 1,
+        "incomeReward": 6,
+        "victoryPoints": 7,
+        "linkPoints": 1,
+        "canalEra": true,
+        "railEra": true,
+        "canDevelop": true
+      },
+      {
+        "level": 7,
+        "copiesPerColor": 1,
+        "buildCost": 16,
+        "coalCost": 1,
+        "ironCost": 1,
+        "beerCost": 0,
+        "incomeReward": 4,
+        "victoryPoints": 9,
+        "linkPoints": 0,
+        "canalEra": true,
+        "railEra": true,
+        "canDevelop": true
+      },
+      {
+        "level": 8,
+        "copiesPerColor": 2,
+        "buildCost": 20,
+        "coalCost": 0,
+        "ironCost": 2,
+        "beerCost": 1,
+        "incomeReward": 1,
+        "victoryPoints": 11,
+        "linkPoints": 1,
+        "canalEra": true,
+        "railEra": true,
+        "canDevelop": true
+      }
+    ]
+  },
+  {
+    "id": "pottery",
+    "levels": [
+      {
+        "level": 1,
+        "copiesPerColor": 1,
+        "buildCost": 17,
+        "coalCost": 0,
+        "ironCost": 1,
+        "beerCost": 1,
+        "incomeReward": 5,
+        "victoryPoints": 10,
+        "linkPoints": 1,
+        "canalEra": true,
+        "railEra": true,
+        "canDevelop": false
+      },
+      {
+        "level": 2,
+        "copiesPerColor": 1,
+        "buildCost": 0,
+        "coalCost": 1,
+        "ironCost": 0,
+        "beerCost": 1,
+        "incomeReward": 1,
+        "victoryPoints": 1,
+        "linkPoints": 1,
+        "canalEra": true,
+        "railEra": true,
+        "canDevelop": true
+      },
+      {
+        "level": 3,
+        "copiesPerColor": 1,
+        "buildCost": 22,
+        "coalCost": 2,
+        "ironCost": 0,
+        "beerCost": 2,
+        "incomeReward": 5,
+        "victoryPoints": 11,
+        "linkPoints": 1,
+        "canalEra": true,
+        "railEra": true,
+        "canDevelop": false
+      },
+      {
+        "level": 4,
+        "copiesPerColor": 1,
+        "buildCost": 0,
+        "coalCost": 1,
+        "ironCost": 0,
+        "beerCost": 1,
+        "incomeReward": 1,
+        "victoryPoints": 1,
+        "linkPoints": 1,
+        "canalEra": true,
+        "railEra": true,
+        "canDevelop": true
+      },
+      {
+        "level": 5,
+        "copiesPerColor": 1,
+        "buildCost": 24,
+        "coalCost": 2,
+        "ironCost": 0,
+        "beerCost": 2,
+        "incomeReward": 5,
+        "victoryPoints": 20,
+        "linkPoints": 1,
+        "canalEra": false,
+        "railEra": true,
+        "canDevelop": true
+      }
+    ]
+  }
+]

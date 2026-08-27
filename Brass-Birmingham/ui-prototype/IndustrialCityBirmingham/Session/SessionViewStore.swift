@@ -249,7 +249,6 @@ final class SessionViewStore {
         )
     }
 
-#if DEBUG
     static func nearbyHost(
         roomID: GameCore.RoomID,
         identity: NearbySessionIdentity,
@@ -260,7 +259,6 @@ final class SessionViewStore {
             roomID: roomID, identity: identity, persistenceFactory: persistenceFactory, catalog: catalog
         )
     }
-#endif
 
     private static func makeNearbyHost(
         roomID: GameCore.RoomID,
@@ -295,7 +293,6 @@ final class SessionViewStore {
         )
     }
 
-#if DEBUG
     static func nearbyGuest(
         room: NearbyRoom,
         identity: NearbySessionIdentity,
@@ -306,7 +303,6 @@ final class SessionViewStore {
             room: room, identity: identity, persistenceFactory: persistenceFactory, catalog: catalog
         )
     }
-#endif
 
     private static func makeNearbyGuest(
         room: NearbyRoom,

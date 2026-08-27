@@ -1,0 +1,94 @@
+[
+  {
+    "id": "blank-2-plus",
+    "acceptedIndustryIDs": [],
+    "count": 2,
+    "playerCounts": [
+      2,
+      3,
+      4
+    ]
+  },
+  {
+    "id": "any-2-plus",
+    "acceptedIndustryIDs": [
+      "cotton-mill",
+      "manufacturer",
+      "pottery"
+    ],
+    "count": 1,
+    "playerCounts": [
+      2,
+      3,
+      4
+    ]
+  },
+  {
+    "id": "cotton-2-plus",
+    "acceptedIndustryIDs": [
+      "cotton-mill"
+    ],
+    "count": 1,
+    "playerCounts": [
+      2,
+      3,
+      4
+    ]
+  },
+  {
+    "id": "manufacturer-2-plus",
+    "acceptedIndustryIDs": [
+      "manufacturer"
+    ],
+    "count": 1,
+    "playerCounts": [
+      2,
+      3,
+      4
+    ]
+  },
+  {
+    "id": "manufacturer-3-plus",
+    "acceptedIndustryIDs": [
+      "manufacturer"
+    ],
+    "count": 1,
+    "playerCounts": [
+      3,
+      4
+    ]
+  },
+  {
+    "id": "pottery-3-plus",
+    "acceptedIndustryIDs": [
+      "pottery"
+    ],
+    "count": 1,
+    "playerCounts": [
+      3,
+      4
+    ]
+  },
+  {
+    "id": "any-4",
+    "acceptedIndustryIDs": [
+      "cotton-mill",
+      "manufacturer",
+      "pottery"
+    ],
+    "count": 1,
+    "playerCounts": [
+      4
+    ]
+  },
+  {
+    "id": "cotton-4",
+    "acceptedIndustryIDs": [
+      "cotton-mill"
+    ],
+    "count": 1,
+    "playerCounts": [
+      4
+    ]
+  }
+]

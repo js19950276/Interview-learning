@@ -153,6 +153,10 @@ final class FriendsPlayableUITests: XCTestCase {
         XCTAssertTrue(current.waitForExistence(timeout: 2))
         XCTAssertTrue(current.label.contains("当前玩家"))
         XCTAssertTrue(current.label.contains("你"))
+        XCTAssertTrue(
+            String(describing: current.value ?? "").contains("行动"),
+            "Current player rail element should expose action status in its value; value=\(String(describing: current.value))"
+        )
     }
 
     @MainActor
@@ -166,14 +170,15 @@ final class FriendsPlayableUITests: XCTestCase {
         let industryToggle = app.buttons["real.industryRail.toggle"]
         XCTAssertTrue(playerToggle.waitForExistence(timeout: 2))
         XCTAssertTrue(industryToggle.exists)
-        XCTAssertEqual(playerToggle.value as? String, "已收起")
+        XCTAssertTrue(String(describing: playerToggle.value ?? "").contains("已收起"))
+        XCTAssertTrue(String(describing: playerToggle.value ?? "").contains("行动"))
 
         playerToggle.tap()
         XCTAssertTrue(
             app.descendants(matching: .any)["overlay.playerRail"]
                 .waitForExistence(timeout: 1)
         )
-        XCTAssertEqual(playerToggle.value as? String, "已展开")
+        XCTAssertTrue(String(describing: playerToggle.value ?? "").contains("已展开"))
 
         industryToggle.tap()
         XCTAssertTrue(
@@ -203,6 +208,7 @@ final class FriendsPlayableUITests: XCTestCase {
         XCTAssertFalse(app.buttons["real.industryRail.toggle"].exists)
         XCTAssertTrue(app.descendants(matching: .any)["match.playerRail.content"].exists)
         XCTAssertTrue(app.descendants(matching: .any)["match.industryRail.content"].exists)
+        XCTAssertTrue(app.descendants(matching: .any)["industry.medallion.industry-cotton"].exists)
     }
 
     @MainActor
