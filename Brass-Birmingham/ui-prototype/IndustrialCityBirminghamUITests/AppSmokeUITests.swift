@@ -169,6 +169,24 @@ final class AppSmokeUITests: XCTestCase {
     }
 
     @MainActor
+    func testMapPinchChangesReportedZoomInAndOut() throws {
+        XCUIDevice.shared.orientation = .landscapeLeft
+        let app = launchApp(arguments: ["-fixture", "players4"])
+        XCUIDevice.shared.orientation = .landscapeLeft
+
+        let map = app.descendants(matching: .any)["match.map"]
+        XCTAssertTrue(map.waitForExistence(timeout: 5))
+        XCTAssertEqual(map.value as? String, "缩放 0.75 倍")
+
+        map.pinch(withScale: 1.6, velocity: 1)
+        let zoomedIn = try XCTUnwrap(map.value as? String)
+        XCTAssertNotEqual(zoomedIn, "缩放 0.75 倍")
+
+        map.pinch(withScale: 0.2, velocity: -1)
+        XCTAssertEqual(map.value as? String, "缩放 0.75 倍")
+    }
+
+    @MainActor
     func testPhoneFixtureKeepsMatchShellAndHandInsideWindowBounds() throws {
         XCUIDevice.shared.orientation = .landscapeRight
         let app = launchApp(arguments: ["-fixture", "players4"])

@@ -45,22 +45,43 @@ struct MapPinchZoomTests {
 
     @Test(arguments: [0.01, 100.0])
     func magnificationClampsToSemanticZoomBounds(_ magnification: Double) {
+        let anchor = CGPoint(x: 612, y: 278)
+        let startingTranslation = CGPoint(x: 148, y: -76)
+        let metrics = MapViewportMetrics(
+            logicalSize: GameMapScene.logicalSize,
+            viewportSize: CGSize(width: 852, height: 393),
+            semanticZoom: 1,
+            viewportInsets: MapViewportInsets(top: 18, leading: 0, bottom: 96, trailing: 44)
+        )
         let projection = MapPinchZoom.projection(
             startingZoom: 1,
             magnification: CGFloat(magnification),
-            anchorInView: CGPoint(x: 426, y: 196.5),
-            startingTranslation: .zero,
-            metrics: MapViewportMetrics(
-                logicalSize: GameMapScene.logicalSize,
-                viewportSize: CGSize(width: 852, height: 393),
-                semanticZoom: 1
-            )
+            anchorInView: anchor,
+            startingTranslation: startingTranslation,
+            metrics: metrics
         )
         let expectedZoom = magnification < 1
             ? MapViewportMetrics.minimumZoom
             : MapViewportMetrics.maximumZoom
+        let startScenePoint = scenePoint(
+            under: anchor,
+            translation: startingTranslation,
+            metrics: metrics
+        )
+        let targetScenePoint = scenePoint(
+            under: anchor,
+            translation: projection.translation,
+            metrics: MapViewportMetrics(
+                logicalSize: metrics.logicalSize,
+                viewportSize: metrics.viewportSize,
+                semanticZoom: projection.semanticZoom,
+                viewportInsets: metrics.viewportInsets
+            )
+        )
 
         #expect(abs(projection.semanticZoom - expectedZoom) < 0.0001)
+        #expect(abs(targetScenePoint.x - startScenePoint.x) < 0.0001)
+        #expect(abs(targetScenePoint.y - startScenePoint.y) < 0.0001)
     }
 
     private func scenePoint(

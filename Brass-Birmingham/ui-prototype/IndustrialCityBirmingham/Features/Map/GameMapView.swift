@@ -109,9 +109,14 @@ struct GameMapView: View {
     let viewportInsets: MapViewportInsets
 
     @State private var scene: GameMapScene
+    @State private var appliedCameraTranslation: CGPoint = .zero
     @State private var committedTranslation: CGPoint = .zero
     @State private var dragTranslation: CGSize = .zero
     @State private var isDragging = false
+    @State private var isPinching = false
+    @State private var suppressNextDragEnd = false
+    @State private var pinchStartTranslation: CGPoint?
+    @State private var pinchAnchor: CGPoint?
     @State private var committedScale = MapViewportMetrics.minimumZoom
     @State private var gestureScale: CGFloat = 1
     @State private var panSignpost: PrototypeSignpost.Interval?
@@ -150,7 +155,8 @@ struct GameMapView: View {
                             size: newSize,
                             insets: viewportInsets
                         )
-                        if !isDragging {
+                        appliedCameraTranslation = appliedTranslation
+                        if !isDragging, !isPinching {
                             committedTranslation = appliedTranslation
                         }
                         updateCamera()
@@ -160,7 +166,8 @@ struct GameMapView: View {
                             size: proxy.size,
                             insets: newInsets
                         )
-                        if !isDragging {
+                        appliedCameraTranslation = appliedTranslation
+                        if !isDragging, !isPinching {
                             committedTranslation = appliedTranslation
                         }
                         updateCamera()
@@ -178,6 +185,7 @@ struct GameMapView: View {
                         Color.clear
                             .accessibilityElement()
                             .accessibilityLabel("工业地图")
+                            .accessibilityValue(String(format: "缩放 %.2f 倍", currentSemanticZoom))
                             .accessibilityIdentifier("match.map")
 
                         VStack {
@@ -201,6 +209,11 @@ struct GameMapView: View {
     private var dragGesture: some Gesture {
         DragGesture()
             .onChanged { value in
+                guard !isPinching else {
+                    dragTranslation = .zero
+                    return
+                }
+                suppressNextDragEnd = false
                 if panSignpost == nil {
                     panSignpost = PrototypeSignpost.begin(.mapPanZoom)
                 }
@@ -209,12 +222,20 @@ struct GameMapView: View {
                 updateCamera()
             }
             .onEnded { value in
+                guard !isPinching, !suppressNextDragEnd else {
+                    suppressNextDragEnd = false
+                    dragTranslation = .zero
+                    isDragging = false
+                    panSignpost?.end()
+                    panSignpost = nil
+                    return
+                }
                 let sceneTranslation = scene.viewportMetrics.sceneTranslation(forDrag: value.translation)
                 let proposal = CGPoint(
                     x: committedTranslation.x + sceneTranslation.x,
                     y: committedTranslation.y + sceneTranslation.y
                 )
-                committedTranslation = scene.updateCamera(
+                committedTranslation = updateCamera(
                     scale: clampedScale(committedScale * gestureScale),
                     translation: proposal
                 )
@@ -228,6 +249,14 @@ struct GameMapView: View {
     private var magnifyGesture: some Gesture {
         MagnifyGesture()
             .onChanged { value in
+                if pinchAnchor == nil {
+                    pinchAnchor = value.startLocation
+                    pinchStartTranslation = appliedCameraTranslation
+                    dragTranslation = .zero
+                    isDragging = false
+                    isPinching = true
+                    suppressNextDragEnd = true
+                }
                 if zoomSignpost == nil {
                     zoomSignpost = PrototypeSignpost.begin(.mapPanZoom)
                 }
@@ -235,8 +264,14 @@ struct GameMapView: View {
                 updateCamera()
             }
             .onEnded { value in
-                committedScale = clampedScale(committedScale * value.magnification)
+                gestureScale = value.magnification
+                updateCamera()
+                committedScale = currentSemanticZoom
+                committedTranslation = appliedCameraTranslation
                 gestureScale = 1
+                pinchStartTranslation = nil
+                pinchAnchor = nil
+                isPinching = false
                 updateCamera()
                 zoomSignpost?.end()
                 zoomSignpost = nil
@@ -260,29 +295,52 @@ struct GameMapView: View {
             size: viewportSize,
             insets: viewportInsets
         )
-        if !isDragging {
+        appliedCameraTranslation = appliedTranslation
+        if !isDragging, !isPinching {
             committedTranslation = appliedTranslation
         }
         updateCamera()
     }
 
     private func updateCamera() {
-        let currentDrag = scene.viewportMetrics.sceneTranslation(forDrag: dragTranslation)
-        let translation = CGPoint(
-            x: committedTranslation.x + currentDrag.x,
-            y: committedTranslation.y + currentDrag.y
-        )
-        let appliedTranslation = scene.updateCamera(
-            scale: clampedScale(committedScale * gestureScale),
+        let translation: CGPoint
+        if let pinchStartTranslation, let pinchAnchor {
+            translation = MapPinchZoom.projection(
+                startingZoom: committedScale,
+                magnification: gestureScale,
+                anchorInView: pinchAnchor,
+                startingTranslation: pinchStartTranslation,
+                metrics: scene.viewportMetrics
+            ).translation
+        } else {
+            let currentDrag = scene.viewportMetrics.sceneTranslation(forDrag: dragTranslation)
+            translation = CGPoint(
+                x: committedTranslation.x + currentDrag.x,
+                y: committedTranslation.y + currentDrag.y
+            )
+        }
+        let appliedTranslation = updateCamera(
+            scale: currentSemanticZoom,
             translation: translation
         )
-        if !isDragging {
+        if !isDragging, !isPinching {
             committedTranslation = appliedTranslation
         }
     }
 
+    @discardableResult
+    private func updateCamera(scale: CGFloat, translation: CGPoint) -> CGPoint {
+        let appliedTranslation = scene.updateCamera(scale: scale, translation: translation)
+        appliedCameraTranslation = appliedTranslation
+        return appliedTranslation
+    }
+
     private func clampedScale(_ value: CGFloat) -> CGFloat {
         min(max(value, MapViewportMetrics.minimumZoom), MapViewportMetrics.maximumZoom)
+    }
+
+    private var currentSemanticZoom: CGFloat {
+        clampedScale(committedScale * gestureScale)
     }
 
     private var accessibleTargets: [GameMapAccessibilityTarget] {

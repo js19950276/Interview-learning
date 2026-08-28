@@ -1,6 +1,6 @@
 import CoreGraphics
 
-struct MapPinchZoomProjection: Equatable {
+struct MapPinchZoomProjection: Equatable, Sendable {
     let semanticZoom: CGFloat
     let translation: CGPoint
 }
