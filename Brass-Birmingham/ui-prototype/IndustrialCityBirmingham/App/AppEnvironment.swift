@@ -25,9 +25,11 @@ nonisolated struct AppEnvironment: Equatable, Sendable {
     let mode: Mode
     let runsLocalScriptHarness: Bool
     let usesFixtureSession: Bool
+    let nearbyCatalogSource: NearbyCatalogSource
 
     init(arguments: [String]) {
 #if DEBUG
+        nearbyCatalogSource = .debugFixture
         localUIFixturePresentationEraOverride = arguments.contains("-rail-fixture") ? .rail : nil
         usesFixtureSession = arguments.contains("-ui-testing")
             || arguments.contains("-snapshot-testing")
@@ -55,6 +57,7 @@ nonisolated struct AppEnvironment: Equatable, Sendable {
         mode = .production
         runsLocalScriptHarness = false
         usesFixtureSession = false
+        nearbyCatalogSource = .packagedRules
 #endif
     }
 

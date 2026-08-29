@@ -243,7 +243,8 @@ final class GameMapScene: SKScene {
                 MapNodeFactory.locationNode(
                     for: location,
                     in: Self.logicalSize,
-                    isHighlighted: highlightedIDs.contains(location.id)
+                    isHighlighted: highlightedIDs.contains(location.id),
+                    highlightedMerchantIDs: highlightedIDs
                 )
             )
         }
@@ -283,7 +284,9 @@ final class GameMapScene: SKScene {
     static func targetID(fromNodeName name: String?) -> String? {
         guard let name else { return nil }
         let parts = name.split(separator: ":", maxSplits: 1).map(String.init)
-        guard parts.count == 2, ["location", "route"].contains(parts[0]), !parts[1].isEmpty else { return nil }
+        guard parts.count == 2,
+              ["location", "route", "merchant"].contains(parts[0]),
+              !parts[1].isEmpty else { return nil }
         return parts[1]
     }
 

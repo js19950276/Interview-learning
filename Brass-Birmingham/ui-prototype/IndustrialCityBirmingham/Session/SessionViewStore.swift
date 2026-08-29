@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import OSLog
 import SwiftUI
 
 nonisolated enum SessionRole: String, Equatable, Sendable { case host, guest }
@@ -41,7 +42,7 @@ nonisolated struct LegalResponseGate: Equatable, Sendable {
 final class NearbyPersistenceState {
     let persistenceFactory: SessionPersistenceFactory
 
-    init(persistenceFactory: SessionPersistenceFactory = .init()) {
+    init(persistenceFactory: SessionPersistenceFactory = .nearbyRuntime) {
         self.persistenceFactory = persistenceFactory
     }
 }
@@ -241,7 +242,7 @@ final class SessionViewStore {
     static func nearbyHost(
         roomID: GameCore.RoomID,
         identity: NearbySessionIdentity,
-        persistenceFactory: SessionPersistenceFactory = .init()
+        persistenceFactory: SessionPersistenceFactory = .nearbyRuntime
     ) async throws -> SessionViewStore {
         try await makeNearbyHost(
             roomID: roomID, identity: identity, persistenceFactory: persistenceFactory,
@@ -249,18 +250,16 @@ final class SessionViewStore {
         )
     }
 
-#if DEBUG
     static func nearbyHost(
         roomID: GameCore.RoomID,
         identity: NearbySessionIdentity,
-        persistenceFactory: SessionPersistenceFactory = .init(),
+        persistenceFactory: SessionPersistenceFactory = .nearbyRuntime,
         catalog: GameCore.VerifiedGameDataCatalog
     ) async throws -> SessionViewStore {
         try await makeNearbyHost(
             roomID: roomID, identity: identity, persistenceFactory: persistenceFactory, catalog: catalog
         )
     }
-#endif
 
     private static func makeNearbyHost(
         roomID: GameCore.RoomID,
@@ -269,13 +268,18 @@ final class SessionViewStore {
         catalog: GameCore.VerifiedGameDataCatalog
     ) async throws -> SessionViewStore {
         let hostID = GameCore.PlayerID(rawValue: "host")
+#if DEBUG && targetEnvironment(simulator)
+        let transport = LocalNetworkTransport()
+#else
+        let transport = NearbyTransport()
+#endif
         let coordinator = try await persistenceFactory.makeCoordinator(
             configuration: .init(
                 protocolVersion: 2, rulesetVersion: catalog.catalog.rulesetVersion, roomID: roomID,
                 playerID: hostID, reconnectToken: identity.reconnectToken, hostPlayerID: hostID
             ),
             role: .host,
-            transport: NearbyTransport(),
+            transport: transport,
             rulesMode: .verified(catalog)
         )
         return SessionViewStore(
@@ -287,7 +291,7 @@ final class SessionViewStore {
     static func nearbyGuest(
         room: NearbyRoom,
         identity: NearbySessionIdentity,
-        persistenceFactory: SessionPersistenceFactory = .init()
+        persistenceFactory: SessionPersistenceFactory = .nearbyRuntime
     ) async throws -> SessionViewStore {
         try await makeNearbyGuest(
             room: room, identity: identity, persistenceFactory: persistenceFactory,
@@ -295,18 +299,16 @@ final class SessionViewStore {
         )
     }
 
-#if DEBUG
     static func nearbyGuest(
         room: NearbyRoom,
         identity: NearbySessionIdentity,
-        persistenceFactory: SessionPersistenceFactory = .init(),
+        persistenceFactory: SessionPersistenceFactory = .nearbyRuntime,
         catalog: GameCore.VerifiedGameDataCatalog
     ) async throws -> SessionViewStore {
         try await makeNearbyGuest(
             room: room, identity: identity, persistenceFactory: persistenceFactory, catalog: catalog
         )
     }
-#endif
 
     private static func makeNearbyGuest(
         room: NearbyRoom,
@@ -316,13 +318,18 @@ final class SessionViewStore {
     ) async throws -> SessionViewStore {
         let roomID = GameCore.RoomID(rawValue: room.serviceName)
         let hostID = GameCore.PlayerID(rawValue: "host")
+#if DEBUG && targetEnvironment(simulator)
+        let transport = LocalNetworkTransport(serviceName: room.serviceName)
+#else
+        let transport = NearbyTransport(serviceName: room.serviceName)
+#endif
         let coordinator = try await persistenceFactory.makeCoordinator(
             configuration: .init(
                 protocolVersion: 2, rulesetVersion: catalog.catalog.rulesetVersion, roomID: roomID,
                 playerID: identity.playerID, reconnectToken: identity.reconnectToken, hostPlayerID: hostID
             ),
             role: .guest,
-            transport: NearbyTransport(serviceName: room.serviceName),
+            transport: transport,
             rulesMode: .verified(catalog)
         )
         return SessionViewStore(
@@ -371,6 +378,10 @@ final class SessionViewStore {
 #endif
             return nil
         } catch {
+            Logger(
+                subsystem: "com.didi.prototype.IndustrialCityBirmingham",
+                category: "NearbySession"
+            ).error("Session connect failed: \(String(reflecting: error), privacy: .public)")
             let issue = NearbyPreflight.issue(for: error)
             syncStatus = .failed
             errorMessage = issue.recoveryMessage

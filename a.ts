@@ -1,0 +1,2 @@
+base
+amended line

@@ -1,0 +1,1357 @@
+{
+  "locations": [
+    {
+      "id": "stoke-on-trent",
+      "kind": "city",
+      "industrySlots": [
+        [
+          "cotton-mill",
+          "manufacturer"
+        ],
+        [
+          "pottery",
+          "iron-works"
+        ],
+        [
+          "manufacturer"
+        ]
+      ],
+      "playerCounts": [
+        2,
+        3,
+        4
+      ]
+    },
+    {
+      "id": "leek",
+      "kind": "city",
+      "industrySlots": [
+        [
+          "cotton-mill",
+          "manufacturer"
+        ],
+        [
+          "cotton-mill",
+          "coal-mine"
+        ]
+      ],
+      "playerCounts": [
+        2,
+        3,
+        4
+      ]
+    },
+    {
+      "id": "belper",
+      "kind": "city",
+      "industrySlots": [
+        [
+          "cotton-mill",
+          "manufacturer"
+        ],
+        [
+          "coal-mine"
+        ],
+        [
+          "pottery"
+        ]
+      ],
+      "playerCounts": [
+        2,
+        3,
+        4
+      ]
+    },
+    {
+      "id": "derby",
+      "kind": "city",
+      "industrySlots": [
+        [
+          "cotton-mill",
+          "brewery"
+        ],
+        [
+          "cotton-mill",
+          "manufacturer"
+        ],
+        [
+          "iron-works"
+        ]
+      ],
+      "playerCounts": [
+        2,
+        3,
+        4
+      ]
+    },
+    {
+      "id": "uttoxeter",
+      "kind": "city",
+      "industrySlots": [
+        [
+          "manufacturer",
+          "brewery"
+        ],
+        [
+          "cotton-mill",
+          "brewery"
+        ]
+      ],
+      "playerCounts": [
+        2,
+        3,
+        4
+      ]
+    },
+    {
+      "id": "stone",
+      "kind": "city",
+      "industrySlots": [
+        [
+          "cotton-mill",
+          "brewery"
+        ],
+        [
+          "manufacturer",
+          "coal-mine"
+        ]
+      ],
+      "playerCounts": [
+        2,
+        3,
+        4
+      ]
+    },
+    {
+      "id": "stafford",
+      "kind": "city",
+      "industrySlots": [
+        [
+          "manufacturer",
+          "brewery"
+        ],
+        [
+          "pottery"
+        ]
+      ],
+      "playerCounts": [
+        2,
+        3,
+        4
+      ]
+    },
+    {
+      "id": "cannock",
+      "kind": "city",
+      "industrySlots": [
+        [
+          "manufacturer",
+          "coal-mine"
+        ],
+        [
+          "coal-mine"
+        ]
+      ],
+      "playerCounts": [
+        2,
+        3,
+        4
+      ]
+    },
+    {
+      "id": "cannock-farm",
+      "kind": "breweryFarm",
+      "industrySlots": [
+        [
+          "brewery"
+        ]
+      ],
+      "playerCounts": [
+        2,
+        3,
+        4
+      ]
+    },
+    {
+      "id": "burton-on-trent",
+      "kind": "city",
+      "industrySlots": [
+        [
+          "manufacturer",
+          "coal-mine"
+        ],
+        [
+          "brewery"
+        ]
+      ],
+      "playerCounts": [
+        2,
+        3,
+        4
+      ]
+    },
+    {
+      "id": "tamworth",
+      "kind": "city",
+      "industrySlots": [
+        [
+          "cotton-mill",
+          "coal-mine"
+        ],
+        [
+          "cotton-mill",
+          "coal-mine"
+        ]
+      ],
+      "playerCounts": [
+        2,
+        3,
+        4
+      ]
+    },
+    {
+      "id": "walsall",
+      "kind": "city",
+      "industrySlots": [
+        [
+          "iron-works",
+          "manufacturer"
+        ],
+        [
+          "manufacturer",
+          "brewery"
+        ]
+      ],
+      "playerCounts": [
+        2,
+        3,
+        4
+      ]
+    },
+    {
+      "id": "wolverhampton",
+      "kind": "city",
+      "industrySlots": [
+        [
+          "manufacturer"
+        ],
+        [
+          "manufacturer",
+          "coal-mine"
+        ]
+      ],
+      "playerCounts": [
+        2,
+        3,
+        4
+      ]
+    },
+    {
+      "id": "coalbrookdale",
+      "kind": "city",
+      "industrySlots": [
+        [
+          "iron-works",
+          "brewery"
+        ],
+        [
+          "iron-works"
+        ],
+        [
+          "coal-mine"
+        ]
+      ],
+      "playerCounts": [
+        2,
+        3,
+        4
+      ]
+    },
+    {
+      "id": "dudley",
+      "kind": "city",
+      "industrySlots": [
+        [
+          "coal-mine"
+        ],
+        [
+          "iron-works"
+        ]
+      ],
+      "playerCounts": [
+        2,
+        3,
+        4
+      ]
+    },
+    {
+      "id": "birmingham",
+      "kind": "city",
+      "industrySlots": [
+        [
+          "cotton-mill",
+          "manufacturer"
+        ],
+        [
+          "manufacturer"
+        ],
+        [
+          "iron-works"
+        ],
+        [
+          "manufacturer"
+        ]
+      ],
+      "playerCounts": [
+        2,
+        3,
+        4
+      ]
+    },
+    {
+      "id": "nuneaton",
+      "kind": "city",
+      "industrySlots": [
+        [
+          "manufacturer",
+          "brewery"
+        ],
+        [
+          "cotton-mill",
+          "coal-mine"
+        ]
+      ],
+      "playerCounts": [
+        2,
+        3,
+        4
+      ]
+    },
+    {
+      "id": "coventry",
+      "kind": "city",
+      "industrySlots": [
+        [
+          "pottery"
+        ],
+        [
+          "manufacturer",
+          "coal-mine"
+        ],
+        [
+          "iron-works",
+          "manufacturer"
+        ]
+      ],
+      "playerCounts": [
+        2,
+        3,
+        4
+      ]
+    },
+    {
+      "id": "redditch",
+      "kind": "city",
+      "industrySlots": [
+        [
+          "manufacturer",
+          "coal-mine"
+        ],
+        [
+          "iron-works"
+        ]
+      ],
+      "playerCounts": [
+        2,
+        3,
+        4
+      ]
+    },
+    {
+      "id": "kidderminster",
+      "kind": "city",
+      "industrySlots": [
+        [
+          "cotton-mill",
+          "coal-mine"
+        ],
+        [
+          "cotton-mill"
+        ]
+      ],
+      "playerCounts": [
+        2,
+        3,
+        4
+      ]
+    },
+    {
+      "id": "worcester",
+      "kind": "city",
+      "industrySlots": [
+        [
+          "cotton-mill"
+        ],
+        [
+          "cotton-mill"
+        ]
+      ],
+      "playerCounts": [
+        2,
+        3,
+        4
+      ]
+    },
+    {
+      "id": "kidderminster-worcester-farm",
+      "kind": "breweryFarm",
+      "industrySlots": [
+        [
+          "brewery"
+        ]
+      ],
+      "playerCounts": [
+        2,
+        3,
+        4
+      ]
+    },
+    {
+      "id": "warrington",
+      "kind": "merchant",
+      "industrySlots": [],
+      "playerCounts": [
+        2,
+        3,
+        4
+      ]
+    },
+    {
+      "id": "nottingham",
+      "kind": "merchant",
+      "industrySlots": [],
+      "playerCounts": [
+        2,
+        3,
+        4
+      ]
+    },
+    {
+      "id": "shrewsbury",
+      "kind": "merchant",
+      "industrySlots": [],
+      "playerCounts": [
+        2,
+        3,
+        4
+      ]
+    },
+    {
+      "id": "gloucester",
+      "kind": "merchant",
+      "industrySlots": [],
+      "playerCounts": [
+        2,
+        3,
+        4
+      ]
+    },
+    {
+      "id": "oxford",
+      "kind": "merchant",
+      "industrySlots": [],
+      "playerCounts": [
+        2,
+        3,
+        4
+      ]
+    }
+  ],
+  "routes": [
+    {
+      "id": "stoke-on-trent-warrington",
+      "endpoints": [
+        "warrington",
+        "stoke-on-trent"
+      ],
+      "adjacentLocationIDs": [
+        "warrington",
+        "stoke-on-trent"
+      ],
+      "eras": [
+        "canal",
+        "rail"
+      ],
+      "playerCounts": [
+        2,
+        3,
+        4
+      ]
+    },
+    {
+      "id": "leek-stoke-on-trent",
+      "endpoints": [
+        "stoke-on-trent",
+        "leek"
+      ],
+      "adjacentLocationIDs": [
+        "stoke-on-trent",
+        "leek"
+      ],
+      "eras": [
+        "canal",
+        "rail"
+      ],
+      "playerCounts": [
+        2,
+        3,
+        4
+      ]
+    },
+    {
+      "id": "belper-leek",
+      "endpoints": [
+        "leek",
+        "belper"
+      ],
+      "adjacentLocationIDs": [
+        "leek",
+        "belper"
+      ],
+      "eras": [
+        "rail"
+      ],
+      "playerCounts": [
+        2,
+        3,
+        4
+      ]
+    },
+    {
+      "id": "belper-derby",
+      "endpoints": [
+        "belper",
+        "derby"
+      ],
+      "adjacentLocationIDs": [
+        "belper",
+        "derby"
+      ],
+      "eras": [
+        "canal",
+        "rail"
+      ],
+      "playerCounts": [
+        2,
+        3,
+        4
+      ]
+    },
+    {
+      "id": "derby-nottingham",
+      "endpoints": [
+        "derby",
+        "nottingham"
+      ],
+      "adjacentLocationIDs": [
+        "derby",
+        "nottingham"
+      ],
+      "eras": [
+        "canal",
+        "rail"
+      ],
+      "playerCounts": [
+        2,
+        3,
+        4
+      ]
+    },
+    {
+      "id": "derby-uttoxeter",
+      "endpoints": [
+        "derby",
+        "uttoxeter"
+      ],
+      "adjacentLocationIDs": [
+        "derby",
+        "uttoxeter"
+      ],
+      "eras": [
+        "rail"
+      ],
+      "playerCounts": [
+        2,
+        3,
+        4
+      ]
+    },
+    {
+      "id": "stone-uttoxeter",
+      "endpoints": [
+        "uttoxeter",
+        "stone"
+      ],
+      "adjacentLocationIDs": [
+        "uttoxeter",
+        "stone"
+      ],
+      "eras": [
+        "rail"
+      ],
+      "playerCounts": [
+        2,
+        3,
+        4
+      ]
+    },
+    {
+      "id": "stoke-on-trent-stone",
+      "endpoints": [
+        "stone",
+        "stoke-on-trent"
+      ],
+      "adjacentLocationIDs": [
+        "stone",
+        "stoke-on-trent"
+      ],
+      "eras": [
+        "canal",
+        "rail"
+      ],
+      "playerCounts": [
+        2,
+        3,
+        4
+      ]
+    },
+    {
+      "id": "burton-on-trent-stone",
+      "endpoints": [
+        "stone",
+        "burton-on-trent"
+      ],
+      "adjacentLocationIDs": [
+        "stone",
+        "burton-on-trent"
+      ],
+      "eras": [
+        "canal",
+        "rail"
+      ],
+      "playerCounts": [
+        2,
+        3,
+        4
+      ]
+    },
+    {
+      "id": "burton-on-trent-derby",
+      "endpoints": [
+        "derby",
+        "burton-on-trent"
+      ],
+      "adjacentLocationIDs": [
+        "derby",
+        "burton-on-trent"
+      ],
+      "eras": [
+        "canal",
+        "rail"
+      ],
+      "playerCounts": [
+        2,
+        3,
+        4
+      ]
+    },
+    {
+      "id": "stafford-stone",
+      "endpoints": [
+        "stone",
+        "stafford"
+      ],
+      "adjacentLocationIDs": [
+        "stone",
+        "stafford"
+      ],
+      "eras": [
+        "canal",
+        "rail"
+      ],
+      "playerCounts": [
+        2,
+        3,
+        4
+      ]
+    },
+    {
+      "id": "cannock-stafford",
+      "endpoints": [
+        "stafford",
+        "cannock"
+      ],
+      "adjacentLocationIDs": [
+        "stafford",
+        "cannock"
+      ],
+      "eras": [
+        "canal",
+        "rail"
+      ],
+      "playerCounts": [
+        2,
+        3,
+        4
+      ]
+    },
+    {
+      "id": "cannock-cannock-farm",
+      "endpoints": [
+        "cannock",
+        "cannock-farm"
+      ],
+      "adjacentLocationIDs": [
+        "cannock",
+        "cannock-farm"
+      ],
+      "eras": [
+        "canal",
+        "rail"
+      ],
+      "playerCounts": [
+        2,
+        3,
+        4
+      ]
+    },
+    {
+      "id": "burton-on-trent-cannock",
+      "endpoints": [
+        "cannock",
+        "burton-on-trent"
+      ],
+      "adjacentLocationIDs": [
+        "cannock",
+        "burton-on-trent"
+      ],
+      "eras": [
+        "rail"
+      ],
+      "playerCounts": [
+        2,
+        3,
+        4
+      ]
+    },
+    {
+      "id": "cannock-wolverhampton",
+      "endpoints": [
+        "cannock",
+        "wolverhampton"
+      ],
+      "adjacentLocationIDs": [
+        "cannock",
+        "wolverhampton"
+      ],
+      "eras": [
+        "canal",
+        "rail"
+      ],
+      "playerCounts": [
+        2,
+        3,
+        4
+      ]
+    },
+    {
+      "id": "cannock-walsall",
+      "endpoints": [
+        "cannock",
+        "walsall"
+      ],
+      "adjacentLocationIDs": [
+        "cannock",
+        "walsall"
+      ],
+      "eras": [
+        "canal",
+        "rail"
+      ],
+      "playerCounts": [
+        2,
+        3,
+        4
+      ]
+    },
+    {
+      "id": "burton-on-trent-walsall",
+      "endpoints": [
+        "walsall",
+        "burton-on-trent"
+      ],
+      "adjacentLocationIDs": [
+        "walsall",
+        "burton-on-trent"
+      ],
+      "eras": [
+        "canal"
+      ],
+      "playerCounts": [
+        2,
+        3,
+        4
+      ]
+    },
+    {
+      "id": "burton-on-trent-tamworth",
+      "endpoints": [
+        "burton-on-trent",
+        "tamworth"
+      ],
+      "adjacentLocationIDs": [
+        "burton-on-trent",
+        "tamworth"
+      ],
+      "eras": [
+        "canal",
+        "rail"
+      ],
+      "playerCounts": [
+        2,
+        3,
+        4
+      ]
+    },
+    {
+      "id": "coalbrookdale-wolverhampton",
+      "endpoints": [
+        "wolverhampton",
+        "coalbrookdale"
+      ],
+      "adjacentLocationIDs": [
+        "wolverhampton",
+        "coalbrookdale"
+      ],
+      "eras": [
+        "canal",
+        "rail"
+      ],
+      "playerCounts": [
+        2,
+        3,
+        4
+      ]
+    },
+    {
+      "id": "coalbrookdale-shrewsbury",
+      "endpoints": [
+        "coalbrookdale",
+        "shrewsbury"
+      ],
+      "adjacentLocationIDs": [
+        "coalbrookdale",
+        "shrewsbury"
+      ],
+      "eras": [
+        "canal",
+        "rail"
+      ],
+      "playerCounts": [
+        2,
+        3,
+        4
+      ]
+    },
+    {
+      "id": "walsall-wolverhampton",
+      "endpoints": [
+        "walsall",
+        "wolverhampton"
+      ],
+      "adjacentLocationIDs": [
+        "walsall",
+        "wolverhampton"
+      ],
+      "eras": [
+        "canal",
+        "rail"
+      ],
+      "playerCounts": [
+        2,
+        3,
+        4
+      ]
+    },
+    {
+      "id": "tamworth-walsall",
+      "endpoints": [
+        "walsall",
+        "tamworth"
+      ],
+      "adjacentLocationIDs": [
+        "walsall",
+        "tamworth"
+      ],
+      "eras": [
+        "rail"
+      ],
+      "playerCounts": [
+        2,
+        3,
+        4
+      ]
+    },
+    {
+      "id": "nuneaton-tamworth",
+      "endpoints": [
+        "tamworth",
+        "nuneaton"
+      ],
+      "adjacentLocationIDs": [
+        "tamworth",
+        "nuneaton"
+      ],
+      "eras": [
+        "canal",
+        "rail"
+      ],
+      "playerCounts": [
+        2,
+        3,
+        4
+      ]
+    },
+    {
+      "id": "birmingham-tamworth",
+      "endpoints": [
+        "tamworth",
+        "birmingham"
+      ],
+      "adjacentLocationIDs": [
+        "tamworth",
+        "birmingham"
+      ],
+      "eras": [
+        "canal",
+        "rail"
+      ],
+      "playerCounts": [
+        2,
+        3,
+        4
+      ]
+    },
+    {
+      "id": "birmingham-walsall",
+      "endpoints": [
+        "walsall",
+        "birmingham"
+      ],
+      "adjacentLocationIDs": [
+        "walsall",
+        "birmingham"
+      ],
+      "eras": [
+        "canal",
+        "rail"
+      ],
+      "playerCounts": [
+        2,
+        3,
+        4
+      ]
+    },
+    {
+      "id": "dudley-wolverhampton",
+      "endpoints": [
+        "wolverhampton",
+        "dudley"
+      ],
+      "adjacentLocationIDs": [
+        "wolverhampton",
+        "dudley"
+      ],
+      "eras": [
+        "canal",
+        "rail"
+      ],
+      "playerCounts": [
+        2,
+        3,
+        4
+      ]
+    },
+    {
+      "id": "coalbrookdale-kidderminster",
+      "endpoints": [
+        "coalbrookdale",
+        "kidderminster"
+      ],
+      "adjacentLocationIDs": [
+        "coalbrookdale",
+        "kidderminster"
+      ],
+      "eras": [
+        "canal",
+        "rail"
+      ],
+      "playerCounts": [
+        2,
+        3,
+        4
+      ]
+    },
+    {
+      "id": "dudley-kidderminster",
+      "endpoints": [
+        "kidderminster",
+        "dudley"
+      ],
+      "adjacentLocationIDs": [
+        "kidderminster",
+        "dudley"
+      ],
+      "eras": [
+        "canal",
+        "rail"
+      ],
+      "playerCounts": [
+        2,
+        3,
+        4
+      ]
+    },
+    {
+      "id": "birmingham-dudley",
+      "endpoints": [
+        "dudley",
+        "birmingham"
+      ],
+      "adjacentLocationIDs": [
+        "dudley",
+        "birmingham"
+      ],
+      "eras": [
+        "canal",
+        "rail"
+      ],
+      "playerCounts": [
+        2,
+        3,
+        4
+      ]
+    },
+    {
+      "id": "birmingham-nuneaton",
+      "endpoints": [
+        "birmingham",
+        "nuneaton"
+      ],
+      "adjacentLocationIDs": [
+        "birmingham",
+        "nuneaton"
+      ],
+      "eras": [
+        "rail"
+      ],
+      "playerCounts": [
+        2,
+        3,
+        4
+      ]
+    },
+    {
+      "id": "coventry-nuneaton",
+      "endpoints": [
+        "nuneaton",
+        "coventry"
+      ],
+      "adjacentLocationIDs": [
+        "nuneaton",
+        "coventry"
+      ],
+      "eras": [
+        "rail"
+      ],
+      "playerCounts": [
+        2,
+        3,
+        4
+      ]
+    },
+    {
+      "id": "birmingham-coventry",
+      "endpoints": [
+        "birmingham",
+        "coventry"
+      ],
+      "adjacentLocationIDs": [
+        "birmingham",
+        "coventry"
+      ],
+      "eras": [
+        "canal",
+        "rail"
+      ],
+      "playerCounts": [
+        2,
+        3,
+        4
+      ]
+    },
+    {
+      "id": "birmingham-worcester",
+      "endpoints": [
+        "birmingham",
+        "worcester"
+      ],
+      "adjacentLocationIDs": [
+        "birmingham",
+        "worcester"
+      ],
+      "eras": [
+        "canal",
+        "rail"
+      ],
+      "playerCounts": [
+        2,
+        3,
+        4
+      ]
+    },
+    {
+      "id": "kidderminster-worcester",
+      "endpoints": [
+        "kidderminster",
+        "worcester"
+      ],
+      "adjacentLocationIDs": [
+        "kidderminster",
+        "worcester",
+        "kidderminster-worcester-farm"
+      ],
+      "eras": [
+        "canal",
+        "rail"
+      ],
+      "playerCounts": [
+        2,
+        3,
+        4
+      ]
+    },
+    {
+      "id": "gloucester-worcester",
+      "endpoints": [
+        "worcester",
+        "gloucester"
+      ],
+      "adjacentLocationIDs": [
+        "worcester",
+        "gloucester"
+      ],
+      "eras": [
+        "canal",
+        "rail"
+      ],
+      "playerCounts": [
+        2,
+        3,
+        4
+      ]
+    },
+    {
+      "id": "gloucester-redditch",
+      "endpoints": [
+        "gloucester",
+        "redditch"
+      ],
+      "adjacentLocationIDs": [
+        "gloucester",
+        "redditch"
+      ],
+      "eras": [
+        "canal",
+        "rail"
+      ],
+      "playerCounts": [
+        2,
+        3,
+        4
+      ]
+    },
+    {
+      "id": "birmingham-redditch",
+      "endpoints": [
+        "birmingham",
+        "redditch"
+      ],
+      "adjacentLocationIDs": [
+        "birmingham",
+        "redditch"
+      ],
+      "eras": [
+        "rail"
+      ],
+      "playerCounts": [
+        2,
+        3,
+        4
+      ]
+    },
+    {
+      "id": "oxford-redditch",
+      "endpoints": [
+        "redditch",
+        "oxford"
+      ],
+      "adjacentLocationIDs": [
+        "redditch",
+        "oxford"
+      ],
+      "eras": [
+        "canal",
+        "rail"
+      ],
+      "playerCounts": [
+        2,
+        3,
+        4
+      ]
+    },
+    {
+      "id": "birmingham-oxford",
+      "endpoints": [
+        "birmingham",
+        "oxford"
+      ],
+      "adjacentLocationIDs": [
+        "birmingham",
+        "oxford"
+      ],
+      "eras": [
+        "canal",
+        "rail"
+      ],
+      "playerCounts": [
+        2,
+        3,
+        4
+      ]
+    }
+  ],
+  "merchantSlots": [
+    {
+      "id": "shrewsbury-1",
+      "locationID": "shrewsbury",
+      "playerCounts": [
+        2,
+        3,
+        4
+      ],
+      "bonus": {
+        "kind": "victoryPoints",
+        "amount": 4
+      }
+    },
+    {
+      "id": "gloucester-1",
+      "locationID": "gloucester",
+      "playerCounts": [
+        2,
+        3,
+        4
+      ],
+      "bonus": {
+        "kind": "develop",
+        "amount": 1
+      }
+    },
+    {
+      "id": "gloucester-2",
+      "locationID": "gloucester",
+      "playerCounts": [
+        2,
+        3,
+        4
+      ],
+      "bonus": {
+        "kind": "develop",
+        "amount": 1
+      }
+    },
+    {
+      "id": "oxford-1",
+      "locationID": "oxford",
+      "playerCounts": [
+        2,
+        3,
+        4
+      ],
+      "bonus": {
+        "kind": "income",
+        "amount": 2
+      }
+    },
+    {
+      "id": "oxford-2",
+      "locationID": "oxford",
+      "playerCounts": [
+        2,
+        3,
+        4
+      ],
+      "bonus": {
+        "kind": "income",
+        "amount": 2
+      }
+    },
+    {
+      "id": "warrington-1",
+      "locationID": "warrington",
+      "playerCounts": [
+        3,
+        4
+      ],
+      "bonus": {
+        "kind": "money",
+        "amount": 5
+      }
+    },
+    {
+      "id": "warrington-2",
+      "locationID": "warrington",
+      "playerCounts": [
+        3,
+        4
+      ],
+      "bonus": {
+        "kind": "money",
+        "amount": 5
+      }
+    },
+    {
+      "id": "nottingham-1",
+      "locationID": "nottingham",
+      "playerCounts": [
+        4
+      ],
+      "bonus": {
+        "kind": "victoryPoints",
+        "amount": 3
+      }
+    },
+    {
+      "id": "nottingham-2",
+      "locationID": "nottingham",
+      "playerCounts": [
+        4
+      ],
+      "bonus": {
+        "kind": "victoryPoints",
+        "amount": 3
+      }
+    }
+  ]
+}

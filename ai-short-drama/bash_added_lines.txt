@@ -1,0 +1,6 @@
+bash added line 1
+bash added line 2
+bash added line 3
+bash added line 4
+apply_patch added line 5
+apply_patch added line 6

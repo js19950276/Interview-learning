@@ -75,4 +75,56 @@ struct ActiveTurnIndicatorTests {
         #expect(label.contains("guest，青绿色，圆形标记"))
         #expect(label.contains("，你"))
     }
+
+    @Test func playerRailAccessibilityValueNamesTheCurrentPlayerWhenPresent() {
+        #expect(PlayerRailView.railAccessibilityValue(players: players) == "2 位玩家，行动：host")
+        #expect(PlayerRailView.playerAccessibilityValue(players[0]) == "行动")
+        #expect(PlayerRailView.playerAccessibilityValue(players[1]) == "等待")
+    }
+
+    @Test func playerRailAccessibilityValueFallsBackToPlayerCountWithoutCurrentPlayer() {
+        let noCurrentPlayers = players.map { player in
+            var copy = player
+            copy.isCurrent = false
+            return copy
+        }
+
+        #expect(PlayerRailView.railAccessibilityValue(players: noCurrentPlayers) == "2 位玩家")
+    }
+
+    @Test func industryRailChromeStylePrioritizesSelectedThenSelectableThenAvailability() {
+        let industry = IndustrySummary(
+            id: "industry-coal",
+            kind: .coal,
+            level: 1,
+            cost: 5,
+            coalCost: 0,
+            ironCost: 1,
+            isAvailable: true
+        )
+
+        #expect(IndustryRailChromeStyle.style(
+            for: industry,
+            selectableIndustryIDs: ["industry-coal"],
+            selectedIndustryIDs: ["industry-coal"]
+        ) == .selected)
+        #expect(IndustryRailChromeStyle.style(
+            for: industry,
+            selectableIndustryIDs: ["industry-coal"],
+            selectedIndustryIDs: []
+        ) == .selectable)
+        #expect(IndustryRailChromeStyle.style(
+            for: industry,
+            selectableIndustryIDs: [],
+            selectedIndustryIDs: []
+        ) == .available)
+
+        var unavailable = industry
+        unavailable.isAvailable = false
+        #expect(IndustryRailChromeStyle.style(
+            for: unavailable,
+            selectableIndustryIDs: ["industry-coal"],
+            selectedIndustryIDs: []
+        ) == .unavailable)
+    }
 }

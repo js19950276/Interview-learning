@@ -1,0 +1,386 @@
+[
+  {
+    "id": "location-birmingham",
+    "kind": "location",
+    "targetIDs": [
+      "birmingham"
+    ],
+    "count": 3,
+    "playerCounts": [
+      2,
+      3,
+      4
+    ]
+  },
+  {
+    "id": "location-burton-on-trent",
+    "kind": "location",
+    "targetIDs": [
+      "burton-on-trent"
+    ],
+    "count": 2,
+    "playerCounts": [
+      2,
+      3,
+      4
+    ]
+  },
+  {
+    "id": "location-cannock",
+    "kind": "location",
+    "targetIDs": [
+      "cannock"
+    ],
+    "count": 2,
+    "playerCounts": [
+      2,
+      3,
+      4
+    ]
+  },
+  {
+    "id": "location-coalbrookdale",
+    "kind": "location",
+    "targetIDs": [
+      "coalbrookdale"
+    ],
+    "count": 3,
+    "playerCounts": [
+      2,
+      3,
+      4
+    ]
+  },
+  {
+    "id": "location-coventry",
+    "kind": "location",
+    "targetIDs": [
+      "coventry"
+    ],
+    "count": 3,
+    "playerCounts": [
+      2,
+      3,
+      4
+    ]
+  },
+  {
+    "id": "location-dudley",
+    "kind": "location",
+    "targetIDs": [
+      "dudley"
+    ],
+    "count": 2,
+    "playerCounts": [
+      2,
+      3,
+      4
+    ]
+  },
+  {
+    "id": "location-kidderminster",
+    "kind": "location",
+    "targetIDs": [
+      "kidderminster"
+    ],
+    "count": 2,
+    "playerCounts": [
+      2,
+      3,
+      4
+    ]
+  },
+  {
+    "id": "location-nuneaton",
+    "kind": "location",
+    "targetIDs": [
+      "nuneaton"
+    ],
+    "count": 1,
+    "playerCounts": [
+      2,
+      3,
+      4
+    ]
+  },
+  {
+    "id": "location-redditch",
+    "kind": "location",
+    "targetIDs": [
+      "redditch"
+    ],
+    "count": 1,
+    "playerCounts": [
+      2,
+      3,
+      4
+    ]
+  },
+  {
+    "id": "location-stafford",
+    "kind": "location",
+    "targetIDs": [
+      "stafford"
+    ],
+    "count": 2,
+    "playerCounts": [
+      2,
+      3,
+      4
+    ]
+  },
+  {
+    "id": "location-tamworth",
+    "kind": "location",
+    "targetIDs": [
+      "tamworth"
+    ],
+    "count": 1,
+    "playerCounts": [
+      2,
+      3,
+      4
+    ]
+  },
+  {
+    "id": "location-walsall",
+    "kind": "location",
+    "targetIDs": [
+      "walsall"
+    ],
+    "count": 1,
+    "playerCounts": [
+      2,
+      3,
+      4
+    ]
+  },
+  {
+    "id": "location-wolverhampton",
+    "kind": "location",
+    "targetIDs": [
+      "wolverhampton"
+    ],
+    "count": 2,
+    "playerCounts": [
+      2,
+      3,
+      4
+    ]
+  },
+  {
+    "id": "location-worcester",
+    "kind": "location",
+    "targetIDs": [
+      "worcester"
+    ],
+    "count": 2,
+    "playerCounts": [
+      2,
+      3,
+      4
+    ]
+  },
+  {
+    "id": "location-leek",
+    "kind": "location",
+    "targetIDs": [
+      "leek"
+    ],
+    "count": 2,
+    "playerCounts": [
+      3,
+      4
+    ]
+  },
+  {
+    "id": "location-stoke-on-trent",
+    "kind": "location",
+    "targetIDs": [
+      "stoke-on-trent"
+    ],
+    "count": 3,
+    "playerCounts": [
+      3,
+      4
+    ]
+  },
+  {
+    "id": "location-stone",
+    "kind": "location",
+    "targetIDs": [
+      "stone"
+    ],
+    "count": 2,
+    "playerCounts": [
+      3,
+      4
+    ]
+  },
+  {
+    "id": "location-uttoxeter-3-plus",
+    "kind": "location",
+    "targetIDs": [
+      "uttoxeter"
+    ],
+    "count": 1,
+    "playerCounts": [
+      3,
+      4
+    ]
+  },
+  {
+    "id": "location-belper",
+    "kind": "location",
+    "targetIDs": [
+      "belper"
+    ],
+    "count": 2,
+    "playerCounts": [
+      4
+    ]
+  },
+  {
+    "id": "location-derby",
+    "kind": "location",
+    "targetIDs": [
+      "derby"
+    ],
+    "count": 3,
+    "playerCounts": [
+      4
+    ]
+  },
+  {
+    "id": "location-uttoxeter-4",
+    "kind": "location",
+    "targetIDs": [
+      "uttoxeter"
+    ],
+    "count": 1,
+    "playerCounts": [
+      4
+    ]
+  },
+  {
+    "id": "industry-brewery",
+    "kind": "industry",
+    "targetIDs": [
+      "brewery"
+    ],
+    "count": 5,
+    "playerCounts": [
+      2,
+      3,
+      4
+    ]
+  },
+  {
+    "id": "industry-coal-mine-2-plus",
+    "kind": "industry",
+    "targetIDs": [
+      "coal-mine"
+    ],
+    "count": 2,
+    "playerCounts": [
+      2,
+      3,
+      4
+    ]
+  },
+  {
+    "id": "industry-iron-works",
+    "kind": "industry",
+    "targetIDs": [
+      "iron-works"
+    ],
+    "count": 4,
+    "playerCounts": [
+      2,
+      3,
+      4
+    ]
+  },
+  {
+    "id": "industry-pottery-2-plus",
+    "kind": "industry",
+    "targetIDs": [
+      "pottery"
+    ],
+    "count": 2,
+    "playerCounts": [
+      2,
+      3,
+      4
+    ]
+  },
+  {
+    "id": "industry-cotton-manufacturer-3-plus",
+    "kind": "industry",
+    "targetIDs": [
+      "cotton-mill",
+      "manufacturer"
+    ],
+    "count": 6,
+    "playerCounts": [
+      3,
+      4
+    ]
+  },
+  {
+    "id": "industry-coal-mine-4",
+    "kind": "industry",
+    "targetIDs": [
+      "coal-mine"
+    ],
+    "count": 1,
+    "playerCounts": [
+      4
+    ]
+  },
+  {
+    "id": "industry-cotton-manufacturer-4",
+    "kind": "industry",
+    "targetIDs": [
+      "cotton-mill",
+      "manufacturer"
+    ],
+    "count": 2,
+    "playerCounts": [
+      4
+    ]
+  },
+  {
+    "id": "industry-pottery-4",
+    "kind": "industry",
+    "targetIDs": [
+      "pottery"
+    ],
+    "count": 1,
+    "playerCounts": [
+      4
+    ]
+  },
+  {
+    "id": "wild-location",
+    "kind": "wildLocation",
+    "targetIDs": [],
+    "count": 4,
+    "playerCounts": [
+      2,
+      3,
+      4
+    ]
+  },
+  {
+    "id": "wild-industry",
+    "kind": "wildIndustry",
+    "targetIDs": [],
+    "count": 4,
+    "playerCounts": [
+      2,
+      3,
+      4
+    ]
+  }
+]

@@ -1,0 +1,404 @@
+{
+  "entries": [
+    {
+      "position": 0,
+      "income": -10
+    },
+    {
+      "position": 1,
+      "income": -9
+    },
+    {
+      "position": 2,
+      "income": -8
+    },
+    {
+      "position": 3,
+      "income": -7
+    },
+    {
+      "position": 4,
+      "income": -6
+    },
+    {
+      "position": 5,
+      "income": -5
+    },
+    {
+      "position": 6,
+      "income": -4
+    },
+    {
+      "position": 7,
+      "income": -3
+    },
+    {
+      "position": 8,
+      "income": -2
+    },
+    {
+      "position": 9,
+      "income": -1
+    },
+    {
+      "position": 10,
+      "income": 0
+    },
+    {
+      "position": 11,
+      "income": 1
+    },
+    {
+      "position": 12,
+      "income": 1
+    },
+    {
+      "position": 13,
+      "income": 2
+    },
+    {
+      "position": 14,
+      "income": 2
+    },
+    {
+      "position": 15,
+      "income": 3
+    },
+    {
+      "position": 16,
+      "income": 3
+    },
+    {
+      "position": 17,
+      "income": 4
+    },
+    {
+      "position": 18,
+      "income": 4
+    },
+    {
+      "position": 19,
+      "income": 5
+    },
+    {
+      "position": 20,
+      "income": 5
+    },
+    {
+      "position": 21,
+      "income": 6
+    },
+    {
+      "position": 22,
+      "income": 6
+    },
+    {
+      "position": 23,
+      "income": 7
+    },
+    {
+      "position": 24,
+      "income": 7
+    },
+    {
+      "position": 25,
+      "income": 8
+    },
+    {
+      "position": 26,
+      "income": 8
+    },
+    {
+      "position": 27,
+      "income": 9
+    },
+    {
+      "position": 28,
+      "income": 9
+    },
+    {
+      "position": 29,
+      "income": 10
+    },
+    {
+      "position": 30,
+      "income": 10
+    },
+    {
+      "position": 31,
+      "income": 11
+    },
+    {
+      "position": 32,
+      "income": 11
+    },
+    {
+      "position": 33,
+      "income": 11
+    },
+    {
+      "position": 34,
+      "income": 12
+    },
+    {
+      "position": 35,
+      "income": 12
+    },
+    {
+      "position": 36,
+      "income": 12
+    },
+    {
+      "position": 37,
+      "income": 13
+    },
+    {
+      "position": 38,
+      "income": 13
+    },
+    {
+      "position": 39,
+      "income": 13
+    },
+    {
+      "position": 40,
+      "income": 14
+    },
+    {
+      "position": 41,
+      "income": 14
+    },
+    {
+      "position": 42,
+      "income": 14
+    },
+    {
+      "position": 43,
+      "income": 15
+    },
+    {
+      "position": 44,
+      "income": 15
+    },
+    {
+      "position": 45,
+      "income": 15
+    },
+    {
+      "position": 46,
+      "income": 16
+    },
+    {
+      "position": 47,
+      "income": 16
+    },
+    {
+      "position": 48,
+      "income": 16
+    },
+    {
+      "position": 49,
+      "income": 17
+    },
+    {
+      "position": 50,
+      "income": 17
+    },
+    {
+      "position": 51,
+      "income": 17
+    },
+    {
+      "position": 52,
+      "income": 18
+    },
+    {
+      "position": 53,
+      "income": 18
+    },
+    {
+      "position": 54,
+      "income": 18
+    },
+    {
+      "position": 55,
+      "income": 19
+    },
+    {
+      "position": 56,
+      "income": 19
+    },
+    {
+      "position": 57,
+      "income": 19
+    },
+    {
+      "position": 58,
+      "income": 20
+    },
+    {
+      "position": 59,
+      "income": 20
+    },
+    {
+      "position": 60,
+      "income": 20
+    },
+    {
+      "position": 61,
+      "income": 21
+    },
+    {
+      "position": 62,
+      "income": 21
+    },
+    {
+      "position": 63,
+      "income": 21
+    },
+    {
+      "position": 64,
+      "income": 21
+    },
+    {
+      "position": 65,
+      "income": 22
+    },
+    {
+      "position": 66,
+      "income": 22
+    },
+    {
+      "position": 67,
+      "income": 22
+    },
+    {
+      "position": 68,
+      "income": 22
+    },
+    {
+      "position": 69,
+      "income": 23
+    },
+    {
+      "position": 70,
+      "income": 23
+    },
+    {
+      "position": 71,
+      "income": 23
+    },
+    {
+      "position": 72,
+      "income": 23
+    },
+    {
+      "position": 73,
+      "income": 24
+    },
+    {
+      "position": 74,
+      "income": 24
+    },
+    {
+      "position": 75,
+      "income": 24
+    },
+    {
+      "position": 76,
+      "income": 24
+    },
+    {
+      "position": 77,
+      "income": 25
+    },
+    {
+      "position": 78,
+      "income": 25
+    },
+    {
+      "position": 79,
+      "income": 25
+    },
+    {
+      "position": 80,
+      "income": 25
+    },
+    {
+      "position": 81,
+      "income": 26
+    },
+    {
+      "position": 82,
+      "income": 26
+    },
+    {
+      "position": 83,
+      "income": 26
+    },
+    {
+      "position": 84,
+      "income": 26
+    },
+    {
+      "position": 85,
+      "income": 27
+    },
+    {
+      "position": 86,
+      "income": 27
+    },
+    {
+      "position": 87,
+      "income": 27
+    },
+    {
+      "position": 88,
+      "income": 27
+    },
+    {
+      "position": 89,
+      "income": 28
+    },
+    {
+      "position": 90,
+      "income": 28
+    },
+    {
+      "position": 91,
+      "income": 28
+    },
+    {
+      "position": 92,
+      "income": 28
+    },
+    {
+      "position": 93,
+      "income": 29
+    },
+    {
+      "position": 94,
+      "income": 29
+    },
+    {
+      "position": 95,
+      "income": 29
+    },
+    {
+      "position": 96,
+      "income": 29
+    },
+    {
+      "position": 97,
+      "income": 30
+    },
+    {
+      "position": 98,
+      "income": 30
+    },
+    {
+      "position": 99,
+      "income": 30
+    }
+  ]
+}

@@ -1,6 +1,28 @@
 import SwiftUI
 import UIKit
 
+nonisolated enum AuthoritativeMapTargetResolver {
+    static func highlightedIDs(from choices: [GameCore.LegalChoice]) -> Set<String> {
+        Set(choices.compactMap { targetID(for: $0.value) })
+    }
+
+    static func choice(
+        for targetID: String,
+        in choices: [GameCore.LegalChoice]
+    ) -> GameCore.LegalChoice? {
+        choices.first { Self.targetID(for: $0.value) == targetID }
+    }
+
+    private static func targetID(for value: GameCore.LegalChoiceValue) -> String? {
+        switch value {
+        case .buildTarget(let locationID, _): locationID
+        case .route(let routeID): routeID
+        case .merchant(let slotID): slotID
+        default: nil
+        }
+    }
+}
+
 struct AuthoritativeMatchBoardView: View {
     @Bindable var store: SessionViewStore
     @Environment(MotionPreferences.self) private var preferences
@@ -45,14 +67,18 @@ struct AuthoritativeMatchBoardView: View {
                         onTargetTap: selectMapTarget,
                         onBackgroundTap: dismissTransientOverlay,
                         legendInsets: MapLegendInsets(
-                            top: 0,
-                            trailing: metrics.mapLegendInsets.trailing
+                            top: metrics.mapLegendInsetsWithinPaddedViewport.top,
+                            trailing: metrics.mapLegendInsetsWithinPaddedViewport.trailing
                         ),
                         viewportInsets: metrics.mapViewportInsets
                     )
                     .padding(.top, metrics.mapTopInset)
                     .background(BrassColor.coal.color)
-                    .ignoresSafeArea(edges: [.horizontal, .bottom])
+                    .ignoresSafeArea(
+                        edges: metrics.formFactor == .phone
+                            ? .horizontal
+                            : [.horizontal, .bottom]
+                    )
 
                     activeTurnNoticeLayer(metrics: metrics)
                     transientRailLayer(state: state, metrics: metrics)
@@ -64,6 +90,7 @@ struct AuthoritativeMatchBoardView: View {
                         compactMarket(state: state, metrics: metrics)
                     }
                     actions(state: state, metrics: metrics)
+                    actionContext(state: state, metrics: metrics)
                     legalChoices(metrics: metrics)
                     confirmation(state: state, metrics: metrics)
                     forcedSale(metrics: metrics)
@@ -89,12 +116,13 @@ struct AuthoritativeMatchBoardView: View {
                         Button("推进恢复状态") { store.advanceRecoveryUIFixture() }
                             .buttonStyle(BrassPrimaryButtonStyle())
                             .padding(.trailing, metrics.rightRailWidth + 8)
-                            .padding(.top, 56)
+                            .padding(.top, metrics.headerHeight + 8)
                             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
                             .accessibilityIdentifier("real.recovery.advance")
                     }
 #endif
                     }
+                    .frame(width: proxy.size.width, height: proxy.size.height)
                     .task(id: noticeTaskID) {
                         await presentActiveTurnNotice(activeTurn, taskID: noticeTaskID)
                     }
@@ -153,7 +181,7 @@ struct AuthoritativeMatchBoardView: View {
                         localPlayerID: store.localPlayerID.rawValue,
                         accessibilityEnabled: false
                     )
-                    .frame(maxHeight: .infinity)
+                    .frame(height: phoneRailHeight(metrics: metrics))
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(PlayerRailView.accessibilitySummary(
@@ -162,7 +190,7 @@ struct AuthoritativeMatchBoardView: View {
                     localPlayerID: store.localPlayerID.rawValue
                 ))
                 .accessibilityValue(
-                    interaction.overlay == .playerRail ? "已展开" : "已收起"
+                    "\(interaction.overlay == .playerRail ? "已展开" : "已收起")，\(PlayerRailView.railAccessibilityValue(players: state.players))"
                 )
                 .accessibilityIdentifier("real.playerRail.toggle")
             } else {
@@ -181,7 +209,7 @@ struct AuthoritativeMatchBoardView: View {
             }
         }
         .frame(width: metrics.leftRailWidth)
-        .padding(.top, 52).padding(.bottom, metrics.handHeight + 8)
+        .padding(.top, metrics.headerHeight + 8).padding(.bottom, metrics.handHeight + 8)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
     }
 
@@ -197,7 +225,8 @@ struct AuthoritativeMatchBoardView: View {
                         reduceMotion: true,
                         accessibilityEnabled: false
                     )
-                    .frame(maxHeight: .infinity)
+                    .frame(height: phoneRailHeight(metrics: metrics))
+                    .clipped()
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("产业板块，点按展开详情")
@@ -213,8 +242,15 @@ struct AuthoritativeMatchBoardView: View {
                 )
             }
         }
-            .padding(.top, 52).padding(.bottom, metrics.handHeight + 8)
+            .padding(.top, metrics.headerHeight + 8).padding(.bottom, metrics.handHeight + 8)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
+    }
+
+    private func phoneRailHeight(metrics: MatchLayoutMetrics) -> CGFloat {
+        max(
+            44,
+            metrics.viewport.height - metrics.headerHeight - 8 - metrics.handHeight - 8
+        )
     }
 
     @ViewBuilder
@@ -234,7 +270,7 @@ struct AuthoritativeMatchBoardView: View {
                     viewportWidth: metrics.viewport.width
                 ))
                 .padding(.leading, metrics.leftRailWidth)
-                .padding(.top, metrics.mapTopInset)
+                .padding(.top, metrics.headerHeight + 8)
                 .padding(.bottom, metrics.handHeight)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
                 .transition(railTransition(edge: .leading))
@@ -244,7 +280,7 @@ struct AuthoritativeMatchBoardView: View {
                         viewportWidth: metrics.viewport.width
                     ))
                     .padding(.trailing, metrics.rightRailWidth)
-                    .padding(.top, metrics.mapTopInset)
+                    .padding(.top, metrics.headerHeight + 8)
                     .padding(.bottom, metrics.handHeight)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
                     .transition(railTransition(edge: .trailing))
@@ -283,28 +319,16 @@ struct AuthoritativeMatchBoardView: View {
         activeTurn: ActiveTurnPresentation?,
         metrics: MatchLayoutMetrics
     ) -> some View {
-        VStack(spacing: 4) {
-            HStack(spacing: 8) {
-                Text("房间 \(store.roomID.rawValue)")
-                    .accessibilityIdentifier("real.room")
-                if let activeTurn {
-                    ActiveTurnStatusView(presentation: activeTurn)
-                        .layoutPriority(2)
-                }
-                Spacer(minLength: 4)
-                Text("v\(store.version.rawValue) · \(store.syncStatus.rawValue)")
-                    .accessibilityIdentifier("real.sync")
-            }
-            .font(.caption2.bold())
-            .lineLimit(1)
-            .minimumScaleFactor(0.75)
-            .foregroundStyle(BrassColor.paper.color)
-            .padding(.horizontal, 8)
-
-            MatchHeaderView(state: state)
-        }
+        MatchHeaderView(
+            state: state,
+            roomID: store.roomID.rawValue,
+            syncStatus: store.syncStatus.rawValue,
+            isSynchronized: store.syncStatus == .synchronized,
+            activeTurn: activeTurn,
+            metrics: metrics
+        )
         .padding(.horizontal, max(metrics.leftRailWidth, metrics.rightRailWidth) + 8)
-        .padding(.top, 4)
+        .frame(height: metrics.headerHeight)
         .frame(maxHeight: .infinity, alignment: .top)
     }
 
@@ -317,7 +341,7 @@ struct AuthoritativeMatchBoardView: View {
             )
             .allowsHitTesting(false)
             .padding(.horizontal, max(metrics.leftRailWidth, metrics.rightRailWidth) + 8)
-            .padding(.top, 52)
+            .padding(.top, metrics.headerHeight + 8)
             .padding(.bottom, metrics.handHeight + 8)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
         }
@@ -368,8 +392,13 @@ struct AuthoritativeMatchBoardView: View {
         HandView(
             cards: state.hand, formFactor: metrics.formFactor,
             selectedCardID: interaction.selectedCardID,
-            scoutCardIDs: [], selectedScoutCardIDs: [],
+            scoutCardIDs: scoutChoiceCardIDs,
+            selectedScoutCardIDs: selectedScoutCardIDs,
             onSelect: { id in
+                if interaction.selectedAction == .scout {
+                    selectScoutHandCard(id)
+                    return
+                }
                 store.selectCard(id)
                 interaction.selectCard(id)
                 selections = []
@@ -386,7 +415,7 @@ struct AuthoritativeMatchBoardView: View {
     private func actions(state: DemoMatchState, metrics: MatchLayoutMetrics) -> some View {
         let actions = Set(store.availableActions.compactMap { GameAction(rawValue: $0.rawValue) })
         return Group {
-            if interaction.selectedCardID != nil {
+            if interaction.selectedCardID != nil, interaction.selectedAction == nil {
                 ActionGridView(
                     allowedActions: actions,
                     onSelect: { action in
@@ -412,6 +441,33 @@ struct AuthoritativeMatchBoardView: View {
     }
 
     @ViewBuilder
+    private func actionContext(state: DemoMatchState, metrics: MatchLayoutMetrics) -> some View {
+        if let action = interaction.selectedAction,
+           let match = store.snapshot?.match,
+           let progress = ActionContextProgress(
+               era: match.era,
+               roundNumber: match.roundNumber,
+               actionsRemaining: match.actionsRemaining
+           ) {
+            ActionContextBar(
+                currentActionNumber: progress.current,
+                totalActions: progress.total,
+                action: action,
+                instruction: ActionContextBar.instruction(
+                    for: action,
+                    selectionLabels: selectionLabels,
+                    choices: store.legalResponse?.nextChoices ?? []
+                ),
+                onCancel: cancelActionFlow
+            )
+            .padding(.leading, metrics.leftRailWidth + 8)
+            .padding(.trailing, metrics.rightRailWidth + 8)
+            .padding(.bottom, metrics.handHeight + 6)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+        }
+    }
+
+    @ViewBuilder
     private func legalChoices(metrics: MatchLayoutMetrics) -> some View {
         if let response = store.legalResponse, !response.nextChoices.isEmpty {
             ScrollView(.horizontal) {
@@ -426,7 +482,7 @@ struct AuthoritativeMatchBoardView: View {
             .background(BrassColor.coal.color.opacity(0.94))
             .clipShape(RoundedRectangle(cornerRadius: 10))
             .padding(.horizontal, max(metrics.leftRailWidth, metrics.rightRailWidth) + 12)
-            .padding(.bottom, metrics.handHeight + 8)
+            .padding(.bottom, bottomActionOverlayInset(metrics: metrics))
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
             .accessibilityIdentifier("legal.choices")
         }
@@ -456,12 +512,10 @@ struct AuthoritativeMatchBoardView: View {
                 previewItems: [], incomeAccessibilityIdentifier: "action.beforeAfter.income",
                 isConfirmEnabled: store.canInteract,
                 onConfirm: { Task { await store.submitCompleteLegalResponse() } },
-                onCancel: {
-                    interaction.cancelFlow(); selections = []; selectionLabels = []; store.cancelLegalFlow()
-                }
+                onCancel: cancelActionFlow
             )
             .padding(.horizontal, max(metrics.leftRailWidth, metrics.rightRailWidth) + 12)
-            .padding(.bottom, metrics.handHeight + 8)
+            .padding(.bottom, bottomActionOverlayInset(metrics: metrics))
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
         }
     }
@@ -524,32 +578,80 @@ struct AuthoritativeMatchBoardView: View {
     }
 
     private var highlightedIDs: Set<String> {
-        Set(store.legalResponse?.nextChoices.compactMap { choice in
-            switch choice.value {
-            case .buildTarget(let locationID, _): locationID
-            case .route(let id): id
-            default: nil
-            }
-        } ?? [])
+        AuthoritativeMapTargetResolver.highlightedIDs(
+            from: store.legalResponse?.nextChoices ?? []
+        )
     }
 
     private func selectMapTarget(_ id: String) {
-        guard let choice = store.legalResponse?.nextChoices.first(where: {
-            switch $0.value {
-            case .buildTarget(let locationID, _): locationID == id
-            case .route(let routeID): routeID == id
-            default: false
-            }
-        }) else { return }
+        guard let choice = AuthoritativeMapTargetResolver.choice(
+            for: id,
+            in: store.legalResponse?.nextChoices ?? []
+        ) else { return }
         select(choice)
     }
 
     private func select(_ choice: GameCore.LegalChoice) {
         selections.append(choice.value)
         selectionLabels.append(choice.label)
+        requestLegalOptionsForSelectedAction()
+    }
+
+    private func selectScoutHandCard(_ id: String) {
+        if let index = selections.firstIndex(where: { value in
+            guard case .card(let cardID) = value else { return false }
+            return cardID == id
+        }) {
+            selections.remove(at: index)
+            if selectionLabels.indices.contains(index) {
+                selectionLabels.remove(at: index)
+            }
+            requestLegalOptionsForSelectedAction()
+            return
+        }
+
+        guard let choice = scoutChoice(for: id) else { return }
+        selections.append(choice.value)
+        selectionLabels.append(choice.label)
+        requestLegalOptionsForSelectedAction()
+    }
+
+    private func requestLegalOptionsForSelectedAction() {
         guard let action = interaction.selectedAction,
               let kind = GameCore.ActionKind(rawValue: action.rawValue) else { return }
         Task { await store.requestLegalOptions(action: kind, selections: selections) }
+    }
+
+    private func cancelActionFlow() {
+        interaction.cancelFlow()
+        selections = []
+        selectionLabels = []
+        store.cancelLegalFlow()
+    }
+
+    private func bottomActionOverlayInset(metrics: MatchLayoutMetrics) -> CGFloat {
+        metrics.handHeight + (interaction.selectedAction == nil ? 8 : 58)
+    }
+
+    private var scoutChoiceCardIDs: Set<String> {
+        Set((store.legalResponse?.nextChoices ?? []).compactMap { choice in
+            guard case .card(let id) = choice.value else { return nil }
+            return id
+        })
+    }
+
+    private var selectedScoutCardIDs: Set<String> {
+        Set(selections.compactMap { value in
+            guard case .card(let id) = value else { return nil }
+            return id
+        })
+    }
+
+    private func scoutChoice(for id: String) -> GameCore.LegalChoice? {
+        (store.legalResponse?.nextChoices ?? []).first { choice in
+            guard case .card(let cardID) = choice.value else { return false }
+            return cardID == id
+        }
     }
 
     private func forcedSaleLabel(placementID: String, value: Int?) -> String {
