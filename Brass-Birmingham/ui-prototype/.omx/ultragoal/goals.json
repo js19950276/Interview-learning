@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "createdAt": "2026-08-13T11:53:48.640Z",
+  "updatedAt": "2026-08-13T11:54:10.543Z",
+  "briefPath": ".omx/ultragoal/brief.md",
+  "goalsPath": ".omx/ultragoal/goals.json",
+  "ledgerPath": ".omx/ultragoal/ledger.jsonl",
+  "codexGoalMode": "aggregate",
+  "goals": [
+    {
+      "id": "G001-complete-the-friends-test-version-of",
+      "title": "Complete the friends-test version of the native iPhone/iPad Industria...",
+      "objective": "Complete the friends-test version of the native iPhone/iPad Industrial City Birmingham app from the verified Phase 1 UI prototype. Exclude online/WebSocket multiplayer, accounts, payments, rankings, public release, anti-cheat, AI, and host migration. Preserve the approved high-fidelity UI and Transport abstraction. Deliver sequentially: (1) pure Swift authoritative GameCore and protocol primitives, implementing 2/3/4-player setup, legal actions, both eras, round/turn order, resources/markets, industries, scoring, deterministic full-game replay tests against RULES.md; (2) a two-simulator local-development room transport with create/join, seats/readiness, host start, authoritative PlayerIntent -> GameEvent -> per-seat snapshot synchronization, private-hand isolation, one complete synchronized action first and then full UI integration; (3) nearby offline 2-4 device transport for airplane scenarios using current Apple-supported local networking APIs behind the same Transport interface, with discovery, permissions, reconnect, state mismatch recovery, host-loss pause; (4) autosave, background/foreground resume, reconnect tokens, version/checksum recovery; (5) complete original game data/map/card/industry content and proportional iPhone/iPad accessibility/performance/device verification. Use TDD and verify every story before checkpointing. Architecture invariants: GameCore imports no SwiftUI/SpriteKit/network frameworks; UI emits intents and never decides legality; host is authoritative; ordinary clients never receive other players private hands; authoritative versions are monotonic and distinct from UI action number; nearby and simulator transports share one protocol; no online server work.",
+      "status": "in_progress",
+      "attempt": 1,
+      "createdAt": "2026-08-13T11:53:48.640Z",
+      "updatedAt": "2026-08-13T11:54:10.543Z",
+      "startedAt": "2026-08-13T11:54:10.543Z"
+    }
+  ],
+  "codexObjective": "Complete the durable ultragoal plan in .omx/ultragoal/goals.json, including later accepted/appended stories, under the original brief constraints; use .omx/ultragoal/ledger.jsonl as the audit trail.",
+  "activeGoalId": "G001-complete-the-friends-test-version-of"
+}

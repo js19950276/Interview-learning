@@ -1,0 +1,98 @@
+<style>
+  .style-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:18px; margin-top:22px; }
+  .style-card { cursor:pointer; border:1px solid #3d4552; border-radius:18px; overflow:hidden; background:#11151b; transition:.2s ease; }
+  .style-card:hover { transform:translateY(-4px); border-color:#d1a45c; }
+  .style-card.selected { border-color:#e8b866; box-shadow:0 0 0 2px rgba(232,184,102,.22); }
+  .style-body { padding:16px 17px 18px; }
+  .style-body h3 { margin:0 0 7px; color:#f0dfc4; }
+  .style-body p { margin:0; color:#aeb7c4; line-height:1.48; }
+  .preview { aspect-ratio:16/11; position:relative; overflow:hidden; }
+  .hud-top,.hud-left,.hud-right,.hud-bottom,.hud-map,.hud-action,.hud-card { position:absolute; }
+  .hud-top { inset:0 0 auto; height:12%; }
+  .hud-left { left:0; top:12%; bottom:19%; width:17%; }
+  .hud-right { right:0; top:12%; bottom:19%; width:15%; }
+  .hud-bottom { left:0; right:0; bottom:0; height:19%; }
+  .hud-map { left:17%; right:15%; top:12%; bottom:19%; }
+  .hud-map:before,.hud-map:after { content:""; position:absolute; border-radius:50%; border:2px solid currentColor; opacity:.45; }
+  .hud-map:before { width:52%; height:38%; left:19%; top:24%; transform:rotate(-13deg); }
+  .hud-map:after { width:32%; height:48%; left:47%; top:13%; transform:rotate(22deg); }
+  .hud-action { width:14%; aspect-ratio:1; border-radius:50%; right:3%; bottom:3%; display:grid; place-items:center; font-size:10px; font-weight:900; letter-spacing:.08em; }
+  .hand { position:absolute; left:21%; right:20%; bottom:3%; height:12%; display:flex; gap:2%; }
+  .hud-card { position:relative; flex:1; border-radius:4px; transform:translateY(6%); }
+  .stack { position:absolute; inset:8% 18%; display:grid; grid-template-rows:repeat(5,1fr); gap:5%; }
+  .stack i { border-radius:3px; }
+  .players { position:absolute; inset:8% 10%; display:grid; grid-template-rows:repeat(4,1fr); gap:7%; }
+  .players i { border-radius:999px 8px 8px 999px; }
+  .recommended { display:inline-block; margin-bottom:8px; padding:4px 9px; border-radius:999px; font-size:11px; font-weight:800; color:#f5c875; background:#49371f; }
+  .note { margin-top:18px; padding:12px 14px; border:1px solid #35404e; border-radius:12px; color:#9fa9b7; background:#11161d; }
+
+  .victorian { font-family:Georgia,serif; background:#17110c; color:#d5a657; }
+  .victorian .hud-map { background:radial-gradient(circle at 60% 42%,rgba(115,116,99,.92),rgba(47,47,42,.96) 52%,#25231f); }
+  .victorian .hud-top,.victorian .hud-left,.victorian .hud-right,.victorian .hud-bottom { background:linear-gradient(145deg,#2f2118,#120d09); border-color:#b78236; border-style:solid; }
+  .victorian .hud-top { border-width:0 0 2px; }
+  .victorian .hud-left { border-width:0 2px 0 0; }
+  .victorian .hud-right { border-width:0 0 0 2px; }
+  .victorian .hud-bottom { border-width:2px 0 0; }
+  .victorian .players i,.victorian .stack i { background:linear-gradient(90deg,#5d3327,#be8e43); border:1px solid #dfb866; }
+  .victorian .hud-card { background:linear-gradient(160deg,#7f2f28,#1a110d); border:1px solid #d5a657; }
+  .victorian .hud-action { background:radial-gradient(circle,#efca77,#9a6b26); color:#2c1a09; box-shadow:0 0 0 4px #3b2815,0 0 0 6px #c39448; }
+
+  .modern { font-family:Inter,system-ui,sans-serif; background:#091018; color:#55c3d2; }
+  .modern .hud-map { background:radial-gradient(circle at 55% 44%,#334a53,#15242e 57%,#0a141c); }
+  .modern .hud-top,.modern .hud-left,.modern .hud-right,.modern .hud-bottom { background:#0c141e; border-color:#243b4d; border-style:solid; }
+  .modern .hud-top { border-width:0 0 1px; }
+  .modern .hud-left { border-width:0 1px 0 0; }
+  .modern .hud-right { border-width:0 0 0 1px; }
+  .modern .hud-bottom { border-width:1px 0 0; }
+  .modern .players i,.modern .stack i { background:linear-gradient(90deg,#172536,#2e7180); border:1px solid #4fa9b5; }
+  .modern .hud-card { background:linear-gradient(160deg,#263e58,#0c1824); border:1px solid #4d7f9b; }
+  .modern .hud-action { background:#d99535; color:#101820; box-shadow:0 0 24px rgba(217,149,53,.35); }
+
+  .hybrid { font-family:Inter,system-ui,sans-serif; background:#121416; color:#d1ad70; }
+  .hybrid .hud-map { background:radial-gradient(circle at 58% 42%,#617074,#2e3c42 48%,#172126 76%); }
+  .hybrid .hud-map:before,.hybrid .hud-map:after { border-color:#dfbb76; filter:drop-shadow(0 0 6px rgba(223,187,118,.25)); }
+  .hybrid .hud-top,.hybrid .hud-left,.hybrid .hud-right,.hybrid .hud-bottom { background:linear-gradient(180deg,rgba(25,29,31,.97),rgba(13,16,18,.97)); border-color:#6f5735; border-style:solid; backdrop-filter:blur(12px); }
+  .hybrid .hud-top { border-width:0 0 1px; }
+  .hybrid .hud-left { border-width:0 1px 0 0; }
+  .hybrid .hud-right { border-width:0 0 0 1px; }
+  .hybrid .hud-bottom { border-width:1px 0 0; }
+  .hybrid .players i { background:linear-gradient(90deg,#27201a,#6d5231); border-left:3px solid #d5ad68; }
+  .hybrid .stack i { background:linear-gradient(90deg,#58401f,#d2aa63); box-shadow:0 3px 9px rgba(0,0,0,.35); }
+  .hybrid .hud-card { background:linear-gradient(160deg,#6f3131,#181516); border:1px solid #b88b50; box-shadow:0 4px 9px rgba(0,0,0,.4); }
+  .hybrid .hud-action { background:radial-gradient(circle at 40% 35%,#f0c979,#a8732e); color:#17120d; box-shadow:0 0 0 3px #2c2419,0 0 22px rgba(224,177,90,.35); }
+  @media (max-width:900px) { .style-grid { grid-template-columns:1fr; } }
+</style>
+
+<h2>你希望它看起来像哪一种“工业城市”？</h2>
+<p class="subtitle">三种方案都保留你指定的信息结构，只改变材质、色彩、字体和视觉层级。点击你最想继续深化的一种。</p>
+
+<div class="style-grid">
+  <div class="style-card" data-choice="victorian-ornate" onclick="toggleSelect(this)">
+    <div class="preview victorian">
+      <div class="hud-top"></div><div class="hud-left"><div class="players"><i></i><i></i><i></i><i></i></div></div>
+      <div class="hud-map"></div><div class="hud-right"><div class="stack"><i></i><i></i><i></i><i></i><i></i></div></div><div class="hud-bottom"></div>
+      <div class="hand"><i class="hud-card"></i><i class="hud-card"></i><i class="hud-card"></i><i class="hud-card"></i></div><div class="hud-action">ACTION</div>
+    </div>
+    <div class="style-body"><h3>A · 维多利亚机械</h3><p>黄铜、深木、雕花边框、古典衬线字体。氛围最浓、最接近参考图，但小屏信息容易显重。</p></div>
+  </div>
+
+  <div class="style-card" data-choice="modern-industrial" onclick="toggleSelect(this)">
+    <div class="preview modern">
+      <div class="hud-top"></div><div class="hud-left"><div class="players"><i></i><i></i><i></i><i></i></div></div>
+      <div class="hud-map"></div><div class="hud-right"><div class="stack"><i></i><i></i><i></i><i></i><i></i></div></div><div class="hud-bottom"></div>
+      <div class="hand"><i class="hud-card"></i><i class="hud-card"></i><i class="hud-card"></i><i class="hud-card"></i></div><div class="hud-action">ACTION</div>
+    </div>
+    <div class="style-body"><h3>B · 现代工业地图</h3><p>冷灰、钢蓝、极简线框和清晰数字。可读性最好，适合手机，但桌游历史感较弱。</p></div>
+  </div>
+
+  <div class="style-card" data-choice="cinematic-hybrid" onclick="toggleSelect(this)">
+    <div class="preview hybrid">
+      <div class="hud-top"></div><div class="hud-left"><div class="players"><i></i><i></i><i></i><i></i></div></div>
+      <div class="hud-map"></div><div class="hud-right"><div class="stack"><i></i><i></i><i></i><i></i><i></i></div></div><div class="hud-bottom"></div>
+      <div class="hand"><i class="hud-card"></i><i class="hud-card"></i><i class="hud-card"></i><i class="hud-card"></i></div><div class="hud-action">ACTION</div>
+    </div>
+    <div class="style-body"><span class="recommended">推荐</span><h3>C · 电影感混合风</h3><p>雾气地图与克制黄铜细节保留历史氛围，交互控件采用现代层级和排版，兼顾精致与可读性。</p></div>
+  </div>
+</div>
+
+<div class="note">为了后续可能公开发布，设计会借鉴“工业革命氛围”和信息架构，但不会复刻原作插画、图标或装饰边框。</div>

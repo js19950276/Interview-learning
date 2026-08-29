@@ -1,0 +1,120 @@
+<style>
+  .map-grid { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1.08fr); gap:18px; align-items:start; }
+  .map-panel { background:#111820; border:1px solid #35414d; border-radius:14px; overflow:hidden; }
+  .map-panel h3 { margin:0; padding:14px 16px 6px; }
+  .map-panel p { margin:0; padding:0 16px 14px; color:#9fb0bd; }
+  .reference { width:100%; display:block; aspect-ratio:1/1; object-fit:cover; }
+  .map-svg { width:100%; display:block; aspect-ratio:900/850; background:radial-gradient(circle at 55% 45%,#20333a,#10171d 72%); }
+  .route { fill:none; stroke:#d2c5a0; stroke-width:5; stroke-linecap:round; opacity:.68; }
+  .route.route-fix { stroke:#ffb44c; stroke-width:8; opacity:1; }
+  .city { fill:#111820; stroke:#f1d38a; stroke-width:4; }
+  .merchant { fill:#294451; stroke:#91d6e7; stroke-width:4; }
+  .farm { fill:#d6973f; stroke:#fff0c2; stroke-width:4; }
+  .label { fill:#f5efe1; font:600 19px system-ui,sans-serif; paint-order:stroke; stroke:#111820; stroke-width:6px; stroke-linejoin:round; }
+  .tiny { font-size:15px; }
+  .badge { display:inline-flex; margin:10px 14px 0; padding:5px 9px; border-radius:999px; background:#25313a; color:#d6e4eb; font-size:12px; }
+  .finding-list { display:grid; gap:10px; padding:14px 16px 18px; }
+  .finding { display:grid; grid-template-columns:28px 1fr; gap:10px; align-items:start; }
+  .finding b { color:#f3c768; }
+  .finding span:first-child { width:26px; height:26px; border-radius:50%; display:grid; place-items:center; background:#2a3540; color:#f3c768; font-weight:700; }
+  .legend { display:flex; flex-wrap:wrap; gap:12px; padding:10px 16px 16px; color:#9fb0bd; font-size:13px; }
+  .dot { display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:5px; }
+  @media (max-width:900px) { .map-grid { grid-template-columns:1fr; } }
+</style>
+
+<h2>地图校准：问题已经拆清楚了</h2>
+<p class="subtitle">左边是实物棋盘参考（只用于核对，不会打包进 App）；右边是建议采用的拓扑示意。</p>
+
+<div class="map-grid">
+  <div class="map-panel">
+    <span class="badge">参考图 · 不进入项目资源</span>
+    <h3>实物棋盘的正确朝向</h3>
+    <p>Warrington / Leek / Belper 在上，Worcester / Gloucester / Oxford 在下。</p>
+    <img class="reference" src="https://topdeckgames.com.au/cdn/shop/files/9781988884042_1_1024x1024.jpg?v=1696327061" alt="Brass Birmingham full board reference">
+  </div>
+
+  <div class="map-panel">
+    <span class="badge">建议目标 · 自制坐标与线路</span>
+    <h3>27 个地点、39 条连接的正确拓扑</h3>
+    <p>橙色线路是已确认的端点错误：它应连接 Kidderminster ↔ Worcester，农场只是沿线关联点。</p>
+    <svg class="map-svg" viewBox="0 0 900 850" role="img" aria-label="Corrected Brass Birmingham topology schematic">
+      <g>
+        <path class="route" d="M180 15 Q245 55 310 110"/><path class="route" d="M310 110 Q375 75 440 45"/>
+        <path class="route" d="M440 45 Q585 20 725 55"/><path class="route" d="M725 55 L745 160"/>
+        <path class="route" d="M745 160 Q790 110 835 95"/><path class="route" d="M745 160 L475 160"/>
+        <path class="route" d="M475 160 L195 185"/><path class="route" d="M310 110 L195 185"/>
+        <path class="route" d="M195 185 Q420 230 620 280"/><path class="route" d="M745 160 L620 280"/>
+        <path class="route" d="M195 185 L260 270"/><path class="route" d="M260 270 L350 355"/>
+        <path class="route" d="M350 355 L385 390"/><path class="route" d="M350 355 Q500 300 620 280"/>
+        <path class="route" d="M350 355 L255 425"/><path class="route" d="M350 355 L430 430"/>
+        <path class="route" d="M620 280 Q510 385 430 430"/><path class="route" d="M620 280 L635 380"/>
+        <path class="route" d="M255 425 L110 455"/><path class="route" d="M110 455 L25 360"/>
+        <path class="route" d="M255 425 L430 430"/><path class="route" d="M430 430 L635 380"/>
+        <path class="route" d="M635 380 L710 460"/><path class="route" d="M635 380 Q590 455 530 535"/>
+        <path class="route" d="M430 430 L530 535"/><path class="route" d="M255 425 L295 510"/>
+        <path class="route" d="M110 455 Q150 530 195 600"/><path class="route" d="M295 510 L195 600"/>
+        <path class="route" d="M295 510 L530 535"/><path class="route" d="M530 535 L710 460"/>
+        <path class="route" d="M710 460 L750 565"/><path class="route" d="M530 535 L750 565"/>
+        <path class="route" d="M530 535 Q390 640 210 720"/>
+        <path class="route route-fix" d="M195 600 Q175 660 210 720"/>
+        <path class="route" d="M210 720 L75 790"/><path class="route" d="M75 790 Q300 710 490 640"/>
+        <path class="route" d="M530 535 L490 640"/><path class="route" d="M490 640 L610 740"/>
+        <path class="route" d="M530 535 Q585 620 610 740"/>
+      </g>
+      <g>
+        <circle class="merchant" cx="180" cy="15" r="12"/><circle class="merchant" cx="835" cy="95" r="12"/>
+        <circle class="merchant" cx="25" cy="360" r="12"/><circle class="merchant" cx="75" cy="790" r="12"/>
+        <circle class="merchant" cx="610" cy="740" r="12"/>
+        <circle class="farm" cx="385" cy="390" r="10"/><circle class="farm" cx="175" cy="660" r="10"/>
+        <circle class="city" cx="725" cy="55" r="13"/><circle class="city" cx="745" cy="160" r="13"/>
+        <circle class="city" cx="440" cy="45" r="13"/><circle class="city" cx="310" cy="110" r="13"/>
+        <circle class="city" cx="195" cy="185" r="13"/><circle class="city" cx="475" cy="160" r="13"/>
+        <circle class="city" cx="260" cy="270" r="13"/><circle class="city" cx="620" cy="280" r="13"/>
+        <circle class="city" cx="350" cy="355" r="13"/><circle class="city" cx="635" cy="380" r="13"/>
+        <circle class="city" cx="430" cy="430" r="13"/><circle class="city" cx="255" cy="425" r="13"/>
+        <circle class="city" cx="110" cy="455" r="13"/><circle class="city" cx="295" cy="510" r="13"/>
+        <circle class="city" cx="195" cy="600" r="13"/><circle class="city" cx="210" cy="720" r="13"/>
+        <circle class="city" cx="530" cy="535" r="13"/><circle class="city" cx="750" cy="565" r="13"/>
+        <circle class="city" cx="710" cy="460" r="13"/><circle class="city" cx="490" cy="640" r="13"/>
+      </g>
+      <g text-anchor="middle">
+        <text class="label tiny" x="180" y="43">Warrington</text><text class="label tiny" x="835" y="125">Nottingham</text>
+        <text class="label tiny" x="25" y="337">Shrewsbury</text><text class="label tiny" x="75" y="822">Gloucester</text>
+        <text class="label tiny" x="610" y="772">Oxford</text>
+        <text class="label" x="725" y="33">Belper</text><text class="label" x="745" y="193">Derby</text>
+        <text class="label" x="440" y="78">Leek</text><text class="label tiny" x="310" y="143">Stoke-on-Trent</text>
+        <text class="label" x="195" y="218">Stone</text><text class="label" x="475" y="193">Uttoxeter</text>
+        <text class="label" x="260" y="303">Stafford</text><text class="label tiny" x="620" y="313">Burton-on-Trent</text>
+        <text class="label" x="350" y="342">Cannock</text><text class="label" x="635" y="413">Tamworth</text>
+        <text class="label" x="430" y="463">Walsall</text><text class="label tiny" x="255" y="458">Wolverhampton</text>
+        <text class="label tiny" x="110" y="488">Coalbrookdale</text><text class="label" x="295" y="543">Dudley</text>
+        <text class="label tiny" x="195" y="633">Kidderminster</text><text class="label" x="210" y="753">Worcester</text>
+        <text class="label" x="530" y="568">Birmingham</text><text class="label" x="750" y="598">Coventry</text>
+        <text class="label" x="710" y="493">Nuneaton</text><text class="label" x="490" y="673">Redditch</text>
+      </g>
+    </svg>
+    <div class="legend"><span><i class="dot" style="background:#f1d38a"></i>城市</span><span><i class="dot" style="background:#91d6e7"></i>商人</span><span><i class="dot" style="background:#d6973f"></i>农场啤酒厂</span><span><i class="dot" style="background:#ffb44c"></i>已确认端点修正</span></div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>代码里的三个问题</h3>
+  <div class="finding-list">
+    <div class="finding"><span>1</span><div><b>纵向坐标系相反</b><br>数据按网页坐标理解 y，但 SpriteKit 的 y 轴向上，导致全图上下镜像。</div></div>
+    <div class="finding"><span>2</span><div><b>一条路线取错端点</b><br><code>kidderminster-worcester</code> 有第三个关联点（农场）；代码误用数组首尾，画成了 Kidderminster → 农场。</div></div>
+    <div class="finding"><span>3</span><div><b>所有连接都被画成直线</b><br>拓扑大体一致，但直线会穿过城市、挤在一起，看起来像“路接错了”。</div></div>
+  </div>
+</div>
+
+<h3>你希望我按哪种精度改？</h3>
+<div class="options">
+  <div class="option" data-choice="quick-fix" onclick="toggleSelect(this)">
+    <div class="letter">A</div><div class="content"><h3>快速修正</h3><p>只翻转 y 轴并修复端点；工作少，但直线路径仍然不像棋盘。</p></div>
+  </div>
+  <div class="option" data-choice="reference-calibrated" onclick="toggleSelect(this)">
+    <div class="letter">B</div><div class="content"><h3>按参考图校准（推荐）</h3><p>重排 27 个地点、保留核验过的 39 条拓扑，并为绕行路线增加控制点；准确且仍是我们自己的地图表现。</p></div>
+  </div>
+  <div class="option" data-choice="literal-trace" onclick="toggleSelect(this)">
+    <div class="letter">C</div><div class="content"><h3>逐条临摹曲线</h3><p>最接近实物的走线，但耗时更高，也没有必要复制官方美术的每个细节。</p></div>
+  </div>
+</div>

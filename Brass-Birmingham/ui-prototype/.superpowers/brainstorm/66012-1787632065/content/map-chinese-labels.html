@@ -1,0 +1,47 @@
+<style>
+  .preview { background:radial-gradient(circle at 50% 45%,#294049,#10171d 72%); border:1px solid #35414d; border-radius:16px; padding:24px; }
+  .sample-map { position:relative; min-height:430px; overflow:hidden; border-radius:12px; background:linear-gradient(145deg,rgba(39,58,65,.85),rgba(12,18,23,.95)); }
+  .road { position:absolute; height:4px; background:#d8cfb6; opacity:.68; transform-origin:left center; border-radius:99px; }
+  .node { position:absolute; transform:translate(-50%,-50%); width:18px; height:18px; border:3px solid #efd282; background:#111820; border-radius:50%; }
+  .name { position:absolute; transform:translate(-50%,0); color:#f7f0df; background:rgba(13,19,24,.9); border:1px solid rgba(239,210,130,.8); border-radius:6px; padding:4px 8px; font:600 13px/1.25 system-ui,sans-serif; text-align:center; white-space:nowrap; }
+  .name.long { white-space:normal; width:82px; }
+  .legend { display:flex; gap:14px; flex-wrap:wrap; margin-top:14px; color:#9fb0bd; font-size:13px; }
+  .mapping { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px 18px; margin-top:18px; }
+  .mapping div { padding:8px 10px; border-radius:8px; background:#172128; color:#dbe4e8; }
+  .mapping code { color:#8fa1ad; font-size:11px; display:block; margin-top:3px; }
+  @media(max-width:780px){ .mapping{grid-template-columns:1fr 1fr;} }
+</style>
+
+<h2>地图名称改为完整中文</h2>
+<p class="subtitle">画面只显示中文；英文 slug 继续作为内部 ID，不会影响规则数据和已有存档。</p>
+
+<div class="preview">
+  <div class="sample-map">
+    <div class="road" style="left:17%;top:27%;width:34%;transform:rotate(8deg)"></div>
+    <div class="road" style="left:46%;top:30%;width:30%;transform:rotate(28deg)"></div>
+    <div class="road" style="left:28%;top:54%;width:31%;transform:rotate(4deg)"></div>
+    <div class="road" style="left:56%;top:57%;width:25%;transform:rotate(-24deg)"></div>
+    <div class="road" style="left:37%;top:76%;width:28%;transform:rotate(-20deg)"></div>
+
+    <div class="node" style="left:18%;top:25%"></div><div class="name long" style="left:18%;top:30%">特伦特河畔<br>斯托克</div>
+    <div class="node" style="left:48%;top:31%"></div><div class="name" style="left:48%;top:36%">斯塔福德</div>
+    <div class="node" style="left:73%;top:50%"></div><div class="name long" style="left:73%;top:55%">特伦特河畔<br>伯顿</div>
+    <div class="node" style="left:30%;top:55%"></div><div class="name long" style="left:30%;top:60%">伍尔弗汉普顿</div>
+    <div class="node" style="left:58%;top:59%"></div><div class="name" style="left:58%;top:64%">伯明翰</div>
+    <div class="node" style="left:40%;top:78%"></div><div class="name" style="left:40%;top:83%">基德明斯特</div>
+    <div class="node" style="left:67%;top:72%"></div><div class="name" style="left:67%;top:77%">考文垂</div>
+  </div>
+  <div class="legend"><span>短名称：标准字号单行</span><span>中等名称：紧凑单行</span><span>长名称：最多两行，不使用省略号</span></div>
+</div>
+
+<div class="section">
+  <h3>示例映射</h3>
+  <div class="mapping">
+    <div>伯明翰<code>birmingham</code></div>
+    <div>伍尔弗汉普顿<code>wolverhampton</code></div>
+    <div>特伦特河畔斯托克<code>stoke-on-trent</code></div>
+    <div>科尔布鲁克代尔<code>coalbrookdale</code></div>
+    <div>什鲁斯伯里<code>shrewsbury</code></div>
+    <div>基德明斯特—伍斯特农场<code>kidderminster-worcester-farm</code></div>
+  </div>
+</div>

@@ -1,0 +1,64 @@
+<style>
+  :root { --gold:#d9b16e; --panel:#14191d; --line:#604f36; --muted:#9eabb7; --active:#f2c675; --red:#7d3030; }
+  .flow-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:18px; margin-top:22px; }
+  .flow-card { cursor:pointer; border:1px solid #3b4550; border-radius:17px; background:#10151a; overflow:hidden; transition:.2s ease; }
+  .flow-card:hover { transform:translateY(-4px); border-color:var(--gold); }
+  .flow-card.selected { border-color:#e5bd78; box-shadow:0 0 0 2px rgba(229,189,120,.23); }
+  .demo { padding:15px; background:linear-gradient(180deg,#1b2226,#0d1216); }
+  .frames { display:grid; grid-template-columns:repeat(3,1fr); gap:7px; }
+  .frame { position:relative; aspect-ratio:4/3; overflow:hidden; border:1px solid #3d4852; border-radius:9px; background:radial-gradient(circle at 55% 42%,#52666b,#25353b 55%,#172126); }
+  .step { position:absolute; left:6px; top:5px; width:18px; height:18px; border-radius:50%; display:grid; place-items:center; background:#1a2023; border:1px solid var(--gold); color:#f0ca87; font-size:10px; font-weight:900; z-index:8; }
+  .hand { position:absolute; left:7%; right:7%; bottom:4%; height:24%; display:flex; gap:4%; align-items:end; }
+  .c { flex:1; height:78%; border-radius:3px; border:1px solid #b1844c; background:linear-gradient(145deg,#713333,#181315); box-shadow:0 3px 6px rgba(0,0,0,.4); }
+  .c.active { height:100%; transform:translateY(-10%); border-color:#f3c879; box-shadow:0 0 13px rgba(243,200,121,.52); }
+  .actions { position:absolute; right:5%; top:22%; display:grid; gap:4px; }
+  .a { width:17px; height:17px; display:grid; place-items:center; border-radius:50%; background:#252b2f; border:1px solid #57616a; color:#77838d; font-size:7px; }
+  .a.active { color:#17120c; background:radial-gradient(circle,#f2cc83,#a8732e); border-color:#f0c675; box-shadow:0 0 10px rgba(239,190,102,.5); }
+  .target { position:absolute; width:19px; height:19px; border-radius:50%; border:2px solid #e9bd70; box-shadow:0 0 12px rgba(233,189,112,.8); opacity:0; }
+  .target.one { left:34%; top:29%; }.target.two { left:56%; top:47%; }.target.three { left:67%; top:25%; }
+  .show-targets .target { opacity:1; }
+  .map-node { position:absolute; width:10px; height:10px; border-radius:50%; background:#9e7a46; border:1px solid #e0bd7c; }
+  .n1 { left:38%; top:33%; }.n2 { left:60%; top:51%; }.n3 { left:71%; top:29%; }
+  .copy { padding:15px 17px 18px; }
+  .copy h3 { margin:0 0 7px; color:#f1dfc1; }
+  .copy p { margin:0; color:#aab4bf; line-height:1.46; }
+  .rec { display:inline-block; margin-bottom:8px; padding:4px 9px; border-radius:999px; background:#49371f; color:#f2c776; font-size:11px; font-weight:800; }
+  .sequence { display:flex; align-items:center; gap:8px; margin-top:10px; color:#d9b776; font-size:12px; font-weight:700; }
+  .sequence span { color:#6f7b86; }
+  .direct .target { opacity:1; left:47%; top:36%; }
+  .direct-menu { position:absolute; left:35%; top:20%; display:grid; grid-template-columns:repeat(3,18px); gap:4px; }
+  .direct-menu i { width:18px; height:18px; border-radius:50%; background:#242b2f; border:1px solid #70603f; }
+  @media (max-width:900px) { .flow-grid { grid-template-columns:1fr; } }
+</style>
+
+<h2>一回合的操作从哪里开始？</h2>
+<p class="subtitle">这会决定玩家每回合最常重复的手势。三种方案都能实现完整规则，但节奏和学习成本不同。</p>
+
+<div class="flow-grid">
+  <div class="flow-card" data-choice="card-first" onclick="toggleSelect(this)">
+    <div class="demo"><div class="frames">
+      <div class="frame"><b class="step">1</b><i class="map-node n1"></i><i class="map-node n2"></i><i class="map-node n3"></i><div class="hand"><i class="c"></i><i class="c active"></i><i class="c"></i></div></div>
+      <div class="frame"><b class="step">2</b><i class="map-node n1"></i><i class="map-node n2"></i><i class="map-node n3"></i><div class="actions"><i class="a active">建</i><i class="a">网</i><i class="a">售</i></div><div class="hand"><i class="c"></i><i class="c active"></i><i class="c"></i></div></div>
+      <div class="frame show-targets"><b class="step">3</b><i class="map-node n1"></i><i class="map-node n2"></i><i class="map-node n3"></i><i class="target one"></i><i class="target two"></i><i class="target three"></i><div class="actions"><i class="a active">建</i></div><div class="hand"><i class="c"></i><i class="c active"></i><i class="c"></i></div></div>
+    </div></div>
+    <div class="copy"><span class="rec">推荐</span><h3>A · 手牌优先</h3><p>先点击一张牌，牌抬起并放大；右下角只点亮可用行动；选择行动后，地图显示合法目标。</p><div class="sequence">选牌 <span>→</span> 选行动 <span>→</span> 选目标</div></div>
+  </div>
+
+  <div class="flow-card" data-choice="action-first" onclick="toggleSelect(this)">
+    <div class="demo"><div class="frames">
+      <div class="frame"><b class="step">1</b><i class="map-node n1"></i><i class="map-node n2"></i><i class="map-node n3"></i><div class="actions"><i class="a active">建</i><i class="a">网</i><i class="a">售</i></div><div class="hand"><i class="c"></i><i class="c"></i><i class="c"></i></div></div>
+      <div class="frame"><b class="step">2</b><i class="map-node n1"></i><i class="map-node n2"></i><i class="map-node n3"></i><div class="actions"><i class="a active">建</i></div><div class="hand"><i class="c active"></i><i class="c"></i><i class="c active"></i></div></div>
+      <div class="frame show-targets"><b class="step">3</b><i class="map-node n1"></i><i class="map-node n2"></i><i class="map-node n3"></i><i class="target one"></i><i class="target two"></i><div class="actions"><i class="a active">建</i></div><div class="hand"><i class="c active"></i><i class="c"></i><i class="c"></i></div></div>
+    </div></div>
+    <div class="copy"><h3>B · 行动优先</h3><p>先从右下角选行动，系统再筛出可用手牌，选牌后显示地图目标。新手容易理解，但每次要先看行动区。</p><div class="sequence">选行动 <span>→</span> 选牌 <span>→</span> 选目标</div></div>
+  </div>
+
+  <div class="flow-card" data-choice="direct-context" onclick="toggleSelect(this)">
+    <div class="demo"><div class="frames">
+      <div class="frame direct"><b class="step">1</b><i class="map-node n1"></i><i class="map-node n2"></i><i class="map-node n3"></i><i class="target"></i><div class="hand"><i class="c"></i><i class="c"></i><i class="c"></i></div></div>
+      <div class="frame"><b class="step">2</b><i class="map-node n1"></i><i class="map-node n2"></i><i class="map-node n3"></i><div class="direct-menu"><i></i><i></i><i></i></div><div class="hand"><i class="c"></i><i class="c"></i><i class="c"></i></div></div>
+      <div class="frame"><b class="step">3</b><i class="map-node n1"></i><i class="map-node n2"></i><i class="map-node n3"></i><div class="direct-menu"><i></i></div><div class="hand"><i class="c active"></i><i class="c"></i><i class="c"></i></div></div>
+    </div></div>
+    <div class="copy"><h3>C · 地图直接操作</h3><p>先点城市、线路或产业，目标旁弹出可执行行动，再选择要弃的牌。最像触摸地图，但规则反馈最难做清楚。</p><div class="sequence">选目标 <span>→</span> 选行动 <span>→</span> 选牌</div></div>
+  </div>
+</div>

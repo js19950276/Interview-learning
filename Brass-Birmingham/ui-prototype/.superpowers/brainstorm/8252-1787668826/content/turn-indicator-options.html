@@ -1,0 +1,88 @@
+<style>
+  .turn-grid { display:grid; grid-template-columns:repeat(3,minmax(250px,1fr)); gap:18px; margin-top:22px; }
+  .turn-card { overflow:hidden; }
+  .turn-card.recommended { box-shadow:0 0 0 2px #d6a64d, 0 18px 44px rgba(0,0,0,.28); }
+  .recommend { display:inline-flex; align-items:center; gap:6px; margin-bottom:8px; padding:4px 9px; border-radius:999px; background:#d6a64d; color:#231d18; font-size:12px; font-weight:800; }
+  .device { min-height:330px; padding:14px; border-radius:18px; background:linear-gradient(145deg,#211f1d,#352d28 60%,#4e3529); color:#f3ead6; font-family:-apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif; box-shadow:inset 0 0 0 1px rgba(214,166,77,.28); }
+  .game-head { display:flex; align-items:center; justify-content:space-between; gap:8px; height:34px; padding:0 10px; border:1px solid rgba(214,166,77,.5); border-radius:18px; background:rgba(17,16,15,.78); font-size:11px; }
+  .turn-banner { display:flex; align-items:center; justify-content:center; gap:8px; margin:10px 0; padding:9px 12px; border-radius:10px; background:#d6a64d; color:#1f1a16; font-weight:900; letter-spacing:.02em; box-shadow:0 4px 18px rgba(214,166,77,.28); }
+  .turn-banner.wait { background:#ece2cd; }
+  .board { position:relative; height:136px; margin:9px 0; border-radius:12px; background:radial-gradient(circle at 32% 58%,#805d3f 0 4px,transparent 5px),radial-gradient(circle at 70% 35%,#805d3f 0 5px,transparent 6px),linear-gradient(28deg,transparent 48%,rgba(214,166,77,.36) 49% 51%,transparent 52%),#253238; border:1px solid rgba(255,255,255,.09); }
+  .board-label { position:absolute; inset:0; display:grid; place-items:center; color:rgba(243,234,214,.38); font-weight:700; font-size:13px; }
+  .players { display:grid; gap:7px; }
+  .player { display:flex; align-items:center; gap:8px; min-height:34px; padding:5px 9px; border:1px solid rgba(255,255,255,.11); border-radius:9px; background:rgba(12,12,11,.35); font-size:12px; }
+  .player.active { border:2px solid #d6a64d; background:rgba(214,166,77,.17); box-shadow:0 0 14px rgba(214,166,77,.22); }
+  .dot { width:12px; height:12px; border-radius:50%; background:#b64842; flex:0 0 auto; }
+  .dot.teal { background:#42aaa9; border-radius:3px; }
+  .player strong { font-size:13px; }
+  .spacer { flex:1; }
+  .pill { padding:3px 7px; border-radius:999px; background:#d6a64d; color:#241d17; font-weight:900; font-size:10px; }
+  .subtle { color:#bdb3a3; font-size:10px; }
+  .toast { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); width:max-content; padding:9px 13px; border-radius:999px; background:rgba(16,15,14,.92); border:1px solid #d6a64d; color:#f3ead6; font-size:12px; font-weight:800; box-shadow:0 7px 22px rgba(0,0,0,.4); }
+  .card-copy { margin-top:10px; }
+  .card-copy h3 { margin-bottom:5px; }
+  @media (max-width:980px) { .turn-grid { grid-template-columns:1fr; } .device { min-height:300px; } }
+</style>
+
+<h2>怎样才能一眼看出轮到谁？</h2>
+<p class="subtitle">下面按同一局面展示：当前轮到 <strong>host</strong>。点选你最喜欢的方案；我推荐 C。</p>
+
+<div class="turn-grid cards">
+  <div class="card turn-card" data-choice="a_header_banner" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="device">
+        <div class="game-head"><span>运河时代 · 回合 1/8</span><span>行动 1</span></div>
+        <div class="turn-banner">▶ 轮到 host（深红）</div>
+        <div class="board"><div class="board-label">伯明翰地图</div></div>
+        <div class="players">
+          <div class="player"><span class="dot"></span><strong>1. host</strong><span class="spacer"></span><span>£0</span></div>
+          <div class="player"><span class="dot teal"></span><strong>2. guest</strong><span class="spacer"></span><span>£0</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body card-copy">
+      <h3>A · 顶部固定横幅</h3>
+      <p>最醒目，所有设备始终显示具体名字；但会占用一行地图高度。</p>
+    </div>
+  </div>
+
+  <div class="card turn-card" data-choice="b_player_highlight" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="device">
+        <div class="game-head"><span>运河时代 · 回合 1/8</span><span>行动 1</span></div>
+        <div class="board"><div class="board-label">伯明翰地图</div></div>
+        <div class="players">
+          <div class="player active"><span class="dot"></span><div><strong>1. host</strong><div class="subtle">深红 · 当前行动</div></div><span class="spacer"></span><span class="pill">轮到他</span></div>
+          <div class="player"><span class="dot teal"></span><strong>2. guest</strong><span class="spacer"></span><span>£0</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body card-copy">
+      <h3>B · 强化玩家栏</h3>
+      <p>不挤压地图，名字和顺序关系很清楚；视线在地图中央时仍可能错过。</p>
+    </div>
+  </div>
+
+  <div class="card turn-card recommended" data-choice="c_linked_recommended" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="device">
+        <span class="recommend">★ 推荐</span>
+        <div class="game-head"><span>运河时代 · 回合 1/8</span><span class="pill">等待 host</span></div>
+        <div class="board">
+          <div class="board-label">伯明翰地图</div>
+          <div class="toast">▶ 现在轮到 host</div>
+        </div>
+        <div class="players">
+          <div class="player active"><span class="dot"></span><div><strong>1. host</strong><div class="subtle">深红 · 当前行动</div></div><span class="spacer"></span><span class="pill">行动中</span></div>
+          <div class="player"><span class="dot teal"></span><strong>2. guest（你）</strong><span class="spacer"></span><span>£0</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body card-copy">
+      <h3>C · 联动提示</h3>
+      <p>玩家栏持续高亮；顶栏持续写“轮到你/等待 host”；切换回合时中央提示约 1 秒后淡出。信息最完整，但动效要克制。</p>
+    </div>
+  </div>
+</div>
+
+<p class="subtitle" style="margin-top:18px">无论选哪个，我都会保留“名字 + 颜色/形状 + 文字状态”，不再只靠发光圆圈判断。</p>

@@ -1,0 +1,85 @@
+<style>
+  .era-toolbar { display:flex; align-items:center; gap:10px; margin:12px 0 18px; }
+  .era-pill { padding:7px 12px; border-radius:999px; background:#254b55; color:#bcebf0; border:1px solid #4f8390; font-weight:700; font-size:13px; }
+  .era-note { color:#91a2ae; font-size:13px; }
+  .route-card .card-image { padding:14px; background:radial-gradient(circle at 50% 45%,#263b42,#10171c 75%); }
+  .route-card svg { display:block; width:100%; height:auto; max-height:285px; }
+  .map-label { fill:#f2ead6; font:600 10px system-ui,sans-serif; paint-order:stroke; stroke:#11191f; stroke-width:3px; stroke-linejoin:round; }
+  .city { fill:#152128; stroke:#e2c675; stroke-width:2.5; }
+  .inactive { opacity:.22; }
+  .legend-row { display:flex; gap:12px; flex-wrap:wrap; margin-top:10px; color:#aab7bf; font-size:12px; }
+  .key { display:inline-flex; align-items:center; gap:6px; }
+  .swatch { display:inline-block; width:30px; height:5px; border-radius:3px; background:#62cbd1; }
+  .swatch.rail { background:repeating-linear-gradient(90deg,#a8b3ba 0 6px,transparent 6px 10px); border-top:1px solid #a8b3ba; border-bottom:1px solid #a8b3ba; }
+  .swatch.both { height:8px; background:linear-gradient(#62cbd1 0 42%,#35454d 42% 58%,#a8b3ba 58%); }
+  .badge { fill:#152128; stroke:#d9c58b; stroke-width:1.3; }
+  .badge-text { fill:#f4ead1; font:700 9px system-ui,sans-serif; text-anchor:middle; dominant-baseline:central; }
+  .recommend { color:#dfc56f; font-weight:700; }
+</style>
+
+<h2>路线时代限制怎么画在地图上？</h2>
+<p class="subtitle">以下都采用你选的逻辑 A：路线类型始终可见；当前示例处于<strong>运河时代</strong>，铁路专用路线因此降低透明度，但不会消失。</p>
+<div class="era-toolbar"><span class="era-pill">当前：运河时代</span><span class="era-note">相同的小型真实路网：伯顿—沃尔索尔为运河专用，沃尔索尔—塔姆沃思与伯明翰—雷迪奇为铁路专用。</span></div>
+
+<div class="cards">
+  <div class="card route-card" data-choice="a-line-language" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <svg viewBox="0 0 340 280" aria-label="颜色加线型方案">
+        <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M255 44 L70 82" stroke="#62cbd1" stroke-width="7"/>
+          <path d="M255 44 L270 125" stroke="#62cbd1" stroke-width="9"/>
+          <path d="M255 44 L270 125" stroke="#a8b3ba" stroke-width="3"/>
+          <path d="M70 82 L140 155" stroke="#62cbd1" stroke-width="9"/>
+          <path d="M70 82 L140 155" stroke="#a8b3ba" stroke-width="3"/>
+          <path d="M140 155 L270 125" stroke="#62cbd1" stroke-width="9"/>
+          <path d="M140 155 L270 125" stroke="#a8b3ba" stroke-width="3"/>
+          <path d="M140 155 L250 220" stroke="#62cbd1" stroke-width="9"/>
+          <path d="M140 155 L250 220" stroke="#a8b3ba" stroke-width="3"/>
+          <g class="inactive">
+            <path d="M70 82 L270 125" stroke="#a8b3ba" stroke-width="5" stroke-dasharray="9 5"/>
+            <path d="M140 155 L125 232" stroke="#a8b3ba" stroke-width="5" stroke-dasharray="9 5"/>
+          </g>
+        </g>
+        <g><circle class="city" cx="255" cy="44" r="8"/><text class="map-label" x="267" y="40">伯顿</text><circle class="city" cx="70" cy="82" r="8"/><text class="map-label" x="20" y="68">沃尔索尔</text><circle class="city" cx="270" cy="125" r="8"/><text class="map-label" x="281" y="129">塔姆沃思</text><circle class="city" cx="140" cy="155" r="8"/><text class="map-label" x="100" y="146">伯明翰</text><circle class="city" cx="250" cy="220" r="8"/><text class="map-label" x="262" y="224">考文垂</text><circle class="city" cx="125" cy="232" r="8"/><text class="map-label" x="75" y="254">雷迪奇</text></g>
+      </svg>
+      <div class="legend-row"><span class="key"><i class="swatch"></i>运河专用</span><span class="key"><i class="swatch rail"></i>铁路专用</span><span class="key"><i class="swatch both"></i>两时代通用</span></div>
+    </div>
+    <div class="card-body"><h3>A · 颜色 + 线型 <span class="recommend">推荐</span></h3><p>青色实线、钢灰虚线、青灰双层线。缩放后仍然清楚，也不只依赖颜色。</p></div>
+  </div>
+
+  <div class="card route-card" data-choice="b-themed-textures" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <svg viewBox="0 0 340 280" aria-label="主题纹理方案">
+        <g fill="none" stroke-linecap="round">
+          <path d="M255 44 C205 29 123 104 70 82" stroke="#62cbd1" stroke-width="5" stroke-dasharray="1 7"/>
+          <path d="M255 44 L270 125 M70 82 L140 155 M140 155 L270 125 M140 155 L250 220" stroke="#d7cfba" stroke-width="6"/>
+          <path d="M255 44 L270 125 M70 82 L140 155 M140 155 L270 125 M140 155 L250 220" stroke="#233139" stroke-width="2"/>
+          <g class="inactive" stroke="#a8b3ba">
+            <path d="M70 82 L270 125 M140 155 L125 232" stroke-width="3"/>
+            <path d="M101 84 l-3 12 M128 90 l-3 12 M155 96 l-3 12 M182 102 l-3 12 M209 108 l-3 12 M236 114 l-3 12 M136 176 l12 2 M132 194 l12 2 M128 212 l12 2" stroke-width="3"/>
+          </g>
+        </g>
+        <g><circle class="city" cx="255" cy="44" r="8"/><text class="map-label" x="267" y="40">伯顿</text><circle class="city" cx="70" cy="82" r="8"/><text class="map-label" x="20" y="68">沃尔索尔</text><circle class="city" cx="270" cy="125" r="8"/><text class="map-label" x="281" y="129">塔姆沃思</text><circle class="city" cx="140" cy="155" r="8"/><text class="map-label" x="100" y="146">伯明翰</text><circle class="city" cx="250" cy="220" r="8"/><text class="map-label" x="262" y="224">考文垂</text><circle class="city" cx="125" cy="232" r="8"/><text class="map-label" x="75" y="254">雷迪奇</text></g>
+      </svg>
+      <div class="legend-row"><span>水波点线＝运河</span><span>枕木＝铁路</span><span>双线＝通用</span></div>
+    </div>
+    <div class="card-body"><h3>B · 主题纹理</h3><p>用水波与铁路枕木表现时代，氛围更强；密集区域会显得稍杂。</p></div>
+  </div>
+
+  <div class="card route-card" data-choice="c-route-badges" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <svg viewBox="0 0 340 280" aria-label="中文徽标方案">
+        <g fill="none" stroke="#d7cfba" stroke-width="4" stroke-linecap="round">
+          <path d="M255 44 L70 82 M255 44 L270 125 M70 82 L140 155 M140 155 L270 125 M140 155 L250 220"/>
+          <g class="inactive"><path d="M70 82 L270 125 M140 155 L125 232"/></g>
+        </g>
+        <g><rect class="badge" x="151" y="53" width="26" height="18" rx="9"/><text class="badge-text" x="164" y="62">运</text><rect class="badge inactive" x="159" y="95" width="26" height="18" rx="9"/><text class="badge-text inactive" x="172" y="104">铁</text><rect class="badge" x="212" y="77" width="26" height="18" rx="9"/><text class="badge-text" x="225" y="86">双</text><rect class="badge" x="94" y="110" width="26" height="18" rx="9"/><text class="badge-text" x="107" y="119">双</text><rect class="badge inactive" x="121" y="183" width="26" height="18" rx="9"/><text class="badge-text inactive" x="134" y="192">铁</text></g>
+        <g><circle class="city" cx="255" cy="44" r="8"/><text class="map-label" x="267" y="40">伯顿</text><circle class="city" cx="70" cy="82" r="8"/><text class="map-label" x="20" y="68">沃尔索尔</text><circle class="city" cx="270" cy="125" r="8"/><text class="map-label" x="281" y="129">塔姆沃思</text><circle class="city" cx="140" cy="155" r="8"/><text class="map-label" x="100" y="146">伯明翰</text><circle class="city" cx="250" cy="220" r="8"/><text class="map-label" x="262" y="224">考文垂</text><circle class="city" cx="125" cy="232" r="8"/><text class="map-label" x="75" y="254">雷迪奇</text></g>
+      </svg>
+      <div class="legend-row"><span>运＝运河专用</span><span>铁＝铁路专用</span><span>双＝两时代通用</span></div>
+    </div>
+    <div class="card-body"><h3>C · 中文路线徽标</h3><p>含义最直接，但 39 条路线都会多一个标记，容易压住城市名与资源图标。</p></div>
+  </div>
+</div>
+
+<div class="section"><p>请选择一张卡片。确认后，正式实现还会加固定图例，并保证选中路线时仍保留其时代线型。</p></div>

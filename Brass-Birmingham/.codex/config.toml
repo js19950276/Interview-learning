@@ -1,0 +1,49 @@
+# oh-my-codex top-level settings (must be before any [table])
+model_reasoning_effort = "medium"
+developer_instructions = "You have oh-my-codex installed. AGENTS.md is the orchestration brain and main control surface. Follow AGENTS.md for skill/keyword routing, $name workflow invocation, and role-specialized subagents; when the native surface exposes `agent_type` role routing, set `agent_type` to an installed role and never omit it for OMX work. When it reports `role_routing_unavailable`, do not fabricate `agent_type`; before Ralplan planning, state, HUD, runtime, or delegation work, run `omx ralplan preflight --json` and stop on `unsupported_documented_leader_proof`. Never fake the role via a prompt label or infer authority from session/thread/pointer/transcript/cwd state. Use outcome-first, concise progress updates: state the target result, constraints, validation evidence, and stop condition before adding process detail. Native subagents live in .codex/agents and may handle independent parallel subtasks within one Codex session or team pane. Skills load from .codex/skills, not native-agent TOMLs. Treat installed prompts as narrower execution surfaces under AGENTS.md authority."
+model = "gpt-5.6-sol"
+
+[features]
+child_agents_md = true
+hooks = true
+goals = true
+
+[shell_environment_policy.set]
+USE_OMX_EXPLORE_CMD = "0"
+
+# ============================================================
+# oh-my-codex (OMX) Configuration
+# Managed by omx setup - manual edits preserved on next setup
+# ============================================================
+
+# OMX-owned Codex hook trust state
+# Trusts only setup-managed native hook wrappers.
+[hooks.state."/Users/didi/Desktop/Brass-Birmingham/.codex/hooks.json:post_compact:0:0"]
+trusted_hash = "sha256:b6680f994c4341a697ebf69d919f1ea4807f33061d3a89b936b84827d4c6599e"
+
+[hooks.state."/Users/didi/Desktop/Brass-Birmingham/.codex/hooks.json:post_tool_use:0:0"]
+trusted_hash = "sha256:b83bdccd59a17092ea2be341a249db072f623112eec085ab9a6dda720cf21919"
+
+[hooks.state."/Users/didi/Desktop/Brass-Birmingham/.codex/hooks.json:pre_compact:0:0"]
+trusted_hash = "sha256:61953ed55a2d864068620a82441ea8c2560bad15c0a33b615bfb314f61e8eaae"
+
+[hooks.state."/Users/didi/Desktop/Brass-Birmingham/.codex/hooks.json:pre_tool_use:0:0"]
+trusted_hash = "sha256:16e24efed45e3969fc1cedfd4ce22047ca0e108e6becd82d8efa2224f5f66ccd"
+
+[hooks.state."/Users/didi/Desktop/Brass-Birmingham/.codex/hooks.json:session_start:0:0"]
+trusted_hash = "sha256:0cfb40c99356f00ac4a03370ea80f205e5b7b21787e652ee222b32ce34cc8e10"
+
+[hooks.state."/Users/didi/Desktop/Brass-Birmingham/.codex/hooks.json:stop:0:0"]
+trusted_hash = "sha256:2a4108ead93279c262a0a4c33dedb799f547333c2cb17b66635e4e5bb3cb1973"
+
+[hooks.state."/Users/didi/Desktop/Brass-Birmingham/.codex/hooks.json:user_prompt_submit:0:0"]
+trusted_hash = "sha256:071e3de2b91c55efc0a06969ad7e1f513549a160c195579bca76741cb5505421"
+# End OMX-owned Codex hook trust state
+
+# OMX TUI StatusLine (Codex CLI v0.101.0+)
+[tui]
+# omx:managed-status-line
+status_line = ["model-with-reasoning", "git-branch", "context-remaining", "total-input-tokens", "total-output-tokens", "five-hour-limit", "weekly-limit"]
+
+# ============================================================
+# End oh-my-codex

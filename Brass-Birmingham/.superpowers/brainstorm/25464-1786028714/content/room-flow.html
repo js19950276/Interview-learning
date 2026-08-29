@@ -1,0 +1,76 @@
+<style>
+  :root { --gold:#d8ae69; --gold2:#84683e; --ink:#101416; --panel:#181d1f; --text:#efe0c7; --muted:#9eabb2; --green:#69c797; --red:#bd6257; }
+  .flowline { display:flex; align-items:center; justify-content:center; gap:10px; margin:15px 0 22px; color:#d7b578; font-size:12px; font-weight:800; }
+  .flowline span { padding:7px 11px; border:1px solid #4d5358; border-radius:999px; background:#151a1d; }
+  .flowline i { color:#6f7b82; font-style:normal; }
+  .screens { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:18px; }
+  .screen-card { border:1px solid #3c4650; border-radius:18px; overflow:hidden; background:#0f1418; }
+  .screen { position:relative; aspect-ratio:3/4; overflow:hidden; color:var(--text); background:radial-gradient(circle at 70% 22%,#4b5b5e,#243338 42%,#121a1e 78%); }
+  .screen:before { content:""; position:absolute; inset:0; background:linear-gradient(180deg,rgba(5,7,8,.08),rgba(5,7,8,.62)); }
+  .screen-title { position:absolute; left:7%; right:7%; top:6%; z-index:2; }
+  .eyebrow { color:#d3b274; font-size:9px; letter-spacing:.15em; text-transform:uppercase; }
+  .screen-title h3 { margin:5px 0 3px; font-family:Georgia,serif; font-size:22px; font-weight:500; color:#f2dfbc; }
+  .screen-title p { margin:0; color:#aeb8bd; font-size:9px; }
+  .mode-list { position:absolute; left:7%; right:7%; top:31%; display:grid; gap:11px; z-index:2; }
+  .mode { padding:15px; border:1px solid #665437; border-radius:13px; background:linear-gradient(145deg,rgba(31,36,37,.96),rgba(17,21,22,.96)); box-shadow:0 9px 22px rgba(0,0,0,.26); }
+  .mode.primary { border-color:#c59a58; box-shadow:0 0 0 1px rgba(197,154,88,.2),0 10px 22px rgba(0,0,0,.3); }
+  .mode-icon { float:left; width:35px; aspect-ratio:1; margin-right:10px; display:grid; place-items:center; border-radius:10px; background:linear-gradient(145deg,#e1b96f,#7f5828); color:#1c1409; font-size:17px; }
+  .mode h4 { margin:1px 0 4px; color:#eddbbb; font-size:12px; }.mode p { margin:0; color:#89969d; font-size:8px; line-height:1.4; }
+  .footer-link { position:absolute; left:0; right:0; bottom:5%; text-align:center; color:#859198; font-size:8px; z-index:2; }
+  .status { position:absolute; left:7%; right:7%; top:25%; padding:10px 12px; display:flex; align-items:center; gap:8px; border:1px solid #385548; border-radius:10px; color:#9dd4b5; background:rgba(22,39,32,.85); font-size:9px; z-index:2; }
+  .status b { width:8px; aspect-ratio:1; border-radius:50%; background:var(--green); box-shadow:0 0 9px var(--green); }
+  .nearby-list { position:absolute; left:7%; right:7%; top:40%; display:grid; gap:8px; z-index:2; }
+  .nearby { display:grid; grid-template-columns:34px 1fr auto; align-items:center; gap:9px; padding:10px; border:1px solid #3d484d; border-radius:11px; background:rgba(21,26,28,.94); }
+  .host-avatar { width:32px; aspect-ratio:1; border-radius:50%; background:radial-gradient(circle at 40% 35%,#d4c29f,#5c4c3d); border:2px solid #b18a51; }
+  .nearby strong { color:#e8dac4; font-size:10px; }.nearby small { display:block; color:#7e8b91; font-size:7px; margin-top:2px; }
+  .join { padding:6px 9px; border-radius:8px; background:#c69750; color:#211708; font-size:8px; font-weight:900; }
+  .host-button { position:absolute; left:7%; right:7%; bottom:6%; padding:11px; text-align:center; border-radius:11px; color:#241809; background:linear-gradient(180deg,#e2bc75,#a97430); font-size:10px; font-weight:900; z-index:2; }
+  .lobby-head { position:absolute; left:7%; right:7%; top:23%; display:flex; justify-content:space-between; color:#aab4ba; font-size:8px; z-index:2; }
+  .seats { position:absolute; left:7%; right:7%; top:31%; display:grid; gap:8px; z-index:2; }
+  .seat { display:grid; grid-template-columns:32px 1fr auto; align-items:center; gap:9px; padding:9px 10px; border:1px solid #3e494e; border-radius:11px; background:rgba(20,25,27,.95); }
+  .seat.host { border-color:#8d6e42; }.seat.empty { opacity:.68; border-style:dashed; }
+  .seat-dot { width:30px; aspect-ratio:1; border-radius:50%; background:#5b3c66; border:3px solid #a879b9; }.seat:nth-child(2) .seat-dot { background:#30566c; border-color:#69a5c6; }.seat:nth-child(3) .seat-dot { background:#695926; border-color:#d6b353; }
+  .seat strong { color:#e7dac4; font-size:10px; }.seat small { display:block; color:#7f8c92; font-size:7px; margin-top:2px; }
+  .ready { color:#84d0aa; font-size:8px; }.waiting { color:#b6a078; font-size:8px; }
+  .settings { position:absolute; left:7%; right:7%; bottom:17%; display:flex; justify-content:space-between; padding:8px 10px; border-radius:9px; background:rgba(12,16,18,.8); color:#8d999f; font-size:7px; z-index:2; }
+  .start { position:absolute; left:7%; right:7%; bottom:6%; padding:11px; text-align:center; border-radius:11px; color:#241809; background:linear-gradient(180deg,#e2bc75,#a97430); font-size:10px; font-weight:900; z-index:2; }
+  .caption { padding:14px 16px 17px; }
+  .caption h3 { margin:0 0 6px; color:#ecd9b9; }.caption p { margin:0; color:#9eabb4; line-height:1.45; }
+  .notes { margin-top:20px; display:grid; grid-template-columns:repeat(3,1fr); gap:12px; }
+  .note { padding:13px 14px; border:1px solid #3a444d; border-radius:12px; background:#11161a; color:#a5b0b8; font-size:12px; line-height:1.45; }
+  .note strong { color:#e7c889; display:block; margin-bottom:4px; }
+  .approval { margin-top:22px; }
+  .approval .options { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  @media (max-width:900px) { .screens,.notes { grid-template-columns:1fr; } }
+</style>
+
+<h2>主页、附近发现与统一房间大厅</h2>
+<p class="subtitle">在线和飞机离线模式在入口处明确分开，但加入后使用同一套房间、准备和颜色选择界面。</p>
+
+<div class="flowline"><span>主页</span><i>→</i><span>在线 / 附近离线</span><i>→</i><span>2–4 人房间</span><i>→</i><span>开始对局</span></div>
+
+<div class="screens">
+  <div class="screen-card"><div class="screen">
+    <div class="screen-title"><div class="eyebrow">Brass City</div><h3>选择游戏方式</h3><p>继续建设你的工业网络</p></div>
+    <div class="mode-list"><div class="mode"><span class="mode-icon">◎</span><h4>在线房间</h4><p>通过房间码，与远方朋友进行 2–4 人对局</p></div><div class="mode primary"><span class="mode-icon">⌁</span><h4>附近离线房间</h4><p>无互联网也能连接附近 iPhone 和 iPad</p></div><div class="mode"><span class="mode-icon">?</span><h4>规则与教学</h4><p>浏览规则、交互教程和测试棋局</p></div></div>
+    <div class="footer-link">设置 · 音效 · 辅助功能</div>
+  </div><div class="caption"><h3>1 · 明确选择通信方式</h3><p>不自动猜测网络，避免飞机上反复等待在线服务器超时。</p></div></div>
+
+  <div class="screen-card"><div class="screen">
+    <div class="screen-title"><div class="eyebrow">Nearby Play</div><h3>附近离线房间</h3><p>保持蓝牙开启，设备无需接入互联网</p></div>
+    <div class="status"><b></b>已准备发现附近设备</div>
+    <div class="nearby-list"><div class="nearby"><i class="host-avatar"></i><div><strong>Didi 的房间</strong><small>1 / 4 · 规则 v2018.11</small></div><span class="join">加入</span></div><div class="nearby"><i class="host-avatar"></i><div><strong>Owen 的房间</strong><small>3 / 4 · 等待玩家</small></div><span class="join">加入</span></div></div>
+    <div class="host-button">创建附近房间</div>
+  </div><div class="caption"><h3>2 · 发现或创建</h3><p>显示房主、人数和规则版本；权限或无线状态异常时原位给出修复指引。</p></div></div>
+
+  <div class="screen-card"><div class="screen">
+    <div class="screen-title"><div class="eyebrow">Room A7K2</div><h3>等待玩家</h3><p>房主：Didi · 附近离线</p></div>
+    <div class="lobby-head"><span>玩家与颜色</span><span>3 / 4</span></div>
+    <div class="seats"><div class="seat host"><i class="seat-dot"></i><div><strong>Didi</strong><small>房主 · 紫色</small></div><span class="ready">已准备</span></div><div class="seat"><i class="seat-dot"></i><div><strong>Lina</strong><small>蓝色</small></div><span class="ready">已准备</span></div><div class="seat"><i class="seat-dot"></i><div><strong>Owen</strong><small>黄色</small></div><span class="waiting">选择中</span></div><div class="seat empty"><i class="seat-dot"></i><div><strong>空座位</strong><small>等待附近玩家</small></div><span class="waiting">—</span></div></div>
+    <div class="settings"><span>标准模式</span><span>公开手牌：否</span><span>v2018.11</span></div><div class="start">全部准备后开始</div>
+  </div><div class="caption"><h3>3 · 通信无关的统一大厅</h3><p>在线和离线房间共用座位、颜色、准备与开局逻辑，切换通信层不改变游戏 UI。</p></div></div>
+</div>
+
+<div class="notes"><div class="note"><strong>房主权威</strong>房主设备保存并裁决当前局面，其他设备只发送行动意图。</div><div class="note"><strong>重连保护</strong>掉线座位暂时保留，重新加入后由房主发送完整快照。</div><div class="note"><strong>前台提示</strong>附近模式需要游戏保持前台；离开 App 前先给出明确提醒。</div></div>
+
+<div class="approval"><div class="options"><div class="option" data-choice="room-flow-approved" onclick="toggleSelect(this)"><div class="letter">✓</div><div class="content"><h3>确认房间流程</h3><p>继续确认系统架构、异常处理与测试设计。</p></div></div><div class="option" data-choice="room-flow-revise" onclick="toggleSelect(this)"><div class="letter">↺</div><div class="content"><h3>需要调整</h3><p>请回到对话说明希望修改哪个页面或步骤。</p></div></div></div></div>

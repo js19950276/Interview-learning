@@ -1,0 +1,89 @@
+<style>
+  :root { --gold:#d4ad6e; --ink:#111517; --panel:#191e20; --line:#675337; --mist1:#607074; --mist2:#26353a; }
+  .baseline { display:flex; align-items:center; gap:22px; padding:16px; margin:18px 0 24px; border:1px solid #39424e; border-radius:16px; background:#11161b; }
+  .baseline p { margin:0; color:#aeb6c2; }
+  .mini-ipad { position:relative; width:280px; aspect-ratio:4/3; flex:0 0 auto; border:2px solid #5d6670; border-radius:14px; overflow:hidden; background:#20292d; }
+  .phone-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:18px; }
+  .choice-card { cursor:pointer; border:1px solid #3d4651; border-radius:17px; background:#101419; overflow:hidden; transition:.2s ease; }
+  .choice-card:hover { transform:translateY(-4px); border-color:var(--gold); }
+  .choice-card.selected { border-color:#e5bd78; box-shadow:0 0 0 2px rgba(229,189,120,.23); }
+  .copy { padding:15px 17px 18px; }
+  .copy h3 { margin:0 0 7px; color:#f0dfc2; }
+  .copy p { margin:0; color:#aab4c0; line-height:1.45; }
+  .rec { display:inline-block; margin-bottom:8px; padding:4px 9px; border-radius:999px; background:#49371f; color:#f2c776; font-size:11px; font-weight:800; }
+  .phone-wrap { padding:24px 12px 17px; background:linear-gradient(180deg,#171d21,#0c1014); }
+  .phone { position:relative; aspect-ratio:19.5/9; border:3px solid #606975; border-radius:22px; overflow:hidden; background:#233136; box-shadow:0 16px 28px rgba(0,0,0,.35); }
+  .notch { position:absolute; left:43%; right:43%; top:0; height:5%; background:#050607; border-radius:0 0 9px 9px; z-index:9; }
+  .top { position:absolute; inset:0 0 auto; height:13%; background:linear-gradient(#202628,#111516); border-bottom:1px solid var(--line); }
+  .map { position:absolute; inset:13% 0 22%; background:radial-gradient(circle at 57% 43%,var(--mist1),var(--mist2) 52%,#172126); color:var(--gold); }
+  .map:before,.map:after { content:""; position:absolute; border:2px solid currentColor; opacity:.5; border-radius:50%; }
+  .map:before { width:43%; height:36%; left:22%; top:27%; transform:rotate(-10deg); }
+  .map:after { width:27%; height:46%; left:51%; top:13%; transform:rotate(21deg); }
+  .bottom { position:absolute; inset:auto 0 0; height:22%; background:linear-gradient(180deg,#171b1d,#0d1012); border-top:1px solid var(--line); }
+  .hand { position:absolute; left:17%; right:22%; bottom:3%; height:13%; display:flex; gap:2%; }
+  .hand i { flex:1; border-radius:3px; border:1px solid #ac814c; background:linear-gradient(145deg,#6c3030,#171415); box-shadow:0 3px 7px rgba(0,0,0,.35); }
+  .act { position:absolute; right:4%; bottom:4%; width:12%; aspect-ratio:1; display:grid; place-items:center; border-radius:50%; background:radial-gradient(circle at 40% 32%,#f1cc7f,#a5702c); color:#17120c; box-shadow:0 0 0 3px #2d2418; font-size:8px; font-weight:900; }
+  .tab { position:absolute; top:35%; padding:8px 5px; background:#1b2022; color:#d9b576; border:1px solid #75603f; font-size:8px; writing-mode:vertical-rl; letter-spacing:.05em; z-index:3; }
+  .tab.left { left:0; border-radius:0 7px 7px 0; }
+  .tab.right { right:0; border-radius:7px 0 0 7px; }
+  .drawer-panel { position:absolute; top:13%; bottom:22%; width:25%; background:rgba(20,24,25,.96); border-color:#725d3d; border-style:solid; z-index:4; }
+  .drawer-panel.left { left:0; border-width:0 1px 0 0; }
+  .drawer-panel.right { right:0; border-width:0 0 0 1px; }
+  .rows { position:absolute; inset:10%; display:grid; grid-template-rows:repeat(4,1fr); gap:7%; }
+  .rows i { border-radius:999px 5px 5px 999px; background:linear-gradient(90deg,#3f3021,#8a673c); }
+  .tiles { position:absolute; inset:9% 18%; display:grid; grid-template-rows:repeat(5,1fr); gap:5%; }
+  .tiles i { border-radius:3px; background:linear-gradient(90deg,#5f4729,#d2aa64); }
+  .rail { position:absolute; top:13%; bottom:22%; width:9%; background:rgba(18,22,23,.95); border-color:#6b573a; border-style:solid; z-index:3; }
+  .rail.left { left:0; border-width:0 1px 0 0; }
+  .rail.right { right:0; border-width:0 0 0 1px; }
+  .rail .dot { display:block; width:64%; aspect-ratio:1; border-radius:50%; margin:22% auto; background:#80603a; border:1px solid #d1aa68; }
+  .focus .map { inset:13% 0 22%; }
+  .focus-card { position:absolute; left:14%; right:14%; bottom:19%; height:27%; background:rgba(19,23,25,.96); border:1px solid #876b42; border-radius:12px 12px 0 0; z-index:5; box-shadow:0 -12px 28px rgba(0,0,0,.45); }
+  .focus-card:before { content:"当前：选择建造地点"; display:block; color:#efcf96; font-size:9px; padding:8px 10px; border-bottom:1px solid #4c402e; }
+  .mini-ipad .top { height:12%; }
+  .mini-ipad .map { inset:12% 16% 18% 18%; }
+  .mini-ipad .bottom { left:18%; height:18%; }
+  .mini-ipad .drawer-panel.left { top:12%; bottom:0; width:18%; }
+  .mini-ipad .drawer-panel.right { top:12%; bottom:18%; width:16%; }
+  .mini-ipad .hand { left:22%; right:23%; height:10%; }
+  .mini-ipad .act { width:11%; }
+  @media (max-width:900px) { .phone-grid { grid-template-columns:1fr; } .baseline { align-items:flex-start; flex-direction:column; } .mini-ipad { width:100%; max-width:420px; } }
+</style>
+
+<h2>iPhone 上，左右信息面板怎么收纳？</h2>
+<p class="subtitle">iPad 保留完整桌面布局；这里选择 iPhone 横屏时的交互。点击一个方案。</p>
+
+<div class="baseline">
+  <div class="mini-ipad">
+    <div class="top"></div><div class="drawer-panel left"><div class="rows"><i></i><i></i><i></i><i></i></div></div><div class="map"></div>
+    <div class="drawer-panel right"><div class="tiles"><i></i><i></i><i></i><i></i><i></i></div></div><div class="bottom"></div>
+    <div class="hand"><i></i><i></i><i></i><i></i></div><div class="act">行动</div>
+  </div>
+  <p><strong style="color:#efd29f">iPad 基线：</strong>左侧顺位与本轮花费、右侧产业、底部手牌、右下行动常驻；地图支持缩放和拖动。</p>
+</div>
+
+<div class="phone-grid">
+  <div class="choice-card" data-choice="edge-drawers" onclick="toggleSelect(this)">
+    <div class="phone-wrap"><div class="phone">
+      <div class="notch"></div><div class="top"></div><div class="map"></div><div class="bottom"></div>
+      <div class="tab left">玩家与花费</div><div class="tab right">我的产业</div><div class="hand"><i></i><i></i><i></i><i></i></div><div class="act">行动</div>
+    </div></div>
+    <div class="copy"><span class="rec">推荐</span><h3>A · 边缘抽屉</h3><p>默认只显示地图、手牌和行动；左右边缘保留标签，点击或滑动展开玩家与产业面板。兼顾信息完整和地图空间。</p></div>
+  </div>
+
+  <div class="choice-card" data-choice="persistent-rails" onclick="toggleSelect(this)">
+    <div class="phone-wrap"><div class="phone">
+      <div class="notch"></div><div class="top"></div><div class="map"></div><div class="rail left"><i class="dot"></i><i class="dot"></i><i class="dot"></i><i class="dot"></i></div><div class="rail right"><i class="dot"></i><i class="dot"></i><i class="dot"></i><i class="dot"></i></div><div class="bottom"></div>
+      <div class="hand"><i></i><i></i><i></i><i></i></div><div class="act">行动</div>
+    </div></div>
+    <div class="copy"><h3>B · 常驻迷你侧栏</h3><p>两侧始终显示头像、花费和产业图标，点击后放大详情。扫一眼就能掌握局势，但地图有效宽度更小。</p></div>
+  </div>
+
+  <div class="choice-card" data-choice="context-focus" onclick="toggleSelect(this)">
+    <div class="phone-wrap"><div class="phone focus">
+      <div class="notch"></div><div class="top"></div><div class="map"></div><div class="bottom"></div><div class="focus-card"></div>
+      <div class="hand"><i></i><i></i><i></i><i></i></div><div class="act">行动</div>
+    </div></div>
+    <div class="copy"><h3>C · 行动聚焦</h3><p>默认全地图；选牌或行动后，从底部弹出当前任务面板，只展示本步骤需要的信息。最沉浸，但查看全局状态要多一步。</p></div>
+  </div>
+</div>

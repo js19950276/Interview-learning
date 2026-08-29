@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>DataEye 红果热榜 Top100 标签趋势报告</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f8fafc;
+      --card: #ffffff;
+      --text: #0f172a;
+      --muted: #64748b;
+      --line: #e2e8f0;
+      --shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+    }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    .page {
+      max-width: 1240px;
+      margin: 0 auto;
+      padding: 28px 24px 56px;
+    }
+    h1, h2, h3 {
+      margin: 0 0 12px;
+    }
+    p, li {
+      line-height: 1.65;
+    }
+    .subtle {
+      color: var(--muted);
+    }
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 16px;
+      margin: 22px 0 26px;
+    }
+    .card, .panel {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      box-shadow: var(--shadow);
+    }
+    .card {
+      padding: 18px 20px;
+    }
+    .card .label {
+      color: var(--muted);
+      font-size: 13px;
+      margin-bottom: 6px;
+    }
+    .card .value {
+      font-size: 28px;
+      font-weight: 700;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: 1.4fr 1fr;
+      gap: 18px;
+      margin-top: 18px;
+    }
+    .panel {
+      padding: 18px 20px 20px;
+      overflow: auto;
+    }
+    .panel + .panel {
+      margin-top: 0;
+    }
+    .chart-svg {
+      width: 100%;
+      height: auto;
+      display: block;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+    }
+    th, td {
+      padding: 10px 8px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+    }
+    th {
+      color: var(--muted);
+      font-weight: 600;
+      font-size: 12px;
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+    }
+    .pill {
+      display: inline-block;
+      padding: 3px 8px;
+      border-radius: 999px;
+      font-size: 12px;
+      background: #eef2ff;
+      color: #4338ca;
+      margin-right: 6px;
+      margin-bottom: 6px;
+    }
+    ul.insights {
+      margin: 0;
+      padding-left: 20px;
+    }
+    @media (max-width: 960px) {
+      .cards, .grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <h1>DataEye 红果热榜 Top100 标签趋势报告</h1>
+    <p class="subtle">最近快照日期：2026-05-14。主指标使用 <strong>Top100 排名积分份额</strong>（rank_score = 101 - rank），避免热度口径变化直接影响趋势判断。</p>
+
+    <div class="cards">
+      <div class="card">
+        <div class="label">覆盖天数</div>
+        <div class="value">14</div>
+      </div>
+      <div class="card">
+        <div class="label">去重后剧集数</div>
+        <div class="value">6</div>
+      </div>
+      <div class="card">
+        <div class="label">最新日新剧贡献</div>
+        <div class="value">19.6%</div>
+      </div>
+      <div class="card">
+        <div class="label">最新日新剧占比</div>
+        <div class="value">20.0%</div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>结论速览</h2>
+      <ul class="insights">
+        <li>最近 14 天升温最快的一级标签：乡村/现实 +0.0%、古风/古代 +0.0%。</li><li>最近 14 天走弱最快的一级标签：穿越/重生 +0.0%、豪门/总裁 +0.0%、逆袭/爽文 +0.0%。</li><li>2026-05-14 的榜单结构中，占比最高的标签依次为：穿越/重生 39.8%、豪门/总裁 20.4%、家庭/亲情 20.0%、奇幻/系统 19.8%。</li><li>当前新上榜 7 日内剧集贡献了 19.6% 的榜单积分，说明头部偏好仍由老剧稳定贡献。</li><li>当前在榜粘性最强的剧包括：闪婚后总裁老公天天宠(在榜14天, 最好名次#1)；重生后我在侯府杀疯了(在榜14天, 最好名次#2)；团宠萌宝帮妈妈打脸(在榜14天, 最好名次#3)；末世觉醒后我绑定神豪系统(在榜14天, 最好名次#4)；山村神医从退婚开始(在榜7天, 最好名次#5)。</li>
+      </ul>
+    </div>
+
+    <div class="panel" style="margin-top: 18px;">
+      <h2>一级标签份额变化（7 日均线）</h2>
+      <p class="subtle">用一级标签观察用户偏好迁移，更适合回答“红果用户最近更爱看哪类剧”。</p>
+      <svg viewBox="0 0 1040 420" class="chart-svg" role="img" aria-label="标签份额堆叠面积图"><line x1="52" y1="376.00" x2="1016" y2="376.00" stroke="#e5e7eb" stroke-width="1" /><text x="42" y="380.00" text-anchor="end" font-size="12" fill="#64748b">0%</text><line x1="52" y1="305.60" x2="1016" y2="305.60" stroke="#e5e7eb" stroke-width="1" /><text x="42" y="309.60" text-anchor="end" font-size="12" fill="#64748b">20%</text><line x1="52" y1="235.20" x2="1016" y2="235.20" stroke="#e5e7eb" stroke-width="1" /><text x="42" y="239.20" text-anchor="end" font-size="12" fill="#64748b">40%</text><line x1="52" y1="164.80" x2="1016" y2="164.80" stroke="#e5e7eb" stroke-width="1" /><text x="42" y="168.80" text-anchor="end" font-size="12" fill="#64748b">60%</text><line x1="52" y1="94.40" x2="1016" y2="94.40" stroke="#e5e7eb" stroke-width="1" /><text x="42" y="98.40" text-anchor="end" font-size="12" fill="#64748b">80%</text><line x1="52" y1="24.00" x2="1016" y2="24.00" stroke="#e5e7eb" stroke-width="1" /><text x="42" y="28.00" text-anchor="end" font-size="12" fill="#64748b">100%</text><line x1="52.00" y1="376" x2="52.00" y2="24" stroke="#f1f5f9" stroke-width="1" /><text x="52.00" y="396" text-anchor="middle" font-size="12" fill="#64748b">05-01</text><line x1="274.46" y1="376" x2="274.46" y2="24" stroke="#f1f5f9" stroke-width="1" /><text x="274.46" y="396" text-anchor="middle" font-size="12" fill="#64748b">05-04</text><line x1="571.08" y1="376" x2="571.08" y2="24" stroke="#f1f5f9" stroke-width="1" /><text x="571.08" y="396" text-anchor="middle" font-size="12" fill="#64748b">05-08</text><line x1="793.54" y1="376" x2="793.54" y2="24" stroke="#f1f5f9" stroke-width="1" /><text x="793.54" y="396" text-anchor="middle" font-size="12" fill="#64748b">05-11</text><line x1="1016.00" y1="376" x2="1016.00" y2="24" stroke="#f1f5f9" stroke-width="1" /><text x="1016.00" y="396" text-anchor="middle" font-size="12" fill="#64748b">05-14</text><polygon points="52.00,306.32 126.15,306.32 200.31,306.32 274.46,306.32 348.62,306.32 422.77,306.32 496.92,306.32 571.08,306.32 645.23,306.32 719.38,306.32 793.54,306.32 867.69,306.32 941.85,306.32 1016.00,306.32 1016.00,376.00 941.85,376.00 867.69,376.00 793.54,376.00 719.38,376.00 645.23,376.00 571.08,376.00 496.92,376.00 422.77,376.00 348.62,376.00 274.46,376.00 200.31,376.00 126.15,376.00 52.00,376.00" fill="#7b61ff" fill-opacity="0.82" stroke="#7b61ff" stroke-width="1"><title>奇幻/系统 19.8%</title></polygon><polygon points="52.00,235.20 126.15,235.20 200.31,235.20 274.46,235.20 348.62,235.20 422.77,235.20 496.92,235.20 571.08,225.35 645.23,215.50 719.38,205.64 793.54,195.79 867.69,185.94 941.85,176.09 1016.00,166.24 1016.00,306.32 941.85,306.32 867.69,306.32 793.54,306.32 719.38,306.32 645.23,306.32 571.08,306.32 496.92,306.32 422.77,306.32 348.62,306.32 274.46,306.32 200.31,306.32 126.15,306.32 52.00,306.32" fill="#00a896" fill-opacity="0.82" stroke="#00a896" stroke-width="1"><title>穿越/重生 39.8%</title></polygon><polygon points="52.00,235.20 126.15,235.20 200.31,235.20 274.46,235.20 348.62,235.20 422.77,235.20 496.92,235.20 571.08,225.35 645.23,215.50 719.38,205.64 793.54,195.79 867.69,185.94 941.85,176.09 1016.00,166.24 1016.00,166.24 941.85,176.09 867.69,185.94 793.54,195.79 719.38,205.64 645.23,215.50 571.08,225.35 496.92,235.20 422.77,235.20 348.62,235.20 274.46,235.20 200.31,235.20 126.15,235.20 52.00,235.20" fill="#c6925b" fill-opacity="0.82" stroke="#c6925b" stroke-width="1"><title>古风/古代 0.0%</title></polygon><polygon points="52.00,163.36 126.15,163.36 200.31,163.36 274.46,163.36 348.62,163.36 422.77,163.36 496.92,163.36 571.08,153.51 645.23,143.66 719.38,133.81 793.54,123.96 867.69,114.10 941.85,104.25 1016.00,94.40 1016.00,166.24 941.85,176.09 867.69,185.94 793.54,195.79 719.38,205.64 645.23,215.50 571.08,225.35 496.92,235.20 422.77,235.20 348.62,235.20 274.46,235.20 200.31,235.20 126.15,235.20 52.00,235.20" fill="#6f7bf7" fill-opacity="0.82" stroke="#6f7bf7" stroke-width="1"><title>豪门/总裁 20.4%</title></polygon><polygon points="52.00,163.36 126.15,163.36 200.31,163.36 274.46,163.36 348.62,163.36 422.77,163.36 496.92,163.36 571.08,153.51 645.23,143.66 719.38,133.81 793.54,123.96 867.69,114.10 941.85,104.25 1016.00,94.40 1016.00,94.40 941.85,104.25 867.69,114.10 793.54,123.96 719.38,133.81 645.23,143.66 571.08,153.51 496.92,163.36 422.77,163.36 348.62,163.36 274.46,163.36 200.31,163.36 126.15,163.36 52.00,163.36" fill="#ffb000" fill-opacity="0.82" stroke="#ffb000" stroke-width="1"><title>逆袭/爽文 0.0%</title></polygon><polygon points="52.00,92.96 126.15,92.96 200.31,92.96 274.46,92.96 348.62,92.96 422.77,92.96 496.92,92.96 571.08,83.11 645.23,73.26 719.38,63.41 793.54,53.56 867.69,43.70 941.85,33.85 1016.00,24.00 1016.00,94.40 941.85,104.25 867.69,114.10 793.54,123.96 719.38,133.81 645.23,143.66 571.08,153.51 496.92,163.36 422.77,163.36 348.62,163.36 274.46,163.36 200.31,163.36 126.15,163.36 52.00,163.36" fill="#16a34a" fill-opacity="0.82" stroke="#16a34a" stroke-width="1"><title>家庭/亲情 20.0%</title></polygon><polygon points="52.00,24.00 126.15,24.00 200.31,24.00 274.46,24.00 348.62,24.00 422.77,24.00 496.92,24.00 571.08,24.00 645.23,24.00 719.38,24.00 793.54,24.00 867.69,24.00 941.85,24.00 1016.00,24.00 1016.00,24.00 941.85,33.85 867.69,43.70 793.54,53.56 719.38,63.41 645.23,73.26 571.08,83.11 496.92,92.96 422.77,92.96 348.62,92.96 274.46,92.96 200.31,92.96 126.15,92.96 52.00,92.96" fill="#8b5e3c" fill-opacity="0.82" stroke="#8b5e3c" stroke-width="1"><title>乡村/现实 0.0%</title></polygon><polygon points="52.00,24.00 126.15,24.00 200.31,24.00 274.46,24.00 348.62,24.00 422.77,24.00 496.92,24.00 571.08,24.00 645.23,24.00 719.38,24.00 793.54,24.00 867.69,24.00 941.85,24.00 1016.00,24.00 1016.00,24.00 941.85,24.00 867.69,24.00 793.54,24.00 719.38,24.00 645.23,24.00 571.08,24.00 496.92,24.00 422.77,24.00 348.62,24.00 274.46,24.00 200.31,24.00 126.15,24.00 52.00,24.00" fill="#ff7aa2" fill-opacity="0.82" stroke="#ff7aa2" stroke-width="1"><title>现代情感 0.0%</title></polygon><rect x="52" y="8" width="12" height="12" fill="#7b61ff" rx="2" /><text x="70" y="18" font-size="12" fill="#1f2937">奇幻/系统</text><rect x="172" y="8" width="12" height="12" fill="#00a896" rx="2" /><text x="190" y="18" font-size="12" fill="#1f2937">穿越/重生</text><rect x="292" y="8" width="12" height="12" fill="#c6925b" rx="2" /><text x="310" y="18" font-size="12" fill="#1f2937">古风/古代</text><rect x="412" y="8" width="12" height="12" fill="#6f7bf7" rx="2" /><text x="430" y="18" font-size="12" fill="#1f2937">豪门/总裁</text><rect x="532" y="8" width="12" height="12" fill="#ffb000" rx="2" /><text x="550" y="18" font-size="12" fill="#1f2937">逆袭/爽文</text><rect x="652" y="8" width="12" height="12" fill="#16a34a" rx="2" /><text x="670" y="18" font-size="12" fill="#1f2937">家庭/亲情</text><rect x="772" y="8" width="12" height="12" fill="#8b5e3c" rx="2" /><text x="790" y="18" font-size="12" fill="#1f2937">乡村/现实</text><rect x="892" y="8" width="12" height="12" fill="#ff7aa2" rx="2" /><text x="910" y="18" font-size="12" fill="#1f2937">现代情感</text></svg>
+    </div>
+
+    <div class="grid">
+      <div class="panel">
+        <h2>周度标签热力矩阵</h2>
+        <p class="subtle">颜色越深，代表该周该标签在 Top100 中占据更高积分份额。</p>
+        <svg viewBox="0 0 780 374" class="chart-svg" role="img" aria-label="标签周热力矩阵"><text x="126.5" y="16" text-anchor="middle" font-size="11" fill="#64748b">04-28</text><text x="162.5" y="16" text-anchor="middle" font-size="11" fill="#64748b">05-05</text><text x="198.5" y="16" text-anchor="middle" font-size="11" fill="#64748b">05-12</text><text x="100" y="43" text-anchor="end" font-size="12" fill="#334155">奇幻/系统</text><rect x="110" y="24" width="33" height="25" rx="4" fill="rgba(79, 70, 229, 0.578)"><title>奇幻/系统 2026-04-28 19.8%</title></rect><text x="126.5" y="41" text-anchor="middle" font-size="10" fill="#ffffff">19</text><rect x="146" y="24" width="33" height="25" rx="4" fill="rgba(79, 70, 229, 0.578)"><title>奇幻/系统 2026-05-05 19.8%</title></rect><text x="162.5" y="41" text-anchor="middle" font-size="10" fill="#ffffff">19</text><rect x="182" y="24" width="33" height="25" rx="4" fill="rgba(79, 70, 229, 0.578)"><title>奇幻/系统 2026-05-12 19.8%</title></rect><text x="198.5" y="41" text-anchor="middle" font-size="10" fill="#ffffff">19</text><text x="100" y="71" text-anchor="end" font-size="12" fill="#334155">穿越/重生</text><rect x="110" y="52" width="33" height="25" rx="4" fill="rgba(79, 70, 229, 0.586)"><title>穿越/重生 2026-04-28 20.2%</title></rect><text x="126.5" y="69" text-anchor="middle" font-size="10" fill="#ffffff">20</text><rect x="146" y="52" width="33" height="25" rx="4" fill="rgba(79, 70, 229, 0.823)"><title>穿越/重生 2026-05-05 31.4%</title></rect><text x="162.5" y="69" text-anchor="middle" font-size="10" fill="#ffffff">31</text><rect x="182" y="52" width="33" height="25" rx="4" fill="rgba(79, 70, 229, 1.000)"><title>穿越/重生 2026-05-12 39.8%</title></rect><text x="198.5" y="69" text-anchor="middle" font-size="10" fill="#ffffff">39</text><text x="100" y="99" text-anchor="end" font-size="12" fill="#334155">古风/古代</text><rect x="110" y="80" width="33" height="25" rx="4" fill="rgba(79, 70, 229, 0.160)"><title>古风/古代 2026-04-28 0.0%</title></rect><text x="126.5" y="97" text-anchor="middle" font-size="10" fill="#ffffff">0</text><rect x="146" y="80" width="33" height="25" rx="4" fill="rgba(79, 70, 229, 0.160)"><title>古风/古代 2026-05-05 0.0%</title></rect><text x="162.5" y="97" text-anchor="middle" font-size="10" fill="#ffffff">0</text><rect x="182" y="80" width="33" height="25" rx="4" fill="rgba(79, 70, 229, 0.160)"><title>古风/古代 2026-05-12 0.0%</title></rect><text x="198.5" y="97" text-anchor="middle" font-size="10" fill="#ffffff">0</text><text x="100" y="127" text-anchor="end" font-size="12" fill="#334155">豪门/总裁</text><rect x="110" y="108" width="33" height="25" rx="4" fill="rgba(79, 70, 229, 0.591)"><title>豪门/总裁 2026-04-28 20.4%</title></rect><text x="126.5" y="125" text-anchor="middle" font-size="10" fill="#ffffff">20</text><rect x="146" y="108" width="33" height="25" rx="4" fill="rgba(79, 70, 229, 0.591)"><title>豪门/总裁 2026-05-05 20.4%</title></rect><text x="162.5" y="125" text-anchor="middle" font-size="10" fill="#ffffff">20</text><rect x="182" y="108" width="33" height="25" rx="4" fill="rgba(79, 70, 229, 0.591)"><title>豪门/总裁 2026-05-12 20.4%</title></rect><text x="198.5" y="125" text-anchor="middle" font-size="10" fill="#ffffff">20</text><text x="100" y="155" text-anchor="end" font-size="12" fill="#334155">逆袭/爽文</text><rect x="110" y="136" width="33" height="25" rx="4" fill="rgba(79, 70, 229, 0.160)"><title>逆袭/爽文 2026-04-28 0.0%</title></rect><text x="126.5" y="153" text-anchor="middle" font-size="10" fill="#ffffff">0</text><rect x="146" y="136" width="33" height="25" rx="4" fill="rgba(79, 70, 229, 0.160)"><title>逆袭/爽文 2026-05-05 0.0%</title></rect><text x="162.5" y="153" text-anchor="middle" font-size="10" fill="#ffffff">0</text><rect x="182" y="136" width="33" height="25" rx="4" fill="rgba(79, 70, 229, 0.160)"><title>逆袭/爽文 2026-05-12 0.0%</title></rect><text x="198.5" y="153" text-anchor="middle" font-size="10" fill="#ffffff">0</text><text x="100" y="183" text-anchor="end" font-size="12" fill="#334155">家庭/亲情</text><rect x="110" y="164" width="33" height="25" rx="4" fill="rgba(79, 70, 229, 0.582)"><title>家庭/亲情 2026-04-28 20.0%</title></rect><text x="126.5" y="181" text-anchor="middle" font-size="10" fill="#ffffff">20</text><rect x="146" y="164" width="33" height="25" rx="4" fill="rgba(79, 70, 229, 0.582)"><title>家庭/亲情 2026-05-05 20.0%</title></rect><text x="162.5" y="181" text-anchor="middle" font-size="10" fill="#ffffff">20</text><rect x="182" y="164" width="33" height="25" rx="4" fill="rgba(79, 70, 229, 0.582)"><title>家庭/亲情 2026-05-12 20.0%</title></rect><text x="198.5" y="181" text-anchor="middle" font-size="10" fill="#ffffff">20</text><text x="100" y="211" text-anchor="end" font-size="12" fill="#334155">乡村/现实</text><rect x="110" y="192" width="33" height="25" rx="4" fill="rgba(79, 70, 229, 0.574)"><title>乡村/现实 2026-04-28 19.6%</title></rect><text x="126.5" y="209" text-anchor="middle" font-size="10" fill="#ffffff">19</text><rect x="146" y="192" width="33" height="25" rx="4" fill="rgba(79, 70, 229, 0.337)"><title>乡村/现实 2026-05-05 8.4%</title></rect><text x="162.5" y="209" text-anchor="middle" font-size="10" fill="#ffffff">8</text><rect x="182" y="192" width="33" height="25" rx="4" fill="rgba(79, 70, 229, 0.160)"><title>乡村/现实 2026-05-12 0.0%</title></rect><text x="198.5" y="209" text-anchor="middle" font-size="10" fill="#ffffff">0</text><text x="100" y="239" text-anchor="end" font-size="12" fill="#334155">现代情感</text><rect x="110" y="220" width="33" height="25" rx="4" fill="rgba(79, 70, 229, 0.160)"><title>现代情感 2026-04-28 0.0%</title></rect><text x="126.5" y="237" text-anchor="middle" font-size="10" fill="#ffffff">0</text><rect x="146" y="220" width="33" height="25" rx="4" fill="rgba(79, 70, 229, 0.160)"><title>现代情感 2026-05-05 0.0%</title></rect><text x="162.5" y="237" text-anchor="middle" font-size="10" fill="#ffffff">0</text><rect x="182" y="220" width="33" height="25" rx="4" fill="rgba(79, 70, 229, 0.160)"><title>现代情感 2026-05-12 0.0%</title></rect><text x="198.5" y="237" text-anchor="middle" font-size="10" fill="#ffffff">0</text></svg>
+      </div>
+      <div class="panel">
+        <h2>最近 14 天 vs 前 14 天</h2>
+        <p class="subtle">正值说明近期升温，负值说明近期走弱。</p>
+        <svg viewBox="0 0 920 340" class="chart-svg" role="img" aria-label="标签涨跌对比图"><line x1="528.0" y1="16" x2="528.0" y2="304" stroke="#94a3b8" stroke-width="1.5" /><text x="150" y="42" text-anchor="end" font-size="12" fill="#334155">乡村/现实</text><rect x="528.00" y="24" width="0.00" height="28" rx="4" fill="#16a34a" /><text x="536.00" y="42" text-anchor="start" font-size="12" fill="#0f172a">+0.0%</text><text x="150" y="78" text-anchor="end" font-size="12" fill="#334155">古风/古代</text><rect x="528.00" y="60" width="0.00" height="28" rx="4" fill="#16a34a" /><text x="536.00" y="78" text-anchor="start" font-size="12" fill="#0f172a">+0.0%</text><text x="150" y="114" text-anchor="end" font-size="12" fill="#334155">奇幻/系统</text><rect x="528.00" y="96" width="0.00" height="28" rx="4" fill="#16a34a" /><text x="536.00" y="114" text-anchor="start" font-size="12" fill="#0f172a">+0.0%</text><text x="150" y="150" text-anchor="end" font-size="12" fill="#334155">家庭/亲情</text><rect x="528.00" y="132" width="0.00" height="28" rx="4" fill="#16a34a" /><text x="536.00" y="150" text-anchor="start" font-size="12" fill="#0f172a">+0.0%</text><text x="150" y="186" text-anchor="end" font-size="12" fill="#334155">现代情感</text><rect x="528.00" y="168" width="0.00" height="28" rx="4" fill="#16a34a" /><text x="536.00" y="186" text-anchor="start" font-size="12" fill="#0f172a">+0.0%</text><text x="150" y="222" text-anchor="end" font-size="12" fill="#334155">穿越/重生</text><rect x="528.00" y="204" width="0.00" height="28" rx="4" fill="#16a34a" /><text x="536.00" y="222" text-anchor="start" font-size="12" fill="#0f172a">+0.0%</text><text x="150" y="258" text-anchor="end" font-size="12" fill="#334155">豪门/总裁</text><rect x="528.00" y="240" width="0.00" height="28" rx="4" fill="#16a34a" /><text x="536.00" y="258" text-anchor="start" font-size="12" fill="#0f172a">+0.0%</text><text x="150" y="294" text-anchor="end" font-size="12" fill="#334155">逆袭/爽文</text><rect x="528.00" y="276" width="0.00" height="28" rx="4" fill="#16a34a" /><text x="536.00" y="294" text-anchor="start" font-size="12" fill="#0f172a">+0.0%</text></svg>
+      </div>
+    </div>
+
+    <div class="grid">
+      <div class="panel">
+        <h2>最新日标签结构</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>标签</th>
+              <th>积分份额</th>
+              <th>上榜剧数</th>
+              <th>热度份额</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td>穿越/重生</td><td>39.8%</td><td>2</td><td>39.8%</td></tr><tr><td>豪门/总裁</td><td>20.4%</td><td>1</td><td>20.4%</td></tr><tr><td>家庭/亲情</td><td>20.0%</td><td>1</td><td>20.0%</td></tr><tr><td>奇幻/系统</td><td>19.8%</td><td>1</td><td>19.8%</td></tr><tr><td>乡村/现实</td><td>0.0%</td><td>0</td><td>0.0%</td></tr><tr><td>其他</td><td>0.0%</td><td>0</td><td>0.0%</td></tr><tr><td>古风/古代</td><td>0.0%</td><td>0</td><td>0.0%</td></tr><tr><td>现代情感</td><td>0.0%</td><td>0</td><td>0.0%</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="panel">
+        <h2>榜单粘性最强的剧</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>剧名</th>
+              <th>一级标签</th>
+              <th>在榜天数</th>
+              <th>最好名次</th>
+              <th>细标签</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td>闪婚后总裁老公天天宠</td><td>豪门/总裁</td><td>14</td><td>#1</td><td><span class="pill">先婚后爱</span><span class="pill">霸总甜虐</span></td></tr><tr><td>重生后我在侯府杀疯了</td><td>穿越/重生</td><td>14</td><td>#2</td><td><span class="pill">打脸虐渣</span><span class="pill">重生复仇</span></td></tr><tr><td>团宠萌宝帮妈妈打脸</td><td>家庭/亲情</td><td>14</td><td>#3</td><td><span class="pill">打脸虐渣</span><span class="pill">萌宝</span></td></tr><tr><td>末世觉醒后我绑定神豪系统</td><td>奇幻/系统</td><td>14</td><td>#4</td><td><span class="pill">神豪</span><span class="pill">系统任务</span><span class="pill">末世异能</span></td></tr><tr><td>山村神医从退婚开始</td><td>乡村/现实</td><td>7</td><td>#5</td><td><span class="pill">神医/玄学</span><span class="pill">乡村逆袭</span></td></tr><tr><td>穿书后我被摄政王宠上天</td><td>穿越/重生</td><td>7</td><td>#5</td><td><span class="pill">穿书</span><span class="pill">权谋</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

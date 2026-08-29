@@ -1,0 +1,76 @@
+<style>
+  .device-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:18px; margin-top:24px; }
+  .device-card { cursor:pointer; border:1px solid #3f4654; border-radius:18px; padding:16px; background:linear-gradient(180deg,#171b22,#0e1117); transition:.2s ease; }
+  .device-card:hover { transform:translateY(-3px); border-color:#c99a4b; }
+  .device-card.selected { border-color:#e0ad55; box-shadow:0 0 0 2px rgba(224,173,85,.25); }
+  .device-card h3 { margin:14px 0 6px; color:#f0ddbd; }
+  .device-card p { color:#aeb7c5; line-height:1.45; }
+  .tag { display:inline-block; padding:4px 9px; border-radius:999px; background:#49361e; color:#f3c77e; font-size:12px; font-weight:700; }
+  .screen { position:relative; overflow:hidden; border:2px solid #626a76; background:#242a31; box-shadow:0 14px 30px rgba(0,0,0,.35); }
+  .tablet { aspect-ratio:4/3; border-radius:15px; }
+  .phone { aspect-ratio:19.5/9; border-radius:14px; margin:18% 0; }
+  .topbar { position:absolute; inset:0 0 auto; height:12%; background:#1a1410; border-bottom:1px solid #8a673a; }
+  .map { position:absolute; background:radial-gradient(circle at 55% 45%,#536266,#273239 55%,#182128); }
+  .map:after { content:""; position:absolute; inset:15%; border:2px dashed rgba(227,184,108,.45); border-radius:45%; transform:rotate(-14deg); }
+  .left { position:absolute; background:#171a20; border-right:1px solid #8a673a; }
+  .right { position:absolute; background:#171a20; border-left:1px solid #8a673a; }
+  .bottom { position:absolute; background:#12151b; border-top:1px solid #8a673a; }
+  .cards-row { position:absolute; display:flex; gap:3%; }
+  .mini-card { flex:1; background:linear-gradient(160deg,#a13f2c,#33241d); border:1px solid #e1b46b; border-radius:3px; }
+  .action { position:absolute; border-radius:50%; background:#d7a64b; box-shadow:0 0 0 4px #3c2d18; }
+  .tablet .map { left:18%; right:16%; top:12%; bottom:18%; }
+  .tablet .left { left:0; top:12%; bottom:0; width:18%; }
+  .tablet .right { right:0; top:12%; bottom:18%; width:16%; }
+  .tablet .bottom { left:18%; right:0; bottom:0; height:18%; }
+  .tablet .cards-row { left:21%; right:22%; bottom:3%; height:11%; }
+  .tablet .action { right:4%; bottom:4%; width:11%; aspect-ratio:1; }
+  .phone .map { left:10%; right:9%; top:13%; bottom:24%; }
+  .phone .left { left:0; top:13%; bottom:24%; width:10%; }
+  .phone .right { right:0; top:13%; bottom:24%; width:9%; }
+  .phone .bottom { left:0; right:0; bottom:0; height:24%; }
+  .phone .cards-row { left:13%; right:25%; bottom:4%; height:14%; }
+  .phone .action { right:5%; bottom:6%; width:12%; aspect-ratio:1; }
+  .drawer .left, .drawer .right { width:5%; opacity:.85; }
+  .drawer .map { left:5%; right:5%; }
+  .drawer .bottom { height:20%; }
+  .drawer .cards-row { left:10%; right:22%; }
+  .drawer .action { right:4%; }
+  .caption { font-size:12px; color:#7f8997; margin-top:10px; }
+  @media (max-width:900px) { .device-grid { grid-template-columns:1fr; } .phone { margin:4% 0; } }
+</style>
+
+<h2>第一版以哪块屏幕作为设计基准？</h2>
+<p class="subtitle">参考你给的布局：中央地图、左侧顺位/花费、右侧产业、底部手牌、右下行动。这里决定信息密度和后续适配成本。</p>
+
+<div class="device-grid">
+  <div class="device-card" data-choice="ipad-first" onclick="toggleSelect(this)">
+    <span class="tag">推荐</span>
+    <div class="screen tablet">
+      <div class="topbar"></div><div class="left"></div><div class="map"></div><div class="right"></div><div class="bottom"></div>
+      <div class="cards-row"><i class="mini-card"></i><i class="mini-card"></i><i class="mini-card"></i><i class="mini-card"></i></div><div class="action"></div>
+    </div>
+    <h3>A · iPad 优先</h3>
+    <p>iPad 横屏保留完整信息面板；iPhone 改成可收起侧栏和可缩放地图。最接近参考图，也最容易做到精致。</p>
+    <div class="caption">代价：iPhone 不是等比例缩小，需要专门适配。</div>
+  </div>
+
+  <div class="device-card" data-choice="iphone-first" onclick="toggleSelect(this)">
+    <div class="screen phone">
+      <div class="topbar"></div><div class="left"></div><div class="map"></div><div class="right"></div><div class="bottom"></div>
+      <div class="cards-row"><i class="mini-card"></i><i class="mini-card"></i><i class="mini-card"></i><i class="mini-card"></i></div><div class="action"></div>
+    </div>
+    <h3>B · iPhone 优先</h3>
+    <p>所有核心控件都先为手机横屏设计，iPad 只是扩大画布。手机体验稳定，但地图和产业信息会更拥挤。</p>
+    <div class="caption">代价：难以达到参考图的沉浸感和信息完整度。</div>
+  </div>
+
+  <div class="device-card" data-choice="equal-adaptive" onclick="toggleSelect(this)">
+    <div class="screen phone drawer">
+      <div class="topbar"></div><div class="left"></div><div class="map"></div><div class="right"></div><div class="bottom"></div>
+      <div class="cards-row"><i class="mini-card"></i><i class="mini-card"></i><i class="mini-card"></i><i class="mini-card"></i></div><div class="action"></div>
+    </div>
+    <h3>C · 双端同等优先</h3>
+    <p>从第一天就为 iPhone/iPad 各做完整自适应布局，侧栏、抽屉和浮层随尺寸切换。</p>
+    <div class="caption">代价：第一阶段设计与验证工作约翻倍。</div>
+  </div>
+</div>

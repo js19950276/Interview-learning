@@ -1,0 +1,45 @@
+<style>
+  .farm-grid { display:grid; grid-template-columns:1fr 1fr; gap:18px; }
+  .farm-card { background:#111820; border:1px solid #35414d; border-radius:14px; padding:16px; }
+  .farm-card svg { width:100%; height:auto; margin-top:10px; border-radius:10px; background:radial-gradient(circle,#26363d,#111820 72%); }
+  .main-route { fill:none; stroke:#dfd4b4; stroke-width:7; stroke-linecap:round; }
+  .spur { fill:none; stroke:#d9973e; stroke-width:6; stroke-linecap:round; }
+  .city { fill:#10171d; stroke:#f0d080; stroke-width:4; }
+  .farm { fill:#d9973e; stroke:#fff1c6; stroke-width:4; }
+  .txt { fill:#f5efe1; font:600 16px system-ui,sans-serif; paint-order:stroke; stroke:#10171d; stroke-width:5px; }
+  .tag { display:inline-block; padding:5px 9px; border-radius:999px; background:#293640; color:#f0d080; font-size:12px; }
+  @media (max-width:800px) { .farm-grid { grid-template-columns:1fr; } }
+</style>
+
+<h2>两个乡村酒桶：位置与规则语义不同</h2>
+<p class="subtitle">你提醒后重新检查了实物棋盘。之前示意图中的北侧酒桶位置确实不对，下面是修正后的设计。</p>
+
+<div class="farm-grid">
+  <div class="farm-card">
+    <span class="tag">北侧 · 独立路线端点</span>
+    <h3>Cannock 乡村酒桶</h3>
+    <p>位于 Cannock 左侧。规则路线 <code>cannock-cannock-farm</code> 直接连接两者，因此酒桶是正式端点。</p>
+    <svg viewBox="0 0 420 250" aria-label="Cannock farm west of Cannock">
+      <path class="main-route" d="M100 130 C170 130 225 132 300 130"/>
+      <circle class="farm" cx="100" cy="130" r="18"/><circle class="city" cx="300" cy="130" r="20"/>
+      <text class="txt" x="62" y="177">乡村酒桶</text><text class="txt" x="266" y="177">Cannock</text>
+    </svg>
+  </div>
+
+  <div class="farm-card">
+    <span class="tag">南侧 · 主路线的相邻地点</span>
+    <h3>Kidderminster—Worcester 乡村酒桶</h3>
+    <p>位于两城走廊左侧。主路线端点仍是两座城市，酒桶用短支线关联到路线中段。</p>
+    <svg viewBox="0 0 420 250" aria-label="Southern farm west of Kidderminster Worcester route">
+      <path class="main-route" d="M300 45 C275 105 278 165 300 215"/>
+      <path class="spur" d="M90 130 C155 130 220 128 282 130"/>
+      <circle class="farm" cx="90" cy="130" r="18"/><circle class="city" cx="300" cy="45" r="20"/><circle class="city" cx="300" cy="215" r="20"/>
+      <text class="txt" x="52" y="177">乡村酒桶</text><text class="txt" x="190" y="37">Kidderminster</text><text class="txt" x="210" y="245">Worcester</text>
+    </svg>
+  </div>
+</div>
+
+<div class="section">
+  <h3>实现约束</h3>
+  <p>两个酒桶都保留为可点击地点和啤酒厂产业位；只有北侧酒桶是路线端点。南侧酒桶的短支线只负责视觉表达，不会凭空增加第 40 条规则路线。</p>
+</div>

@@ -1,0 +1,360 @@
+<style>
+  #brass-ui-directions {
+    --bb-coal: #141719;
+    --bb-iron: #303436;
+    --bb-brass: #c89b4a;
+    --bb-brass-dark: #765623;
+    --bb-paper: #eadfc7;
+    --bb-map: #708d71;
+    --bb-water: #496e78;
+    --bb-green: #8fd56b;
+    --bb-red: #b55f50;
+    --bb-blue: #65a9ba;
+    color: var(--foreground);
+  }
+
+  #brass-ui-directions .bb-reference {
+    display: grid;
+    grid-template-columns: minmax(180px, 0.8fr) minmax(240px, 1.2fr);
+    gap: 14px;
+    align-items: stretch;
+    margin: 16px 0 20px;
+  }
+
+  #brass-ui-directions .bb-reference img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    min-height: 150px;
+    object-fit: cover;
+    border-radius: 8px;
+  }
+
+  #brass-ui-directions .bb-reference-copy {
+    padding: 14px;
+    background: light-dark(#f0e7d7, #262321);
+    color: light-dark(#322b25, #f0e4cc);
+    border-radius: 8px;
+  }
+
+  #brass-ui-directions .bb-reference-copy ul {
+    margin: 10px 0 0;
+    padding-left: 18px;
+  }
+
+  #brass-ui-directions .cards {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  #brass-ui-directions .card {
+    padding: 0;
+    overflow: hidden;
+    cursor: pointer;
+  }
+
+  #brass-ui-directions .bb-window {
+    position: relative;
+    aspect-ratio: 16 / 10;
+    overflow: hidden;
+    background:
+      radial-gradient(circle at 53% 45%, rgba(214, 226, 179, 0.18), transparent 34%),
+      linear-gradient(150deg, #56765f, var(--bb-map) 56%, #4b6a5d);
+    color: var(--bb-paper);
+    font-family: Georgia, "Songti SC", serif;
+  }
+
+  #brass-ui-directions .bb-map-lines {
+    position: absolute;
+    inset: 0;
+    opacity: 0.75;
+    background:
+      linear-gradient(26deg, transparent 38%, var(--bb-water) 39%, var(--bb-water) 41%, transparent 42%),
+      linear-gradient(154deg, transparent 54%, #2a3131 55%, #2a3131 57%, transparent 58%),
+      linear-gradient(78deg, transparent 64%, #2a3131 65%, #2a3131 67%, transparent 68%);
+  }
+
+  #brass-ui-directions .bb-city {
+    position: absolute;
+    z-index: 2;
+    display: grid;
+    place-items: center;
+    width: 46px;
+    height: 28px;
+    background: rgba(234, 223, 199, 0.92);
+    color: #211f1b;
+    border: 1px solid rgba(94, 62, 27, 0.75);
+    border-radius: 50%;
+    font: 500 8px/1.05 system-ui, sans-serif;
+    box-shadow: 0 2px 7px rgba(0, 0, 0, 0.35);
+  }
+
+  #brass-ui-directions .bb-city.one { left: 29%; top: 27%; }
+  #brass-ui-directions .bb-city.two { left: 51%; top: 48%; }
+  #brass-ui-directions .bb-city.three { left: 66%; top: 22%; }
+  #brass-ui-directions .bb-city.four { left: 40%; top: 68%; }
+
+  #brass-ui-directions .bb-tile {
+    position: absolute;
+    z-index: 3;
+    width: 19px;
+    height: 19px;
+    display: grid;
+    place-items: center;
+    background: #432f28;
+    color: var(--bb-paper);
+    border: 1px solid var(--bb-brass);
+    font: 500 8px/1 system-ui, sans-serif;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.45);
+  }
+
+  #brass-ui-directions .bb-tile.t1 { left: 47%; top: 43%; }
+  #brass-ui-directions .bb-tile.t2 { left: 55%; top: 52%; background: #5b2929; }
+  #brass-ui-directions .bb-tile.t3 { left: 63%; top: 18%; background: #263d42; }
+
+  #brass-ui-directions .bb-top {
+    position: absolute;
+    z-index: 5;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 26px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    background: linear-gradient(#222728, #101314);
+    border-bottom: 1px solid var(--bb-brass-dark);
+    color: var(--bb-paper);
+    font: 500 8px/1 system-ui, sans-serif;
+  }
+
+  #brass-ui-directions .bb-side {
+    position: absolute;
+    z-index: 4;
+    top: 26px;
+    bottom: 38px;
+    width: 34px;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    padding: 6px 4px;
+    background: linear-gradient(90deg, #171a1b, #2c3132);
+  }
+
+  #brass-ui-directions .bb-side.left { left: 0; border-right: 1px solid var(--bb-brass-dark); }
+  #brass-ui-directions .bb-side.right { right: 0; border-left: 1px solid var(--bb-brass-dark); }
+
+  #brass-ui-directions .bb-chip {
+    display: grid;
+    place-items: center;
+    flex: 1;
+    min-height: 17px;
+    background: #3b4142;
+    border: 1px solid #6b5736;
+    color: var(--bb-paper);
+    font: 500 7px/1 system-ui, sans-serif;
+  }
+
+  #brass-ui-directions .bb-chip.active {
+    border-color: var(--bb-green);
+    box-shadow: inset 3px 0 var(--bb-green), 0 0 8px rgba(143, 213, 107, 0.5);
+  }
+
+  #brass-ui-directions .bb-bottom {
+    position: absolute;
+    z-index: 6;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 38px;
+    display: flex;
+    align-items: end;
+    justify-content: center;
+    gap: -2px;
+    background: linear-gradient(transparent, rgba(10, 12, 13, 0.98) 40%);
+  }
+
+  #brass-ui-directions .bb-hand-card {
+    width: 31px;
+    height: 31px;
+    margin: 0 -2px;
+    display: grid;
+    place-items: center;
+    background: #694b35;
+    border: 1px solid var(--bb-brass);
+    border-radius: 5px 5px 1px 1px;
+    color: var(--bb-paper);
+    font: 500 7px/1 system-ui, sans-serif;
+  }
+
+  #brass-ui-directions .bb-action {
+    position: absolute;
+    z-index: 7;
+    bottom: 7px;
+    right: 42px;
+    padding: 5px 8px;
+    background: var(--bb-brass);
+    color: #151718;
+    border: 1px solid #f4d99e;
+    font: 500 7px/1 system-ui, sans-serif;
+  }
+
+  #brass-ui-directions .direction-b .bb-top {
+    left: 23%;
+    right: 23%;
+    top: 5px;
+    height: 22px;
+    border-radius: 12px;
+    background: rgba(20, 23, 25, 0.9);
+  }
+
+  #brass-ui-directions .direction-b .bb-side {
+    top: 38px;
+    bottom: auto;
+    width: 28px;
+    background: transparent;
+    border: 0;
+  }
+
+  #brass-ui-directions .direction-b .bb-chip {
+    flex: none;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: rgba(20, 23, 25, 0.88);
+  }
+
+  #brass-ui-directions .direction-b .bb-bottom {
+    left: 23%;
+    right: 23%;
+    height: 34px;
+    background: rgba(20, 23, 25, 0.9);
+    border-radius: 9px 9px 0 0;
+  }
+
+  #brass-ui-directions .direction-b .bb-action {
+    right: 8px;
+  }
+
+  #brass-ui-directions .direction-c .bb-top {
+    left: 8px;
+    right: 8px;
+    top: 6px;
+    height: 33px;
+    border-radius: 18px;
+    background: rgba(31, 36, 37, 0.9);
+  }
+
+  #brass-ui-directions .direction-c .bb-side {
+    top: 46px;
+    bottom: 55px;
+    width: 49px;
+    border-color: rgba(200, 155, 74, 0.55);
+    background: rgba(38, 43, 44, 0.9);
+  }
+
+  #brass-ui-directions .direction-c .bb-bottom {
+    height: 55px;
+    background: rgba(31, 36, 37, 0.96);
+    border-top: 1px solid rgba(200, 155, 74, 0.55);
+  }
+
+  #brass-ui-directions .direction-c .bb-hand-card {
+    width: 35px;
+    height: 42px;
+  }
+
+  #brass-ui-directions .bb-card-copy {
+    padding: 12px 14px 14px;
+  }
+
+  #brass-ui-directions .bb-card-copy h3 {
+    margin: 0 0 5px;
+  }
+
+  #brass-ui-directions .bb-tag {
+    display: inline-block;
+    margin-left: 6px;
+    padding: 2px 6px;
+    border-radius: 999px;
+    background: light-dark(#e7d3a7, #5b4524);
+    color: light-dark(#3b2b16, #f2e1bc);
+    font-size: 0.76em;
+  }
+
+  @media (max-width: 760px) {
+    #brass-ui-directions .bb-reference { grid-template-columns: 1fr; }
+    #brass-ui-directions .cards { grid-template-columns: 1fr; }
+  }
+</style>
+
+<div id="brass-ui-directions">
+  <h2>对局界面改版方向</h2>
+  <p class="subtitle">都保留现有规则、地图、中文与 iPhone 抽屉交互；只借鉴 Steam 版的信息层级，不复制它的美术资产。</p>
+
+  <div class="bb-reference">
+    <img src="https://cdn.cloudflare.steamstatic.com/steam/apps/1287920/ss_ae843db18b99169a55285b8256c129bda6a58cde.1920x1080.jpg?t=1649004411" alt="Steam 版 Brass Birmingham 对局截图">
+    <div class="bb-reference-copy">
+      <strong>Steam 版最值得借鉴的不是贴图，而是层级</strong>
+      <ul>
+        <li>地图占绝对主角，面板只贴边存在</li>
+        <li>顶部状态压成一条，行动提示靠近当前操作</li>
+        <li>玩家、产业和手牌都高密度展示，减少大片空灰</li>
+        <li>可操作目标用发光和材质区分，而不是粗亮色线路抢画面</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="cards">
+    <div class="card" data-choice="a-steam-structure" onclick="toggleSelect(this)">
+      <div class="bb-window direction-a" role="img" aria-label="方向 A，贴近 Steam 版的信息架构，细顶部状态栏，紧凑左右侧栏和薄手牌区">
+        <div class="bb-map-lines"></div>
+        <div class="bb-city one">沃尔索尔</div><div class="bb-city two">伯明翰</div><div class="bb-city three">考文垂</div><div class="bb-city four">伍斯特</div>
+        <div class="bb-tile t1">煤</div><div class="bb-tile t2">棉</div><div class="bb-tile t3">酒</div>
+        <div class="bb-top"><span>运河时代</span><span>第 3 / 8 轮</span><span>行动 1 / 2</span><span>£17</span><span>收入 +3</span></div>
+        <div class="bb-side left"><div class="bb-chip active">你</div><div class="bb-chip">红</div><div class="bb-chip">蓝</div></div>
+        <div class="bb-side right"><div class="bb-chip">棉 L2</div><div class="bb-chip">煤 L1</div><div class="bb-chip">铁 L1</div><div class="bb-chip">酒 L1</div></div>
+        <div class="bb-bottom"><div class="bb-hand-card">伯明</div><div class="bb-hand-card">煤矿</div><div class="bb-hand-card">野城</div><div class="bb-hand-card">考文</div><div class="bb-hand-card">棉厂</div></div>
+        <div class="bb-action">选择地点</div>
+      </div>
+      <div class="bb-card-copy">
+        <h3>A · Steam 式结构 <span class="bb-tag">推荐</span></h3>
+        <p>重排对局框架：薄顶栏、贴边信息轨、低矮手牌坞。桌游感最强，地图可视面积最大，同时适配 iPhone 抽屉与 iPad 常驻侧栏。</p>
+      </div>
+    </div>
+
+    <div class="card" data-choice="b-map-first" onclick="toggleSelect(this)">
+      <div class="bb-window direction-b" role="img" aria-label="方向 B，地图沉浸优先，大部分信息缩成浮动控件">
+        <div class="bb-map-lines"></div>
+        <div class="bb-city one">沃尔索尔</div><div class="bb-city two">伯明翰</div><div class="bb-city three">考文垂</div><div class="bb-city four">伍斯特</div>
+        <div class="bb-tile t1">煤</div><div class="bb-tile t2">棉</div><div class="bb-tile t3">酒</div>
+        <div class="bb-top"><span>运河 · R3</span><span>轮到你</span><span>£17 · +3 · 12VP</span></div>
+        <div class="bb-side left"><div class="bb-chip active">你</div><div class="bb-chip">2</div><div class="bb-chip">3</div></div>
+        <div class="bb-side right"><div class="bb-chip">产</div><div class="bb-chip">市</div></div>
+        <div class="bb-bottom"><div class="bb-hand-card">伯明</div><div class="bb-hand-card">煤矿</div><div class="bb-hand-card">野城</div><div class="bb-hand-card">考文</div></div>
+        <div class="bb-action">建造</div>
+      </div>
+      <div class="bb-card-copy">
+        <h3>B · 地图沉浸优先</h3>
+        <p>所有辅助信息都做成浮动控件，需要时展开。视觉最干净，但玩家需要更多点按才能查看产业与对手详情。</p>
+      </div>
+    </div>
+
+    <div class="card" data-choice="c-reskin" onclick="toggleSelect(this)">
+      <div class="bb-window direction-c" role="img" aria-label="方向 C，保留当前布局，只替换为工业时代深色与黄铜视觉">
+        <div class="bb-map-lines"></div>
+        <div class="bb-city one">沃尔索尔</div><div class="bb-city two">伯明翰</div><div class="bb-city three">考文垂</div><div class="bb-city four">伍斯特</div>
+        <div class="bb-tile t1">煤</div><div class="bb-tile t2">棉</div><div class="bb-tile t3">酒</div>
+        <div class="bb-top"><span>运河时代</span><span>回合 3 / 8</span><span>行动 1</span><span>£17</span></div>
+        <div class="bb-side left"><div class="bb-chip active">你 · £0</div><div class="bb-chip">玩家2</div><div class="bb-chip">玩家3</div></div>
+        <div class="bb-side right"><div class="bb-chip">棉纺厂 L2</div><div class="bb-chip">煤矿 L1</div><div class="bb-chip">炼铁厂 L1</div></div>
+        <div class="bb-bottom"><div class="bb-hand-card">伯明翰</div><div class="bb-hand-card">煤矿</div><div class="bb-hand-card">野城</div><div class="bb-hand-card">考文垂</div></div>
+        <div class="bb-action">选择</div>
+      </div>
+      <div class="bb-card-copy">
+        <h3>C · 现布局换皮</h3>
+        <p>主要替换灰色材质、颜色、描边与图标，改动最快；但侧栏和手牌仍然偏厚，无法彻底解决“地图被 UI 挤压”的观感。</p>
+      </div>
+    </div>
+  </div>
+</div>

@@ -1,0 +1,2 @@
+#!/bin/sh
+exec '/Users/didi/.hermes/node/bin/node' '/Users/didi/.local/lib/node_modules/oh-my-codex/dist/cli/omx.js' "$@"

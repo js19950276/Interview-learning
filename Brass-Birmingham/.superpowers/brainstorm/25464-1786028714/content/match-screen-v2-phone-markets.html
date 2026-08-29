@@ -1,0 +1,67 @@
+<style>
+  :root { --gold:#d8ae69; --line:#6e5939; --text:#f0e0c5; --muted:#9da9b0; --coal:#2c3032; --iron:#c2743f; }
+  .revision { display:grid; grid-template-columns:minmax(0,1.55fr) minmax(260px,.45fr); gap:24px; align-items:center; margin-top:22px; }
+  .phone-shell { padding:11px; border-radius:28px; background:linear-gradient(145deg,#444b51,#13171a); box-shadow:0 24px 52px rgba(0,0,0,.4); }
+  .phone { position:relative; overflow:hidden; aspect-ratio:19.5/9; border-radius:20px; background:#1d2b30; color:var(--text); }
+  .top { position:absolute; inset:0 0 auto; height:13%; display:grid; grid-template-columns:1fr 1fr 1fr; align-items:center; padding:0 3%; background:linear-gradient(#222729,#111516); border-bottom:1px solid var(--line); z-index:6; }
+  .era { font-family:Georgia,serif; color:#efd49e; font-size:12px; }.round { text-align:center; color:#c1c9cd; font-size:9px; }.nearby { text-align:right; color:#81c7a7; font-size:8px; }
+  .map { position:absolute; left:9%; right:9%; top:13%; bottom:25%; background:radial-gradient(circle at 56% 42%,#657579,#34464b 47%,#1d2b30 78%); }
+  .map svg { position:absolute; inset:5%; width:90%; height:90%; filter:drop-shadow(0 6px 10px rgba(0,0,0,.35)); }
+  .route { fill:none; stroke:#8a7048; stroke-width:2.2; }.route.legal { stroke:#f2c673; stroke-width:4; filter:drop-shadow(0 0 5px #f2c673); }
+  .city { fill:#20282a; stroke:#d2aa68; stroke-width:1.7; }.city.legal { fill:#6d5331; stroke:#f5d08a; stroke-width:3; filter:drop-shadow(0 0 5px #f2c673); }
+  .rail { position:absolute; top:13%; bottom:25%; width:9%; z-index:7; background:rgba(17,21,22,.97); border-color:var(--line); border-style:solid; }
+  .rail.left { left:0; border-width:0 1px 0 0; }.rail.right { right:0; border-width:0 0 0 1px; }
+  .player-dot { width:66%; aspect-ratio:1; margin:15% auto; border-radius:50%; display:grid; place-items:center; color:#efc77e; background:#3c3021; border:2px solid #b28a50; font-size:6px; }
+  .tile { width:68%; aspect-ratio:1; margin:14% auto; border-radius:4px; background:linear-gradient(145deg,#dfb76e,#765128); box-shadow:0 3px 6px rgba(0,0,0,.35); }
+  .bottom { position:absolute; inset:auto 0 0; height:25%; background:linear-gradient(180deg,#181c1e,#0c0f11); border-top:1px solid var(--line); z-index:8; }
+  .markets { position:absolute; left:1.2%; top:9%; bottom:8%; width:12%; display:grid; grid-template-rows:1fr 1fr; gap:6%; }
+  .market { display:grid; grid-template-columns:17px 1fr; align-items:center; gap:4px; padding:3px 5px; border:1px solid #465054; border-radius:7px; background:#121617; }
+  .cube { width:11px; aspect-ratio:1; margin:auto; transform:rotate(45deg); border-radius:2px; }
+  .cube.coal { background:var(--coal); border:1px solid #737a7d; box-shadow:0 0 7px rgba(183,190,193,.18); }
+  .cube.iron { background:var(--iron); border:1px solid #e7a06d; box-shadow:0 0 7px rgba(230,139,79,.2); }
+  .market strong { display:block; color:#ead09e; font-size:7px; line-height:1.1; }.market span { display:block; color:#89959a; font-size:5px; line-height:1.1; }
+  .hand { position:absolute; left:15%; right:23%; top:8%; bottom:6%; display:flex; align-items:end; justify-content:center; gap:1.5%; }
+  .card { width:13%; height:78%; border-radius:4px; border:1px solid #aa804b; background:linear-gradient(150deg,#753535,#23191a 66%,#101315); box-shadow:0 4px 8px rgba(0,0,0,.42); }
+  .card.selected { height:102%; transform:translateY(-8%); border-color:#f2ca7c; box-shadow:0 0 15px rgba(242,202,124,.42); }
+  .actions { position:absolute; right:2%; top:9%; bottom:8%; width:18%; display:grid; grid-template-columns:repeat(3,1fr); gap:4px; align-content:center; }
+  .action { aspect-ratio:1; border-radius:50%; display:grid; place-items:center; border:1px solid #4b5559; background:#22282a; color:#68747a; font-size:6px; }
+  .action.enabled { color:#24180a; background:radial-gradient(circle at 40% 30%,#f1ce88,#a77532); border-color:#e8be75; box-shadow:0 0 11px rgba(232,190,117,.3); }
+  .hint { position:absolute; left:50%; bottom:27%; transform:translateX(-50%); padding:5px 10px; border:1px solid #846a41; border-radius:999px; color:#efd09a; background:rgba(15,19,20,.9); font-size:7px; z-index:7; }
+  .callout { position:absolute; left:1%; bottom:26%; width:12%; height:11%; border:1px solid #f0c675; border-radius:7px; box-shadow:0 0 0 2px rgba(240,198,117,.18),0 0 15px rgba(240,198,117,.26); pointer-events:none; z-index:10; }
+  .details { padding:18px; border:1px solid #3b454f; border-radius:16px; background:#11161a; }
+  .details h3 { margin:0 0 10px; color:#efd29e; }.details p { color:#aab5bf; line-height:1.55; }
+  .legend { display:grid; gap:9px; margin-top:15px; }
+  .legend div { display:grid; grid-template-columns:30px 1fr; align-items:center; gap:9px; color:#bdc6ca; font-size:13px; }
+  .legend b { width:28px; height:28px; display:grid; place-items:center; border-radius:8px; color:#1d1408; background:linear-gradient(145deg,#e7bf78,#8b612c); }
+  .approval { margin-top:24px; }
+  .approval .options { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  @media (max-width:900px) { .revision { grid-template-columns:1fr; } }
+</style>
+
+<h2>主对局界面 v2 · 手机煤铁市场常驻</h2>
+<p class="subtitle">煤铁市场移到手机底栏左侧，与手牌和行动同层级；不用打开面板就能判断资源和价格。</p>
+
+<div class="revision">
+  <div class="phone-shell"><div class="phone">
+    <div class="top"><div class="era">运河时代</div><div class="round">第 3 / 8 回合 · 行动 2</div><div class="nearby">● 附近房间</div></div>
+    <div class="rail left"><i class="player-dot">£4</i><i class="player-dot">£0</i><i class="player-dot">£8</i><i class="player-dot">£2</i></div>
+    <div class="map"><svg viewBox="0 0 520 300"><path class="route" d="M75 75 L190 55 L295 85 L440 60 M75 75 L125 170 L255 145 L295 85 M125 170 L205 245 L350 230 L435 165 L440 60 M255 145 L350 230 M255 145 L435 165"/><path class="route legal" d="M190 55 L295 85"/><circle class="city" cx="75" cy="75" r="18"/><circle class="city legal" cx="190" cy="55" r="19"/><circle class="city legal" cx="295" cy="85" r="19"/><circle class="city" cx="440" cy="60" r="18"/><circle class="city" cx="125" cy="170" r="18"/><circle class="city legal" cx="255" cy="145" r="20"/><circle class="city" cx="435" cy="165" r="18"/><circle class="city" cx="205" cy="245" r="18"/><circle class="city" cx="350" cy="230" r="18"/></svg></div>
+    <div class="rail right"><i class="tile"></i><i class="tile"></i><i class="tile"></i><i class="tile"></i><i class="tile"></i></div>
+    <div class="hint">地点牌已选 · 请选择发光城市</div>
+    <footer class="bottom">
+      <div class="markets"><div class="market"><i class="cube coal"></i><div><strong>煤 4 · £3</strong><span>当前最低价</span></div></div><div class="market"><i class="cube iron"></i><div><strong>铁 3 · £2</strong><span>当前最低价</span></div></div></div>
+      <div class="hand"><i class="card"></i><i class="card selected"></i><i class="card"></i><i class="card"></i><i class="card"></i></div>
+      <div class="actions"><i class="action enabled">建</i><i class="action enabled">网</i><i class="action">发</i><i class="action">售</i><i class="action">贷</i><i class="action">侦</i></div>
+    </footer>
+    <div class="callout"></div>
+  </div></div>
+
+  <aside class="details"><h3>手机市场条</h3><p>默认同时显示两项最关键的数据：市场剩余数量，以及下一块资源的购买价格。</p><div class="legend"><div><b>1</b><span>轻点：展开完整价格阶梯</span></div><div><b>2</b><span>资源进出：方块滑入/滑出动画</span></div><div><b>3</b><span>价格变化：数字短暂高亮</span></div></div></aside>
+</div>
+
+<div class="approval">
+  <div class="options">
+    <div class="option" data-choice="phone-markets-approved" onclick="toggleSelect(this)"><div class="letter">✓</div><div class="content"><h3>这样合适</h3><p>保留左下常驻市场条，继续设计房间与大厅。</p></div></div>
+    <div class="option" data-choice="phone-markets-revise" onclick="toggleSelect(this)"><div class="letter">↺</div><div class="content"><h3>继续调整</h3><p>回到对话告诉我希望煤铁放在哪里或显示哪些数字。</p></div></div>
+  </div>
+</div>

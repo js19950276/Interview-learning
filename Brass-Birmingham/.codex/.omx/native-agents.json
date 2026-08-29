@@ -1,0 +1,71 @@
+{
+  "version": 1,
+  "files": {
+    "analyst.toml": {
+      "sha256": "b2c59b0087bc639de0b342982fce9094ef82025e9058c0569e2587ab137c09a9"
+    },
+    "architect.toml": {
+      "sha256": "3cc5b9462835f733563aadb879d4d75c2cdfb3a6f4e35c84e57e369b7cdf2589"
+    },
+    "code-reviewer.toml": {
+      "sha256": "d84ece9251820a873e0499d6fa4b83e1fb7aaec7a209af973e70ae2abb1cb389"
+    },
+    "code-simplifier.toml": {
+      "sha256": "bb4fb0096285156f0e8fca36613b587349d9e8221461da824a820595238c2e21"
+    },
+    "critic.toml": {
+      "sha256": "028107d4cb7eb7883dbb26b74318f91fcd48e45ef8f75a9fb83be93ca1a72ca4"
+    },
+    "debugger.toml": {
+      "sha256": "bad2b1d7f9c1a83ad6c6ebcb1d2e60d428ad9a99a20ef08afc3fe490326fdc99"
+    },
+    "dependency-expert.toml": {
+      "sha256": "f3e79416cb2ca3e6e9cea4955f20bc7e4936249a0b38b98836982ababbdfe79c"
+    },
+    "designer.toml": {
+      "sha256": "10a2feb5852d9a7014e65528aee84b25116f422d7c8a5c9dece406d6876a3f42"
+    },
+    "executor.toml": {
+      "sha256": "4f259e3960d937816e7e8d3ed286c21a7d9b6f5f93a1ea9ec04a55e29580348a"
+    },
+    "explore.toml": {
+      "sha256": "8fdf619fab2e9611880f8287815dd332ce4ee1e58f26c444f154dd4be94e4e48"
+    },
+    "git-master.toml": {
+      "sha256": "d4f26bdd8f91b7340d50b3edf3fe74d568030e38a1cdcb15cfa16d1f67899930"
+    },
+    "planner.toml": {
+      "sha256": "2b5f0d23ea17dfade95eb5670b8c71f0d0120dc58e1d867c5e684457096b7e24"
+    },
+    "prometheus-strict-metis.toml": {
+      "sha256": "8486428543d586748c26f6f81db758ec480e688694237e666891a32ec7ac4045"
+    },
+    "prometheus-strict-momus.toml": {
+      "sha256": "80070237cb2b27e63fd262704fa477ebdc484c06ed77d9e32f57761dc08ed57d"
+    },
+    "prometheus-strict-oracle.toml": {
+      "sha256": "c48f43d027f90dee4338f2ea076710715231c8aa3c94e87950efa228373c17c5"
+    },
+    "researcher.toml": {
+      "sha256": "172f33b98858dc634dd6416c9a8bcde40185722ce88ff9af908995ab753ff859"
+    },
+    "scholastic.toml": {
+      "sha256": "9bd4b13a3c1e5285300e191fb4c2530edd75ea1caa2ce0528a6c19446afe4d7c"
+    },
+    "team-executor.toml": {
+      "sha256": "c98948f614c31cb386b4fc463367720d816d31b5f4befdb69dacebc629cf2f85"
+    },
+    "test-engineer.toml": {
+      "sha256": "f63ab1b4f1103133ca1240cf543f058a83295dad7af1ad7ea2bc968fb66219c8"
+    },
+    "verifier.toml": {
+      "sha256": "286f9a2c5a4b94122ae19fe3c3193be5aa57796a4f1b6b162b2efb5a3d0135ae"
+    },
+    "vision.toml": {
+      "sha256": "b1d29261102b14e27d15c772eef72b4460984dcf38f7a6e2c14faddd5213613d"
+    },
+    "writer.toml": {
+      "sha256": "e92618b199c24b2fae7a0c835ec2e00876943b9f844a73c95c852615f0a35235"
+    }
+  }
+}

@@ -1,0 +1,74 @@
+{
+  "sessions": {
+    "019fea7b-81cf-70c3-a823-ef7ecbb66618": {
+      "ordinary_no_progress_guard": {
+        "fingerprint": "ordinary|{\"suggestions\":[{\"title\":\"turn the ready ui prototype branch into a runnable ios home screen\",\"description\":\"the recent `codex/ui-prototype` branch contains an unstarted, detailed phase 1 plan, while today’s rules-baseline task has already established the project’s source of truth. implementing its first vertical slice creates the first executable artifact without prematurely building rules or networking.\",\"prompt\":\"implement task 1 from docs/superpowers/plans/2026-08-09-industrial-city-birmingham-ui-prototype.md on the existing codex/ui-prototype branch: bootstrap the native ios swiftui app, add the failing launch ui test first, make it pass, run the specified build/test checks, and commit only the planned bootstrap files.\",\"appid\":\"\"}]}",
+        "first_seen_at": "2026-08-10T07:09:59.066Z",
+        "last_seen_at": "2026-08-10T07:09:59.066Z",
+        "repeat_count": 1,
+        "last_turn_id": "019fea7b-8220-7833-b724-0b69046e8d39",
+        "last_thread_id": null
+      }
+    },
+    "019fd749-4db9-7991-9f3d-7457173ff7fa": {
+      "ordinary_no_progress_guard": {
+        "fingerprint": "ordinary|不是到 task 6 就结束了。当前书面实施计划实际有 **16 个 task**；你记得的 15 个，可能是不把 task 1“工程初始化”算作功能任务。如果我之前说成 15 个，是我的计数口径不一致。 当前状态： - task 1–5：已完成并通过双重审查 - task 6：地图已实现，但质量审查发现触控尺寸、缩放方向、相机边界和拖动误触问题，正在修复，尚未完成 - task 7–16：仍会继续，包括对局外壳、卡牌与行动流程、无障碍、截图回归、性能验证和最终审计 所以现在大约完成了三分之一，不会在 task 6 停止。",
+        "first_seen_at": "2026-08-10T09:10:19.743Z",
+        "last_seen_at": "2026-08-10T09:10:19.743Z",
+        "repeat_count": 1,
+        "last_turn_id": "019feaed-89b8-74f2-b5db-c3682d13a051",
+        "last_thread_id": null
+      }
+    },
+    "019feb90-3a02-7253-9fc6-9efcc67215be": {
+      "ordinary_no_progress_guard": {
+        "fingerprint": "ordinary|{\"suggestions\":[{\"title\":\"turn the new match shell into card-first playable action selection\",\"description\":\"the active `codex/ui-prototype` worktree has just built the adaptive match shell, but its action button and hand are still placeholders. implementing the reducer, card selection, and exclusive overlays is the next concrete step that unlocks the planned build/network/sell flows.\",\"prompt\":\"continue the active `codex/ui-prototype` worktree with phase 1 task 8: replace the match hand and action placeholders with card-first selection, an action grid, resource market, and a tested mutually exclusive `matchinteractionreducer`. preserve the finished adaptive match shell and run the focused unit/ui tests.\",\"appid\":\"\"}]}",
+        "first_seen_at": "2026-08-10T12:09:12.506Z",
+        "last_seen_at": "2026-08-10T12:09:12.506Z",
+        "repeat_count": 1,
+        "last_turn_id": "019feb90-3a81-7110-b27b-d3034db5e19d",
+        "last_thread_id": null
+      }
+    },
+    "019fee67-11f0-7a01-acf7-50040fa28f40": {
+      "ordinary_no_progress_guard": {
+        "fingerprint": "ordinary|{\"suggestions\":[{\"title\":\"finish the iphone/ipad screenshot regression command\",\"description\":\"the prototype branch just completed the visual/accessibility fixture pass and has a new uncommitted snapshot ui test, but the export, pixel-diff, and one-command verifier are still missing. finish that open loop so future ui changes get an immediate visual signal.\",\"prompt\":\"complete task 15 on codex/ui-prototype: turn the existing snapshotcaptureuitests into an iphone/ipad screenshot regression workflow with snapshot export, pixel comparison, baselines/current directories, and a single verification script. preserve the current dirty accessibility-fixture edits, run the targeted tests, and report the exact verification evidence.\",\"appid\":\"\"}]}",
+        "first_seen_at": "2026-08-11T01:22:31.846Z",
+        "last_seen_at": "2026-08-11T01:22:31.846Z",
+        "repeat_count": 1,
+        "last_turn_id": "019fee67-1248-7011-85d7-1f925a7282df",
+        "last_thread_id": null
+      }
+    },
+    "019fef84-5f9c-7631-adde-0a151fff99d8": {
+      "ordinary_no_progress_guard": {
+        "fingerprint": "ordinary|{\"suggestions\":[{\"title\":\"prove the prototype’s interaction speed and snapshot stability\",\"description\":\"the active `codex/ui-prototype` worktree has uncommitted oslog render-acknowledgement and snapshot-capture work on top of the completed action flows. finish and validate it now so the iphone/ipad demo has measurable responsiveness and stable visual regression coverage.\",\"prompt\":\"in the codex/ui-prototype worktree, complete the in-progress performance signpost and snapshot-capture work. run the focused tests, fix any integration gaps, and leave a clean, verified commit with repeatable iphone and ipad evidence.\",\"appid\":\"\"}]}",
+        "first_seen_at": "2026-08-11T06:35:00.824Z",
+        "last_seen_at": "2026-08-11T06:35:00.824Z",
+        "repeat_count": 1,
+        "last_turn_id": "019fef84-6002-7340-8886-3f7db4b83229",
+        "last_thread_id": null
+      }
+    },
+    "019ff09c-1bc9-7551-89cc-3de909d3a817": {
+      "ordinary_no_progress_guard": {
+        "fingerprint": "ordinary|{\"suggestions\":[{\"title\":\"build the first real build action on top of the finished ui prototype\",\"description\":\"the phase 1 fixture prototype has just passed its simulator and snapshot checks, while the recorded next boundary is a pure gamecore. replace the fake build flow with validated setup, card use, location legality, costs, coal/iron consumption, and an emitted game event—without starting networking yet.\",\"prompt\":\"in the brass-birmingham project, implement the first gamecore vertical slice for the build action: pure swift game setup/state, card selection, legal build-target validation, money and coal/iron costs, and emitted gameevent/gamesnapshot updates. keep swiftui, spritekit, and transport out of gamecore; then connect the existing build ui to this real engine behind a deterministic fixture and add focused tests.\",\"appid\":\"\"}]}",
+        "first_seen_at": "2026-08-11T11:41:38.236Z",
+        "last_seen_at": "2026-08-11T11:41:38.236Z",
+        "repeat_count": 1,
+        "last_turn_id": "019ff09c-1c24-7900-950f-8d43f4fb9ef1",
+        "last_thread_id": null
+      }
+    },
+    "019ff3d8-df46-7252-8695-1f65dfcb97cf": {
+      "ordinary_no_progress_guard": {
+        "fingerprint": "ordinary|{\"suggestions\":[]}",
+        "first_seen_at": "2026-08-12T02:44:31.717Z",
+        "last_seen_at": "2026-08-12T02:44:31.717Z",
+        "repeat_count": 1,
+        "last_turn_id": "019ff3d8-df9a-7e10-94cf-765772ae075c",
+        "last_thread_id": null
+      }
+    }
+  }
+}
