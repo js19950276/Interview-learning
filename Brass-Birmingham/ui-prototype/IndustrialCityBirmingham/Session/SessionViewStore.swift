@@ -116,6 +116,8 @@ final class SessionViewStore {
     private(set) var snapshot: GameCore.ViewSnapshot?
     private(set) var syncStatus: SyncStatus = .connecting
     private(set) var errorMessage: String?
+    private(set) var hasPersistenceFailure = false
+    private(set) var isRetryingPersistence = false
     private(set) var selectedCardID: String?
     private(set) var legalResponse: GameCore.LegalActionResponse?
 
@@ -129,6 +131,7 @@ final class SessionViewStore {
 
     var isHost: Bool { role == .host }
     var isReady: Bool { readyPlayerIDs.contains(localPlayerID) }
+    var canRetryPersistence: Bool { hasPersistenceFailure && !isRetryingPersistence }
 #if DEBUG
     var showsRecoveryUIFixtureControl: Bool { recoveryUIFixtureStatusOverride != nil }
 #endif
@@ -547,6 +550,20 @@ final class SessionViewStore {
         do {
             try await coordinator.persistForBackground()
         } catch {
+            hasPersistenceFailure = true
+            syncStatus = .failed
+            errorMessage = Self.persistenceFailureMessage
+        }
+    }
+
+    func retryPersistence() async {
+        guard canRetryPersistence else { return }
+        isRetryingPersistence = true
+        defer { isRetryingPersistence = false }
+        do {
+            try await coordinator.retryPersistence()
+        } catch {
+            hasPersistenceFailure = true
             syncStatus = .failed
             errorMessage = Self.persistenceFailureMessage
         }
@@ -582,6 +599,7 @@ final class SessionViewStore {
         catch {
             pendingSubmissionVersion = nil
             if error as? SessionCoordinator.Error == .persistenceUnavailable {
+                hasPersistenceFailure = true
                 syncStatus = .failed
                 errorMessage = Self.persistenceFailureMessage
             } else {
@@ -591,6 +609,7 @@ final class SessionViewStore {
     }
 
     private func consume(_ state: SessionCoordinator.State) {
+        hasPersistenceFailure = state.persistenceError != nil
         roomID = state.roomID
         localPlayerID = state.playerID
         hostPlayerID = state.hostPlayerID

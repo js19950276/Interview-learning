@@ -2003,6 +2003,103 @@ struct PersistenceRecoveryTests {
     }
 
     @MainActor
+    @Test func viewStoreRetryPersistsCurrentAuthorityWithoutReplayingTheAction() async throws {
+        let hostID = GameCore.PlayerID(rawValue: "host")
+        let pair = makePersistentCoordinatorPair()
+        let store = SessionViewStore(
+            coordinator: pair.host, role: .host, roomID: room,
+            playerID: hostID, hostPlayerID: hostID
+        )
+        await store.connect(); try await pair.guest.joinRoom()
+        await store.setReady(true); try await pair.guest.setReady(true)
+        try await eventuallyMainActor { store.readyPlayerIDs.count == 2 }
+        await store.startGame(); try await eventuallyMainActor { store.snapshot != nil }
+        await pair.persistence.failSave(number: 2)
+        store.selectCard(try #require(store.hand.first))
+
+        await store.submitPass()
+
+        try await eventuallyMainActor {
+            store.version == .init(rawValue: 1) && store.hasPersistenceFailure
+        }
+        #expect(await pair.host.snapshot?.authoritativeVersion == .init(rawValue: 1))
+        #expect(store.syncStatus == .failed)
+        #expect(store.canRetryPersistence)
+        #expect(store.errorMessage == "无法安全保存对局，已暂停新行动。请重试恢复。")
+
+        await store.retryPersistence()
+
+        try await eventuallyMainActor {
+            store.syncStatus == .synchronized && !store.hasPersistenceFailure
+        }
+        #expect(store.errorMessage == nil)
+        #expect(store.version == .init(rawValue: 1))
+        #expect(await pair.host.snapshot?.authoritativeVersion == .init(rawValue: 1))
+    }
+
+    @MainActor
+    @Test func viewStoreFailedRetryRemainsRetryable() async throws {
+        let hostID = GameCore.PlayerID(rawValue: "host")
+        let pair = makePersistentCoordinatorPair()
+        let store = SessionViewStore(
+            coordinator: pair.host, role: .host, roomID: room,
+            playerID: hostID, hostPlayerID: hostID
+        )
+        await store.connect(); try await pair.guest.joinRoom()
+        await store.setReady(true); try await pair.guest.setReady(true)
+        try await eventuallyMainActor { store.readyPlayerIDs.count == 2 }
+        await store.startGame(); try await eventuallyMainActor { store.snapshot != nil }
+        await pair.persistence.failSave(number: 2)
+        await pair.persistence.failSave(number: 3)
+        store.selectCard(try #require(store.hand.first))
+        await store.submitPass()
+        try await eventuallyMainActor { store.hasPersistenceFailure }
+
+        await store.retryPersistence()
+
+        #expect(store.hasPersistenceFailure)
+        #expect(store.canRetryPersistence)
+        #expect(!store.isRetryingPersistence)
+        #expect(store.syncStatus == .failed)
+        #expect(store.errorMessage == "无法安全保存对局，已暂停新行动。请重试恢复。")
+    }
+
+    @MainActor
+    @Test func viewStoreIgnoresDuplicateRetryWhileSaving() async throws {
+        let hostID = GameCore.PlayerID(rawValue: "host")
+        let pair = makePersistentCoordinatorPair()
+        let store = SessionViewStore(
+            coordinator: pair.host, role: .host, roomID: room,
+            playerID: hostID, hostPlayerID: hostID
+        )
+        await store.connect(); try await pair.guest.joinRoom()
+        await store.setReady(true); try await pair.guest.setReady(true)
+        try await eventuallyMainActor { store.readyPlayerIDs.count == 2 }
+        await store.startGame(); try await eventuallyMainActor { store.snapshot != nil }
+        await pair.persistence.failSave(number: 2)
+        store.selectCard(try #require(store.hand.first))
+        await store.submitPass()
+        try await eventuallyMainActor { store.hasPersistenceFailure }
+        let attemptsBeforeRetry = await pair.persistence.saveAttemptCount
+        await pair.persistence.delaySaves(.milliseconds(150))
+
+        let firstRetry = Task { await store.retryPersistence() }
+        try await eventuallyMainActor { store.isRetryingPersistence }
+        #expect(!store.canRetryPersistence)
+
+        await store.retryPersistence()
+
+        #expect(store.isRetryingPersistence)
+        #expect(!store.canRetryPersistence)
+        await firstRetry.value
+        try await eventuallyMainActor {
+            !store.hasPersistenceFailure && !store.isRetryingPersistence
+        }
+        #expect(await pair.persistence.saveAttemptCount == attemptsBeforeRetry + 1)
+        #expect(store.syncStatus == .synchronized)
+    }
+
+    @MainActor
     @Test func activeAndInactiveLifecyclePhasesDoNotWriteSnapshots() async throws {
         let pair = makePersistentCoordinatorPair()
         let store = SessionViewStore(coordinator: pair.host, role: .host, roomID: room,
@@ -2912,17 +3009,21 @@ private final class RecordingRecoveryMaterialCleaner: RecoveryMaterialCleaning, 
 private actor RecordingSessionArchivePersistence: SessionArchivePersisting {
     private(set) var savedArchives: [SessionArchive] = []
     private var shouldFail = false
-    private var saveAttempt = 0
+    private var saveDelay: Duration?
+    private(set) var saveAttemptCount = 0
     private var failingSaveNumbers: Set<Int> = []
     func save(_ archive: SessionArchive) async throws {
-        saveAttempt += 1
-        if shouldFail || failingSaveNumbers.contains(saveAttempt) {
+        saveAttemptCount += 1
+        let attempt = saveAttemptCount
+        if let saveDelay { try await Task.sleep(for: saveDelay) }
+        if shouldFail || failingSaveNumbers.contains(attempt) {
             throw SessionPersistenceError.saveFailed
         }
         savedArchives.append(archive)
     }
     func failSaves(_ value: Bool) { shouldFail = value }
     func failSave(number: Int) { failingSaveNumbers.insert(number) }
+    func delaySaves(_ value: Duration?) { saveDelay = value }
 }
 
 private actor PausedSessionArchivePersistence: SessionArchivePersisting {
