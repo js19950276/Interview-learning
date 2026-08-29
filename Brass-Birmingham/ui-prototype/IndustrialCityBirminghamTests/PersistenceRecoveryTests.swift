@@ -1753,6 +1753,43 @@ struct PersistenceRecoveryTests {
         #expect(await pair.persistence.savedArchives.last?.authoritativeVersion == .init(rawValue: 0))
     }
 
+    @Test func guestRetryPersistenceSavesItsCurrentPrivateProjection() async throws {
+        let hostID = GameCore.PlayerID(rawValue: "host")
+        let hub = LoopbackTransportHub()
+        let guestPersistence = RecordingSessionArchivePersistence()
+        await guestPersistence.failSaves(true)
+        let host = SessionCoordinator(
+            configuration: .init(
+                protocolVersion: 1, rulesetVersion: "rules-v1", roomID: room,
+                playerID: hostID, reconnectToken: .init(rawValue: "host-token"), hostPlayerID: hostID
+            ),
+            transport: hub.makeTransport(peerID: hostID),
+            rulesMode: .fixtureOnlyLegacy
+        )
+        let guest = SessionCoordinator(
+            configuration: .init(
+                protocolVersion: 1, rulesetVersion: "rules-v1", roomID: room,
+                playerID: player, reconnectToken: .init(rawValue: "right-token"), hostPlayerID: hostID
+            ),
+            transport: hub.makeTransport(peerID: player),
+            persistence: guestPersistence,
+            rulesMode: .fixtureOnlyLegacy
+        )
+        try await host.createRoom(); try await guest.joinRoom()
+        try await host.setReady(true); try await guest.setReady(true)
+        try await eventually { await host.readyPlayerIDs.count == 2 }
+        try await host.startGame()
+        try await eventually { await guest.persistenceError == .saveFailed }
+
+        await guestPersistence.failSaves(false)
+        try await guest.retryPersistence()
+
+        #expect(await guest.persistenceError == nil)
+        let archive = try #require(await guestPersistence.savedArchives.last)
+        #expect(archive.role == .guest)
+        #expect(archive.authoritativeVersion == .init(rawValue: 0))
+    }
+
     @Test func actionPrecommitBackgroundAndRetryShareOnePersistenceGate() async throws {
         let hostID = GameCore.PlayerID(rawValue: "host")
         let hub = LoopbackTransportHub()

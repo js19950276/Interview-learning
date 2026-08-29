@@ -444,10 +444,13 @@ actor SessionCoordinator {
     }
 
     func retryPersistence() async throws {
-        guard isHost else { throw Error.hostOnly }
         await acquireResolveGate()
         do {
-            try await persistCommittedState()
+            if isHost {
+                try await persistCommittedState()
+            } else {
+                try await persistGuestState(newEvent: nil)
+            }
             releaseResolveGate()
         } catch {
             releaseResolveGate()
