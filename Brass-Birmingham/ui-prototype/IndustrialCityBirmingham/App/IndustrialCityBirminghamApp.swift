@@ -90,6 +90,7 @@ struct IndustrialCityBirminghamApp: App {
                 presentationEraOverride: environment.localUIFixturePresentationEraOverride
             )
         case .localRecoveryUIFixture: return .localRecoveryUIFixture()
+        case .localPersistenceRetryUIFixture: return .localPersistenceRetryUIFixture()
         case .localHarness(let harness):
             let catalog: GameCore.VerifiedGameDataCatalog
             do { catalog = try GameCore.GameDataLoader.loadBundledFixtureCatalog() }

@@ -8,6 +8,7 @@ nonisolated struct AppEnvironment: Equatable, Sendable {
         case localHarness(LocalHarness)
         case localUIFixture
         case localRecoveryUIFixture
+        case localPersistenceRetryUIFixture
 #endif
     }
 #if DEBUG
@@ -40,7 +41,9 @@ nonisolated struct AppEnvironment: Equatable, Sendable {
               let role = SessionRole(rawValue: roleText),
               let room = Self.value(after: "-local-room", in: arguments), !room.isEmpty else {
             localHarness = nil
-            if arguments.contains("-local-recovery-ui-fixture") {
+            if arguments.contains("-local-persistence-retry-ui-fixture") {
+                mode = .localPersistenceRetryUIFixture
+            } else if arguments.contains("-local-recovery-ui-fixture") {
                 mode = .localRecoveryUIFixture
             } else {
                 mode = arguments.contains("-local-ui-fixture") ? .localUIFixture : .fixture

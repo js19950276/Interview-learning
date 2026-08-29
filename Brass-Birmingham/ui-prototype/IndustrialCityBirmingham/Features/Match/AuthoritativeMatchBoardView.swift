@@ -101,15 +101,7 @@ struct AuthoritativeMatchBoardView: View {
                             .accessibilityIdentifier("submission.blocker")
                     }
                     if let error = store.errorMessage {
-                        Text(error)
-                            .font(BrassTypography.label)
-                            .foregroundStyle(BrassColor.paper.color)
-                            .padding(12)
-                            .background(BrassColor.danger.color)
-                            .clipShape(RoundedRectangle(cornerRadius: 8))
-                            .padding(.bottom, metrics.handHeight + 8)
-                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-                            .accessibilityIdentifier("real.recovery")
+                        recoveryPanel(message: error, metrics: metrics)
                     }
 #if DEBUG
                     if store.showsRecoveryUIFixtureControl {
@@ -167,6 +159,58 @@ struct AuthoritativeMatchBoardView: View {
         .padding(.leading, metrics.leftRailWidth + 8)
         .padding(.bottom, metrics.handHeight + 8)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+    }
+
+    private func recoveryPanel(
+        message: String,
+        metrics: MatchLayoutMetrics
+    ) -> some View {
+        VStack(alignment: .leading, spacing: BrassSpacing.medium) {
+            Label {
+                Text(message)
+                    .font(BrassTypography.label)
+            } icon: {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(BrassColor.danger.color)
+            }
+
+            if store.hasPersistenceFailure {
+                Button {
+                    Task { await store.retryPersistence() }
+                } label: {
+                    HStack(spacing: BrassSpacing.small) {
+                        if store.isRetryingPersistence {
+                            ProgressView()
+                                .tint(BrassColor.coal.color)
+                            Image(systemName: "externaldrive.badge.timemachine")
+                            Text("正在保存…")
+                        } else {
+                            Image(systemName: "arrow.clockwise")
+                            Text("重试保存")
+                        }
+                    }
+                    .frame(minWidth: 44, minHeight: 44)
+                }
+                .buttonStyle(BrassPrimaryButtonStyle())
+                .frame(minWidth: 44, minHeight: 44)
+                .disabled(!store.canRetryPersistence)
+                .accessibilityLabel(store.isRetryingPersistence ? "正在保存…" : "重试保存")
+                .accessibilityIdentifier(
+                    store.isRetryingPersistence
+                        ? "real.persistence.retrying"
+                        : "real.persistence.retry"
+                )
+            }
+        }
+        .foregroundStyle(BrassColor.paper.color)
+        .frame(maxWidth: 560, alignment: .leading)
+        .brassPanel()
+        .padding(.horizontal, max(metrics.leftRailWidth, metrics.rightRailWidth) + 12)
+        .padding(.bottom, metrics.handHeight + 8)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(message)
+        .accessibilityIdentifier("real.recovery")
     }
 
     private func leftRail(state: DemoMatchState, metrics: MatchLayoutMetrics) -> some View {

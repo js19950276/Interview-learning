@@ -5,6 +5,18 @@ import SwiftUI
 
 nonisolated enum SessionRole: String, Equatable, Sendable { case host, guest }
 
+#if DEBUG
+private actor PersistenceRetryUIFixtureStore: SessionArchivePersisting {
+    private var attemptCount = 0
+
+    func save(_ archive: SessionArchive) async throws {
+        attemptCount += 1
+        if attemptCount == 1 { throw SessionPersistenceError.saveFailed }
+        try await Task.sleep(for: .milliseconds(1_500))
+    }
+}
+#endif
+
 nonisolated struct LegalResponseGate: Equatable, Sendable {
     private(set) var requestID: String?
     private(set) var baseVersion: GameCore.AuthoritativeVersion?
@@ -215,6 +227,17 @@ final class SessionViewStore {
     static func localUIFixture(
         presentationEraOverride: GameCore.Era? = nil
     ) -> SessionViewStore {
+        makeLocalUIFixture(presentationEraOverride: presentationEraOverride)
+    }
+
+    static func localPersistenceRetryUIFixture() -> SessionViewStore {
+        makeLocalUIFixture(hostPersistence: PersistenceRetryUIFixtureStore())
+    }
+
+    private static func makeLocalUIFixture(
+        presentationEraOverride: GameCore.Era? = nil,
+        hostPersistence: (any SessionArchivePersisting)? = nil
+    ) -> SessionViewStore {
         let room = GameCore.RoomID(rawValue: "LOCALUI")
         let host = GameCore.PlayerID(rawValue: "host")
         let guest = GameCore.PlayerID(rawValue: "guest")
@@ -223,7 +246,8 @@ final class SessionViewStore {
         let hostCoordinator = SessionCoordinator(configuration: .init(
             protocolVersion: 2, rulesetVersion: catalog.catalog.rulesetVersion, roomID: room, playerID: host,
             reconnectToken: .init(rawValue: "local-ui-host"), hostPlayerID: host, setupSeed: 2
-        ), transport: hub.makeTransport(peerID: host), rulesMode: .verified(catalog))
+        ), transport: hub.makeTransport(peerID: host), persistence: hostPersistence,
+           rulesMode: .verified(catalog))
         let guestCoordinator = SessionCoordinator(configuration: .init(
             protocolVersion: 2, rulesetVersion: catalog.catalog.rulesetVersion, roomID: room, playerID: guest,
             reconnectToken: .init(rawValue: "local-ui-guest"), hostPlayerID: host

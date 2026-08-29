@@ -170,6 +170,33 @@ final class AccessibilityJourneyUITests: XCTestCase {
     }
 
     @MainActor
+    func testPersistenceFailureOffersARealRetrySaveButton() {
+        relaunch(arguments: ["-local-persistence-retry-ui-fixture", "-reduce-motion", "YES"])
+        XCTAssertTrue(app.otherElements["real.match"].waitForExistence(timeout: 5))
+
+        XCUIDevice.shared.press(.home)
+        app.activate()
+
+        let retry = app.buttons["real.persistence.retry"]
+        XCTAssertTrue(retry.waitForExistence(timeout: 5))
+        assertAccessibleControl(retry)
+        XCTAssertEqual(retry.label, "重试保存")
+        XCTAssertTrue(app.descendants(matching: .any)["submission.blocker"].exists)
+
+        retry.tap()
+        XCTAssertTrue(app.buttons["real.persistence.retrying"].waitForExistence(timeout: 2))
+
+        let syncing = app.descendants(matching: .any)["real.sync"]
+        XCTAssertTrue(syncing.waitForExistence(timeout: 2))
+        let synchronized = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "label CONTAINS %@", "synchronized"),
+            object: syncing
+        )
+        XCTAssertEqual(XCTWaiter.wait(for: [synchronized], timeout: 5), .completed)
+        XCTAssertFalse(retry.waitForExistence(timeout: 1))
+    }
+
+    @MainActor
     func testSegmentedPickerHitTargetsAreAtLeast44Points() {
         continueAfterFailure = true
 
