@@ -1,1 +1,2 @@
 base
+stashed line
