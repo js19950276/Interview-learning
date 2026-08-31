@@ -1,0 +1,1615 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark light">
+  <link rel="icon" href="data:,">
+  <title>OMX Harness Atlas · v0.20.4</title>
+  <style id="atlas-styles">
+    :root {
+      --bg:#0b1020; --surface:#121a2d; --surface-2:#182238; --text:#eef2ff;
+      --muted:#9ba8c4; --border:#2a3652; --component-border:#687898; --control:#777df2; --event:#4bb5c7;
+      --state:#49b58e; --optional:#d19a43; --blocked:#dc6b75; --focus:#f3d27a;
+      --control-ink:#a8abff; --event-ink:#73d4e3; --state-ink:#71d4b0;
+      --optional-ink:#f0bd6b; --blocked-ink:#ff9aa3;
+      color-scheme:dark;
+    }
+    html[data-theme="light"] {
+      --bg:#f5f7fb; --surface:#ffffff; --surface-2:#eef2f8; --text:#192238;
+      --muted:#5c6880; --border:#ccd5e4; --component-border:#758198; --control:#555bdc; --event:#158ca0;
+      --state:#168567; --optional:#a7660f; --blocked:#b5404c; --focus:#7d5600;
+      --control-ink:#3f45b5; --event-ink:#0c6877; --state-ink:#0d664f;
+      --optional-ink:#7a4700; --blocked-ink:#9b2735;
+      color-scheme:light;
+    }
+    *, *::before, *::after { box-sizing:border-box; }
+    html { background:var(--bg); scroll-behavior:smooth; }
+    body {
+      margin:0;
+      min-width:0;
+      overflow-x:hidden;
+      background:var(--bg);
+      color:var(--text);
+      font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+      font-size:14px;
+      line-height:1.45;
+    }
+    button, input { font:inherit; }
+    button { color:inherit; }
+    code, small, .eyebrow, .snapshot, #result-status, .plane header p, .edge-kind-label {
+      font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;
+    }
+    a { color:var(--event-ink); }
+    .skip-link {
+      position:absolute;
+      z-index:20;
+      top:8px;
+      left:8px;
+      padding:9px 12px;
+      border:2px solid var(--focus);
+      background:var(--surface);
+      color:var(--text);
+      transform:translateY(-150%);
+    }
+    .skip-link:focus { transform:translateY(0); }
+    button:focus-visible, input:focus-visible, a:focus-visible, summary:focus-visible {
+      outline:3px solid var(--focus);
+      outline-offset:2px;
+    }
+    .masthead {
+      display:grid;
+      gap:12px;
+      padding:18px clamp(14px,3vw,36px) 14px;
+      border-bottom:1px solid var(--border);
+      background:var(--surface);
+    }
+    .masthead-top {
+      display:flex;
+      align-items:flex-end;
+      justify-content:space-between;
+      gap:20px;
+    }
+    .eyebrow {
+      margin:0 0 3px;
+      color:var(--event-ink);
+      font-size:11px;
+      font-weight:700;
+      letter-spacing:.09em;
+      text-transform:uppercase;
+    }
+    h1 { margin:0; font-size:clamp(22px,3vw,30px); line-height:1.1; letter-spacing:-.025em; }
+    .snapshot { margin:0; color:var(--muted); font-size:11px; white-space:nowrap; }
+    #lens-tabs { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:6px; }
+    #lens-tabs button {
+      display:grid;
+      gap:1px;
+      min-width:0;
+      min-height:44px;
+      padding:7px 10px;
+      border:1px solid var(--component-border);
+      border-radius:5px;
+      background:var(--surface-2);
+      text-align:left;
+      cursor:pointer;
+      transition:border-color .14s ease,background-color .14s ease,box-shadow .14s ease;
+    }
+    #lens-tabs button strong { font-size:12px; }
+    #lens-tabs button span { overflow:hidden; color:var(--muted); font-size:10px; text-overflow:ellipsis; white-space:nowrap; }
+    #lens-tabs button[aria-current="page"] {
+      border-color:var(--control);
+      background:var(--surface);
+      box-shadow:inset 0 -3px 0 var(--control);
+    }
+    .toolbar { display:flex; align-items:center; gap:7px; min-width:0; }
+    .toolbar label { color:var(--muted); font-size:12px; white-space:nowrap; }
+    .toolbar input {
+      flex:1 1 260px;
+      min-width:120px;
+      min-height:38px;
+      padding:7px 10px;
+      border:1px solid var(--component-border);
+      border-radius:4px;
+      background:var(--bg);
+      color:var(--text);
+    }
+    .toolbar button {
+      min-height:38px;
+      padding:6px 11px;
+      border:1px solid var(--component-border);
+      border-radius:4px;
+      background:var(--surface-2);
+      cursor:pointer;
+    }
+    .toolbar button:hover, #lens-tabs button:hover { border-color:var(--control); }
+    #theme-toggle[aria-pressed="true"] { box-shadow:inset 0 0 0 1px var(--control); }
+    .atlas-context {
+      display:grid;
+      grid-template-columns:minmax(0,1fr) minmax(390px,1.25fr);
+      gap:10px;
+      align-items:stretch;
+    }
+    .edge-legend, .lifecycle-panel {
+      min-width:0;
+      padding:9px 11px;
+      border:1px solid var(--border);
+      border-radius:5px;
+      background:var(--bg);
+    }
+    .edge-legend { display:flex; flex-wrap:wrap; align-content:center; gap:7px 13px; }
+    .legend-title { width:100%; margin:0; color:var(--muted); font-size:10px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; }
+    .legend-item { display:inline-flex; align-items:center; gap:6px; font-size:10px; white-space:nowrap; }
+    .legend-item.command strong { color:var(--control-ink); }
+    .legend-item.event strong { color:var(--event-ink); }
+    .legend-item.state strong { color:var(--state-ink); }
+    .legend-line { display:inline-block; width:25px; border-top:2px solid var(--control); }
+    .legend-line.event { border-color:var(--event); border-top-style:dashed; }
+    .legend-line.state { border-color:var(--state); border-top-style:dotted; }
+    .legend-badge {
+      display:inline-flex;
+      align-items:center;
+      min-height:20px;
+      padding:1px 6px;
+      border:1px solid var(--optional);
+      border-radius:3px;
+      color:var(--optional-ink);
+      font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+      font-size:9px;
+      font-weight:800;
+    }
+    .legend-badge.blocked { border-color:var(--blocked); color:var(--blocked-ink); }
+    .flow-legend {
+      display:flex;
+      flex:1 1 100%;
+      flex-wrap:wrap;
+      align-items:center;
+      gap:5px;
+      min-width:0;
+      padding-top:6px;
+      border-top:1px solid var(--border);
+    }
+    .flow-legend-title { margin-right:3px; color:var(--muted); font-size:10px; font-weight:700; }
+    .flow-family {
+      display:inline-flex;
+      max-width:100%;
+      margin:0 6px 3px 0;
+      padding:2px 6px;
+      border:1px solid var(--component-border);
+      border-left:3px solid var(--control);
+      border-radius:3px;
+      background:var(--bg);
+      color:var(--control-ink);
+      font:800 9px/1.35 ui-monospace,SFMono-Regular,Menlo,monospace;
+      letter-spacing:.025em;
+      overflow-wrap:anywhere;
+      white-space:normal;
+    }
+    .flow-family[data-flow-family="workflow-convergence"],
+    .edge-register li[data-flow="workflow-convergence"] .flow-family {
+      border-left-color:var(--optional);
+      color:var(--optional-ink);
+    }
+    .flow-family[data-flow-family="team-dispatch"],
+    .edge-register li[data-flow="team-dispatch"] .flow-family {
+      border-left-color:var(--state);
+      color:var(--state-ink);
+    }
+    .lifecycle-panel { display:grid; gap:5px; }
+    .lifecycle-panel p { margin:0; color:var(--muted); font-size:10px; }
+    .lifecycle-spine { display:block; width:100%; height:auto; min-height:42px; overflow:visible; }
+    .lifecycle-spine .track { stroke:var(--border); stroke-width:2; }
+    .lifecycle-spine .step { fill:var(--surface-2); stroke:var(--control); stroke-width:1.5; }
+    .lifecycle-spine .terminal { stroke:var(--state); }
+    .lifecycle-spine .chevron { fill:var(--muted); }
+    .lifecycle-spine text { fill:var(--text); font:700 9px ui-monospace,SFMono-Regular,Menlo,monospace; text-anchor:middle; }
+    .lifecycle-mobile { display:none; width:100%; height:auto; }
+    .lifecycle-mobile .mobile-track { fill:none; stroke:var(--event); stroke-width:2; }
+    .lifecycle-mobile .mobile-arrow { fill:var(--event); }
+    .lifecycle-mobile .mobile-step { fill:var(--surface-2); stroke:var(--control); stroke-width:1.5; }
+    .lifecycle-mobile .mobile-step.terminal { stroke:var(--state); }
+    .lifecycle-mobile text { fill:var(--text); font:700 11.5px ui-monospace,SFMono-Regular,Menlo,monospace; text-anchor:middle; }
+    .lifecycle-mobile .mobile-number { fill:var(--control-ink); font-size:10.5px; text-anchor:start; }
+    #result-status { margin:0; color:var(--muted); font-size:11px; }
+    main { display:grid; min-width:0; gap:14px; padding:16px clamp(12px,2.5vw,32px); }
+    .atlas-primary { display:grid; min-width:0; gap:14px; align-content:start; }
+    #complete-atlas {
+      min-width:0;
+      border:1px solid var(--border);
+      border-radius:6px;
+      background:var(--surface);
+    }
+    #complete-atlas > summary {
+      display:grid;
+      grid-template-columns:minmax(0,1fr) auto;
+      gap:14px;
+      align-items:center;
+      min-height:64px;
+      padding:12px 14px;
+      cursor:pointer;
+      list-style:none;
+    }
+    #complete-atlas > summary::-webkit-details-marker { display:none; }
+    #complete-atlas > summary::after { color:var(--control-ink); font:800 14px ui-monospace,SFMono-Regular,Menlo,monospace; content:"＋"; }
+    #complete-atlas[open] > summary { border-bottom:1px solid var(--border); background:var(--surface-2); }
+    #complete-atlas[open] > summary::after { content:"−"; }
+    #complete-atlas > summary strong { display:block; font-size:14px; }
+    #complete-atlas > summary span { display:block; margin-top:3px; color:var(--muted); font-size:10px; }
+    .complete-atlas-body { display:grid; min-width:0; gap:10px; padding:10px; }
+    #complete-atlas-controls { display:grid; gap:10px; min-width:0; }
+    .core-role-panel, .sequence-workspace {
+      min-width:0;
+      overflow:hidden;
+      border:1px solid var(--border);
+      border-radius:6px;
+      background:var(--surface);
+    }
+    .section-heading {
+      display:flex;
+      align-items:flex-end;
+      justify-content:space-between;
+      gap:14px;
+      padding:12px 14px;
+      border-bottom:1px solid var(--border);
+      background:var(--surface-2);
+    }
+    .section-heading h2 { margin:0; font-size:15px; }
+    .section-heading p { margin:3px 0 0; color:var(--muted); font-size:10px; }
+    .section-heading > span { color:var(--muted); font:700 9px ui-monospace,SFMono-Regular,Menlo,monospace; white-space:nowrap; }
+    .core-role-grid { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:1px; background:var(--border); }
+    .core-role {
+      display:grid;
+      align-content:start;
+      gap:7px;
+      min-width:0;
+      min-height:150px;
+      padding:12px;
+      border:0;
+      border-top:3px solid transparent;
+      background:var(--surface);
+      color:var(--text);
+      text-align:left;
+      cursor:pointer;
+    }
+    .core-role:hover, .core-role:focus-visible { border-top-color:var(--event); background:var(--surface-2); }
+    .core-role[aria-pressed="true"] { border-top-color:var(--focus); box-shadow:inset 0 0 0 1px var(--focus); }
+    .role-number {
+      display:grid;
+      place-items:center;
+      width:25px;
+      height:25px;
+      border:1px solid var(--control);
+      border-radius:4px;
+      color:var(--control-ink);
+      font:800 10px ui-monospace,SFMono-Regular,Menlo,monospace;
+    }
+    .core-role strong { font-size:13px; line-height:1.25; }
+    .core-role .role-question { color:var(--muted); font-size:10px; line-height:1.4; }
+    .core-role .role-components { margin-top:auto; color:var(--control-ink); font:700 9px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace; overflow-wrap:anywhere; }
+    #sequence-tabs { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:6px; padding:10px 12px; }
+    #sequence-tabs button {
+      min-width:0;
+      min-height:38px;
+      padding:7px 9px;
+      border:1px solid var(--component-border);
+      border-radius:4px;
+      background:var(--bg);
+      color:var(--muted);
+      text-align:left;
+      cursor:pointer;
+    }
+    #sequence-tabs button:hover, #sequence-tabs button:focus-visible { border-color:var(--event); color:var(--text); }
+    #sequence-tabs button[aria-selected="true"] {
+      border-color:var(--control);
+      background:var(--surface-2);
+      color:var(--text);
+      box-shadow:inset 0 -3px 0 var(--control);
+    }
+    #sequence-tabs strong { display:block; font-size:11px; }
+    #sequence-tabs span { display:block; margin-top:2px; font-size:9px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .sequence-meta { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:0 12px 10px; color:var(--muted); font-size:10px; }
+    .sequence-legend { display:flex; flex-wrap:wrap; align-items:center; gap:10px; white-space:nowrap; }
+    .sequence-legend i { display:inline-block; width:24px; margin-right:4px; border-top:2px solid var(--control); vertical-align:middle; }
+    .sequence-legend .result-line { border-top-color:var(--state); border-top-style:dashed; }
+    .sequence-scroll { min-width:0; overflow-x:auto; overscroll-behavior-inline:contain; padding:0 12px 12px; }
+    .sequence-canvas {
+      position:relative;
+      display:grid;
+      min-width:760px;
+      padding:0 8px 10px;
+      border:1px solid var(--border);
+      border-radius:5px;
+      background:var(--bg);
+    }
+    .sequence-participants, .sequence-lifelines, .sequence-messages {
+      display:grid;
+      grid-template-columns:repeat(var(--lane-count),minmax(110px,1fr));
+      column-gap:10px;
+    }
+    .sequence-participants { position:relative; z-index:3; padding-top:10px; }
+    .sequence-participant {
+      min-width:0;
+      min-height:45px;
+      padding:6px 5px;
+      border:1px solid var(--component-border);
+      border-radius:4px;
+      background:var(--surface-2);
+      color:var(--text);
+      text-align:center;
+      cursor:pointer;
+    }
+    .sequence-participant strong { display:block; font-size:10px; }
+    .sequence-participant span { display:block; margin-top:2px; color:var(--muted); font-size:8px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .sequence-participant[aria-pressed="true"] { border-color:var(--focus); box-shadow:inset 0 0 0 1px var(--focus); }
+    .sequence-lifelines { position:absolute; z-index:0; inset:55px 8px 10px; pointer-events:none; }
+    .sequence-lifeline { justify-self:center; width:1px; height:100%; border-left:1px dashed var(--component-border); }
+    .sequence-messages { position:relative; z-index:2; grid-auto-rows:54px; padding:18px 0 8px; }
+    .sequence-message {
+      position:relative;
+      align-self:start;
+      min-width:0;
+      height:37px;
+      margin:0 6px;
+      padding:0;
+      border:0;
+      border-top:2px solid var(--control);
+      background:transparent;
+      color:var(--control-ink);
+      cursor:pointer;
+    }
+    .sequence-message::after {
+      position:absolute;
+      top:-5px;
+      right:-1px;
+      width:0;
+      height:0;
+      border-top:4px solid transparent;
+      border-bottom:4px solid transparent;
+      border-left:7px solid var(--control);
+      content:"";
+    }
+    .sequence-message.is-reverse::after {
+      right:auto;
+      left:-1px;
+      border-right:7px solid var(--control);
+      border-left:0;
+    }
+    .sequence-message.is-result { border-top-color:var(--state); border-top-style:dashed; color:var(--state-ink); }
+    .sequence-message.is-result::after { border-left-color:var(--state); }
+    .sequence-message.is-result.is-reverse::after { border-right-color:var(--state); border-left:0; }
+    .sequence-message.is-self {
+      height:32px;
+      margin-right:14px;
+      border-right:2px solid var(--event);
+      border-bottom:2px solid var(--event);
+      border-left:0;
+      border-radius:0 5px 5px 0;
+    }
+    .sequence-message.is-self::after { top:25px; right:auto; left:-1px; border-right:7px solid var(--event); border-left:0; }
+    .sequence-message.is-self.is-result { border-right-color:var(--state); border-bottom-color:var(--state); }
+    .sequence-message.is-self.is-result::after { border-right-color:var(--state); }
+    .sequence-message-label {
+      position:absolute;
+      left:6px;
+      bottom:7px;
+      max-width:calc(100% - 12px);
+      padding:1px 5px;
+      border-radius:3px;
+      background:var(--bg);
+      color:inherit;
+      font:750 9px/1.35 ui-monospace,SFMono-Regular,Menlo,monospace;
+      overflow:hidden;
+      text-overflow:ellipsis;
+      white-space:nowrap;
+    }
+    .sequence-message:hover .sequence-message-label, .sequence-message:focus-visible .sequence-message-label { background:var(--surface-2); color:var(--text); }
+    .sequence-footnote { padding:0 12px 12px; color:var(--muted); font-size:9px; }
+    #atlas-graph { display:grid; min-width:0; gap:10px; align-content:start; }
+    .static-overview { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; }
+    .static-overview article, .plane, .edge-register, #evidence-drawer, .empty-result {
+      min-width:0;
+      border:1px solid var(--border);
+      border-radius:5px;
+      background:var(--surface);
+    }
+    .static-overview article { padding:11px; }
+    .static-overview h2, .static-overview p { margin:0; }
+    .static-overview h2 { font-size:13px; }
+    .static-overview p { margin-top:4px; color:var(--muted); font-size:11px; overflow-wrap:anywhere; }
+    .js .static-overview, .js #atlas-graph > noscript { display:none; }
+    #atlas-graph > noscript { display:block; margin-top:8px; padding:10px; border:1px solid var(--optional); }
+    .plane { overflow:hidden; }
+    .plane > header { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:7px 9px; border-bottom:1px solid var(--border); background:var(--surface-2); }
+    .plane h2 { margin:0; font-size:12px; line-height:1.25; }
+    .plane header p { margin:0; color:var(--muted); font-size:9px; letter-spacing:.06em; text-transform:uppercase; }
+    .node-grid { display:grid; gap:6px; padding:7px; }
+    .node {
+      position:relative;
+      display:grid;
+      gap:4px;
+      width:100%;
+      min-width:0;
+      padding:9px;
+      border:1px solid var(--component-border);
+      border-left:3px solid var(--control);
+      border-radius:4px;
+      background:var(--bg);
+      text-align:left;
+      cursor:pointer;
+      transition:border-color .14s ease,background-color .14s ease,box-shadow .14s ease,transform .14s ease;
+    }
+    .node strong { font-size:12px; line-height:1.25; }
+    .node span { color:var(--muted); font-size:10px; line-height:1.4; overflow-wrap:anywhere; }
+    .node small {
+      justify-self:start;
+      padding:1px 5px;
+      border:1px solid var(--border);
+      border-radius:2px;
+      color:var(--muted);
+      font-size:8px;
+      font-weight:700;
+      letter-spacing:.04em;
+      overflow-wrap:anywhere;
+      text-transform:uppercase;
+    }
+    .node[data-status="optional"], .node[data-status="best-effort"] { border-left-color:var(--optional); }
+    .node[data-status="optional"] small, .node[data-status="best-effort"] small { border-color:var(--optional); color:var(--optional-ink); }
+    .node[data-status="degraded-gate"], .node[data-status="critical"] { border-left-color:var(--blocked); }
+    .node[data-status="degraded-gate"] small, .node[data-status="critical"] small { border-color:var(--blocked); color:var(--blocked-ink); }
+    .node:hover, .node:focus-visible { border-color:var(--event); background:var(--surface-2); }
+    .node.is-selected {
+      outline:3px double var(--focus);
+      outline-offset:1px;
+      box-shadow:inset 4px 0 0 var(--focus);
+    }
+    .node.is-related { border-style:dashed; border-color:var(--event); }
+    .node.is-related::after { content:"RELATED"; position:absolute; top:5px; right:6px; color:var(--event-ink); font:700 7px ui-monospace,SFMono-Regular,monospace; }
+    .node.is-related.is-search-match::after { content:none; }
+    .node.is-search-match {
+      border-color:var(--focus);
+      box-shadow:inset 4px 0 0 var(--focus);
+    }
+    .node.is-search-match::before {
+      content:"MATCH";
+      position:absolute;
+      top:5px;
+      right:6px;
+      color:var(--focus);
+      font:800 7px ui-monospace,SFMono-Regular,monospace;
+    }
+    .node.is-search-dimmed { border-color:var(--border); }
+    .edge-register { grid-column:1/-1; padding:10px; }
+    .edge-register h2 { margin:0 0 7px; font-size:13px; }
+    .edge-register > .flow-legend { margin:0 0 8px; }
+    .edge-register ul { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:5px; margin:0; padding:0; list-style:none; }
+    .edge-register li {
+      min-width:0;
+      padding:7px 8px 7px 11px;
+      border:1px solid var(--border);
+      border-top:2px solid var(--control);
+      background:var(--bg);
+      color:var(--muted);
+      font-size:10px;
+      overflow-wrap:anywhere;
+    }
+    .edge-register li::before {
+      display:inline-block;
+      min-width:54px;
+      margin-right:6px;
+      color:var(--control-ink);
+      font:800 8px ui-monospace,SFMono-Regular,monospace;
+      content:"COMMAND";
+    }
+    .edge-register li[data-edge-kind="event"] { border-top-color:var(--event); border-top-style:dashed; }
+    .edge-register li[data-edge-kind="event"]::before { color:var(--event-ink); content:"EVENT"; }
+    .edge-register li[data-edge-kind="state"] { border-top-color:var(--state); border-top-style:dotted; }
+    .edge-register li[data-edge-kind="state"]::before { color:var(--state-ink); content:"STATE"; }
+    .edge-register li[data-flow] { padding-left:13px; background:var(--surface-2); box-shadow:inset 3px 0 0 var(--control); }
+    .edge-register li[data-flow="workflow-convergence"] { box-shadow:inset 3px 0 0 var(--optional); }
+    .edge-register li[data-flow="team-dispatch"] { box-shadow:inset 3px 0 0 var(--state); }
+    .edge-register li.is-search-related { border-color:var(--focus); }
+    .edge-register li.is-search-dimmed { border-color:var(--border); }
+    .edge-register strong { color:var(--text); font-weight:650; }
+    #evidence-drawer { align-self:start; padding:12px; overflow:hidden; }
+    #evidence-drawer[hidden] { display:none; }
+    #evidence-drawer:empty::before { content:"选择一个架构节点，查看证据。"; color:var(--muted); }
+    #evidence-drawer > p { margin:0; padding:16px; border:1px dashed var(--border); background:var(--surface-2); color:var(--muted); }
+    #evidence-drawer header { position:relative; padding:0 64px 10px 0; border-bottom:1px solid var(--border); }
+    .evidence-close {
+      position:absolute;
+      top:0;
+      right:0;
+      min-height:30px;
+      padding:4px 8px;
+      border:1px solid var(--component-border);
+      border-radius:4px;
+      background:var(--surface-2);
+      color:var(--text);
+      font-size:10px;
+      cursor:pointer;
+    }
+    #evidence-drawer header p:first-child { margin:0 0 3px; color:var(--event-ink); font:700 9px ui-monospace,SFMono-Regular,monospace; letter-spacing:.08em; text-transform:uppercase; }
+    #evidence-drawer h2 { margin:0; font-size:18px; }
+    #evidence-drawer header p:last-child { margin:6px 0 0; color:var(--muted); font-size:11px; }
+    #evidence-drawer dl { display:grid; grid-template-columns:72px minmax(0,1fr); gap:6px 9px; margin:12px 0; }
+    #evidence-drawer dt { color:var(--muted); font-size:10px; font-weight:700; }
+    #evidence-drawer dd { min-width:0; margin:0; font-size:11px; overflow-wrap:anywhere; }
+    #evidence-drawer section { padding-top:9px; border-top:1px solid var(--border); }
+    #evidence-drawer h3 { margin:0 0 4px; color:var(--event-ink); font-size:10px; text-transform:uppercase; }
+    #evidence-drawer ul { margin:0 0 9px; padding-left:18px; }
+    #evidence-drawer li { margin:3px 0; font-size:10px; overflow-wrap:anywhere; word-break:break-word; }
+    .evidence-node-list { display:grid; gap:5px; margin:0 0 9px; }
+    .evidence-node-link {
+      display:grid;
+      gap:2px;
+      width:100%;
+      min-width:0;
+      padding:7px 8px;
+      border:1px solid var(--component-border);
+      border-radius:4px;
+      background:var(--bg);
+      color:var(--text);
+      text-align:left;
+      cursor:pointer;
+    }
+    .evidence-node-link:hover, .evidence-node-link:focus-visible { border-color:var(--event); background:var(--surface-2); }
+    .evidence-node-link strong { font-size:10px; }
+    .evidence-node-link span { color:var(--muted); font-size:9px; overflow-wrap:anywhere; }
+    .empty-result { grid-column:1/-1; padding:28px; border-style:dashed; text-align:center; }
+    .empty-result h2 { margin:0; font-size:16px; }
+    .empty-result p { margin:6px 0 0; color:var(--muted); }
+    footer { padding:10px clamp(12px,2.5vw,32px) 18px; color:var(--muted); font-size:10px; text-align:center; }
+    @media (min-width:1200px) {
+      main { grid-template-columns:minmax(0,1fr); }
+      main.has-evidence { grid-template-columns:minmax(0,1fr) 360px; }
+      #atlas-graph { grid-template-columns:repeat(3,minmax(0,1fr)); }
+      #evidence-drawer { position:sticky; top:14px; }
+    }
+    @media (min-width:768px) and (max-width:1199px) {
+      main { grid-template-columns:1fr; }
+      .core-role-grid { grid-template-columns:repeat(3,minmax(0,1fr)); }
+      #atlas-graph { grid-template-columns:repeat(2,minmax(0,1fr)); }
+      #evidence-drawer { grid-column:1/-1; }
+      .toolbar { flex-wrap:wrap; }
+      .toolbar input { flex-basis:50%; }
+    }
+    @media (max-width:767px) {
+      .masthead { padding:14px 12px 12px; }
+      .masthead-top { align-items:flex-start; flex-direction:column; gap:5px; }
+      .snapshot { white-space:normal; }
+      #lens-tabs { grid-template-columns:repeat(2,minmax(0,1fr)); }
+      #lens-tabs button, .toolbar button, .toolbar input { min-height:40px; }
+      #lens-tabs button span { white-space:normal; }
+      .toolbar { display:grid; grid-template-columns:1fr 1fr; }
+      .toolbar label, .toolbar input { grid-column:1/-1; width:100%; }
+      .atlas-context { grid-template-columns:1fr; }
+      .edge-legend { gap:7px 10px; }
+      main { grid-template-columns:minmax(0,1fr); padding:12px; }
+      .section-heading { align-items:flex-start; flex-direction:column; }
+      .core-role-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+      .core-role { min-height:134px; }
+      #sequence-tabs { grid-template-columns:repeat(2,minmax(0,1fr)); }
+      #sequence-tabs button { min-height:42px; }
+      .sequence-meta { align-items:flex-start; flex-direction:column; }
+      .sequence-scroll::before { display:block; margin-bottom:6px; color:var(--muted); font:700 9px ui-monospace,SFMono-Regular,Menlo,monospace; content:"横向滚动查看完整时序 →"; }
+      #atlas-graph, .static-overview { grid-template-columns:minmax(0,1fr); }
+      .edge-register ul { grid-template-columns:1fr; }
+      #evidence-drawer { grid-column:1; }
+      .empty-result { padding:20px 12px; }
+    }
+    @media (max-width:599px) {
+      .lifecycle-spine { display:none; }
+      .lifecycle-mobile { display:block; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior:auto; }
+      *, *::before, *::after { animation-duration:.01ms !important; animation-iteration-count:1 !important; transition-duration:.01ms !important; }
+    }
+  </style>
+</head>
+<body>
+  <a class="skip-link" href="#atlas-graph">跳到架构图</a>
+  <header class="masthead">
+    <div class="masthead-top">
+      <div><p class="eyebrow">Repository-grounded architecture</p><h1>OMX Harness Atlas</h1></div>
+      <p class="snapshot">v0.20.4 · a62d5bd7 · 2026-08-06</p>
+    </div>
+    <nav id="lens-tabs" aria-label="架构视角"></nav>
+    <div class="toolbar">
+      <label for="atlas-search">搜索模块、文件或状态</label>
+      <input id="atlas-search" type="search" autocomplete="off">
+      <button id="clear-search" type="button">清空</button>
+      <button id="theme-toggle" type="button" aria-pressed="false">浅色主题</button>
+    </div>
+    <div id="atlas-context" class="atlas-context">
+      <section class="edge-legend" aria-label="关系与状态图例">
+        <h2 class="legend-title">关系图例</h2>
+        <span class="legend-item command"><i class="legend-line" aria-hidden="true"></i><strong>COMMAND</strong> / 调用 · solid</span>
+        <span class="legend-item event"><i class="legend-line event" aria-hidden="true"></i><strong>EVENT</strong> / 观察 · dashed</span>
+        <span class="legend-item state"><i class="legend-line state" aria-hidden="true"></i><strong>STATE</strong> / 持久化 · dotted</span>
+        <span class="legend-badge">OPTIONAL</span>
+        <span class="legend-badge blocked">FAIL CLOSED</span>
+        <span class="flow-legend" role="group" aria-label="重点流程">
+          <span class="flow-legend-title">重点流程</span>
+          <span class="flow-family" data-flow-family="session-launch">SESSION LAUNCH</span>
+          <span class="flow-family" data-flow-family="workflow-convergence">WORKFLOW CONVERGENCE</span>
+          <span class="flow-family" data-flow-family="team-dispatch">TEAM DISPATCH</span>
+        </span>
+      </section>
+      <section class="lifecycle-panel" aria-label="生命周期概要">
+        <p>Lifecycle spine · 概要导航，不替代 26 节点 Atlas</p>
+        <svg class="lifecycle-spine" viewBox="0 0 660 58" role="img" aria-labelledby="lifecycle-title lifecycle-desc">
+          <title id="lifecycle-title">OMX 任务生命周期</title>
+          <desc id="lifecycle-desc">输入依次经过路由、计划、执行、验证，最终进入终态。</desc>
+          <line class="track" x1="55" y1="27" x2="605" y2="27"></line>
+          <polygon class="chevron" points="108,22 116,27 108,32"></polygon>
+          <polygon class="chevron" points="218,22 226,27 218,32"></polygon>
+          <polygon class="chevron" points="328,22 336,27 328,32"></polygon>
+          <polygon class="chevron" points="438,22 446,27 438,32"></polygon>
+          <polygon class="chevron" points="548,22 556,27 548,32"></polygon>
+          <g><rect class="step" x="15" y="10" width="80" height="34" rx="4"></rect><text x="55" y="31">INPUT</text></g>
+          <g><rect class="step" x="125" y="10" width="80" height="34" rx="4"></rect><text x="165" y="31">ROUTE</text></g>
+          <g><rect class="step" x="235" y="10" width="80" height="34" rx="4"></rect><text x="275" y="31">PLAN</text></g>
+          <g><rect class="step" x="345" y="10" width="80" height="34" rx="4"></rect><text x="385" y="31">EXECUTE</text></g>
+          <g><rect class="step" x="455" y="10" width="80" height="34" rx="4"></rect><text x="495" y="31">VERIFY</text></g>
+          <g><rect class="step terminal" x="565" y="10" width="80" height="34" rx="4"></rect><text x="605" y="31">TERMINAL</text></g>
+        </svg>
+        <svg class="lifecycle-mobile" viewBox="0 0 280 170" role="img" aria-labelledby="lifecycle-mobile-title lifecycle-mobile-desc">
+          <title id="lifecycle-mobile-title">OMX 移动端任务生命周期</title>
+          <desc id="lifecycle-mobile-desc">六步流程按蛇形顺序排列：输入、路由、计划、执行、验证、终态。</desc>
+          <line class="mobile-track" x1="124" y1="27" x2="150" y2="27"></line>
+          <polygon class="mobile-arrow" points="150,22 158,27 150,32"></polygon>
+          <line class="mobile-track" x1="214" y1="46" x2="214" y2="59"></line>
+          <polygon class="mobile-arrow" points="209,58 214,66 219,58"></polygon>
+          <line class="mobile-track" x1="156" y1="85" x2="130" y2="85"></line>
+          <polygon class="mobile-arrow" points="130,80 122,85 130,90"></polygon>
+          <line class="mobile-track" x1="66" y1="104" x2="66" y2="117"></line>
+          <polygon class="mobile-arrow" points="61,116 66,124 71,116"></polygon>
+          <line class="mobile-track" x1="124" y1="143" x2="150" y2="143"></line>
+          <polygon class="mobile-arrow" points="150,138 158,143 150,148"></polygon>
+          <g><rect class="mobile-step" x="8" y="8" width="116" height="38" rx="4"></rect><text class="mobile-number" x="16" y="31">01</text><text x="70" y="31">INPUT</text></g>
+          <g><rect class="mobile-step" x="156" y="8" width="116" height="38" rx="4"></rect><text class="mobile-number" x="164" y="31">02</text><text x="218" y="31">ROUTE</text></g>
+          <g><rect class="mobile-step" x="156" y="66" width="116" height="38" rx="4"></rect><text class="mobile-number" x="164" y="89">03</text><text x="218" y="89">PLAN</text></g>
+          <g><rect class="mobile-step" x="8" y="66" width="116" height="38" rx="4"></rect><text class="mobile-number" x="16" y="89">04</text><text x="70" y="89">EXECUTE</text></g>
+          <g><rect class="mobile-step" x="8" y="124" width="116" height="38" rx="4"></rect><text class="mobile-number" x="16" y="147">05</text><text x="70" y="147">VERIFY</text></g>
+          <g><rect class="mobile-step terminal" x="156" y="124" width="116" height="38" rx="4"></rect><text class="mobile-number" x="164" y="147">06</text><text x="218" y="147">TERMINAL</text></g>
+        </svg>
+      </section>
+    </div>
+    <p id="result-status" role="status" aria-live="polite" aria-atomic="true">正在加载架构视角…</p>
+  </header>
+  <main>
+    <div class="atlas-primary">
+      <section id="core-roles" class="core-role-panel" aria-labelledby="core-roles-title">
+        <header class="section-heading">
+          <div><h2 id="core-roles-title">六个核心责任角色</h2><p>先回答“谁负责什么”，再下钻真实模块与源码证据。</p></div>
+          <span>6 roles · 18 grouped modules</span>
+        </header>
+        <div id="core-role-grid" class="core-role-grid"></div>
+      </section>
+
+      <section class="sequence-workspace" aria-labelledby="sequence-title">
+        <header class="section-heading">
+          <div><h2 id="sequence-title">一次请求怎样跑完</h2><p>默认显示黄金路径；切换标签查看三条仓库确认的技术流。</p></div>
+          <span>one timeline · one flow at a time</span>
+        </header>
+        <nav id="sequence-tabs" role="tablist" aria-label="Harness 时序视角"></nav>
+        <section id="sequence-stage" aria-live="polite" aria-atomic="false"></section>
+      </section>
+
+      <details id="complete-atlas">
+        <summary>
+          <span><strong>完整模块索引与关系证据</strong><span>默认收起；搜索、节点链接或手动展开后，可查看四个 Lens 与全部代码证据。</span></span>
+          <span>26 nodes · 39 edges</span>
+        </summary>
+        <div class="complete-atlas-body">
+          <div id="complete-atlas-controls"></div>
+          <section id="atlas-graph" aria-label="OMX Harness 架构图" tabindex="-1">
+            <div class="static-overview">
+              <article><h2>入口与装配</h2><p>OMX CLI → scoped assets；omx exec → Codex host</p></article>
+              <article><h2>Hook 与策略</h2><p>native events → routing → transition gates</p></article>
+              <article><h2>任务生命周期</h2><p>input → route → plan → execute → verify → terminal</p></article>
+              <article><h2>Team 与子代理</h2><p>leader → task/dispatch → worker → heartbeat/events → leader</p></article>
+              <article><h2>原生运行时</h2><p>TS bridge → omx-runtime executor → core; separate mux/tmux transport</p></article>
+              <article><h2>状态与恢复</h2><p>scoped state paths → runtime ledgers → HUD/sidecar</p></article>
+            </div>
+            <noscript>交互功能需要 JavaScript；全部架构证据已内嵌在此文件。</noscript>
+          </section>
+        </div>
+      </details>
+    </div>
+    <aside id="evidence-drawer" aria-live="polite" aria-label="架构证据" hidden></aside>
+  </main>
+  <footer>CLI/JSON 是持久控制面；MCP 是可选集成与兼容层。</footer>
+  <script id="atlas-data" type="application/json">
+{
+  "snapshot":{"version":"0.20.4","commit":"a62d5bd77bef6d2bc7df467dcae68082b8616239"},
+  "lenses":[
+    {"id":"overview","label":"系统全景","summary":"完整 Harness 边界"},
+    {"id":"lifecycle","label":"任务生命周期","summary":"从启动到终态"},
+    {"id":"state","label":"状态与恢复","summary":"权威状态与恢复路径"},
+    {"id":"delivery","label":"交付面","summary":"插件、MCP 与可观测性"}
+  ],
+  "roleGroups":[
+    {
+      "id":"input-entry","title":"输入入口","question":"谁接收请求并启动受控会话？","summary":"解析用户命令、选择作用域，并建立 Harness 的受控启动入口。",
+      "nodeIds":["omx-cli"]
+    },
+    {
+      "id":"host-events","title":"宿主与事件","question":"谁执行模型并发出生命周期事件？","summary":"Codex 承担模型与工具执行，原生 Hook 总线把宿主生命周期规范化为 Harness 事件。",
+      "nodeIds":["codex-host","native-hooks"]
+    },
+    {
+      "id":"routing-gates","title":"路由与门禁","question":"谁选择模式，并决定能否迁移？","summary":"根据输入和当前状态选择候选工作流，并以 fail-closed 门禁批准或拒绝状态迁移。",
+      "nodeIds":["prompt-router","workflow-transition"]
+    },
+    {
+      "id":"workflow-orchestration","title":"工作流编排","question":"谁把意图变成可执行阶段？","summary":"澄清需求、收敛计划、维持长期目标，或组织 Team leader/worker 生命周期。",
+      "nodeIds":["deep-interview","ralplan","ultragoal","team-orchestrator"]
+    },
+    {
+      "id":"execution-state","title":"执行与状态","question":"谁运行任务并保存权威进度？","summary":"启动执行、管理子代理和 Team 交付，并在 TypeScript、Rust runtime 与 State Plane 边界持久化进度。",
+      "nodeIds":["tool-exec","native-subagents","team-delivery","ts-runtime-bridge","rust-runtime-core","mux-tmux","state-plane"]
+    },
+    {
+      "id":"verification-terminal","title":"验证与终态","question":"谁证明完成，并拒绝虚假成功？","summary":"审计完成声明、核对可复现证据，并把结果归一为明确终态。",
+      "nodeIds":["ralph","verification-terminal"]
+    }
+  ],
+  "sequences":[
+    {
+      "id":"complete-request","label":"完整请求","summary":"从用户入口到可验证终态的六步黄金路径。",
+      "participants":["input-entry","host-events","routing-gates","workflow-orchestration","execution-state","verification-terminal"],
+      "messages":[
+        {
+          "id":"start-session","from":"input-entry","to":"host-events","kind":"command","label":"1 · 启动受控会话","detail":"OMX CLI 准备 session overlay，经 Codex Exec Session Launcher 阻塞启动 Codex Host，并绑定原生 lifecycle hooks。",
+          "nodeRefs":["omx-cli","tool-exec","codex-host","native-hooks"],
+          "edgeRefs":[["omx-cli","tool-exec","command","codex exec launch"],["tool-exec","codex-host","command","blocking codex exec process"],["codex-host","native-hooks","event","native lifecycle events"]]
+        },
+        {
+          "id":"normalize-input","from":"host-events","to":"routing-gates","kind":"event","label":"2 · 规范化输入事件","detail":"Native Hook Event Bus 把 UserPromptSubmit 等宿主事件交给 Prompt Router，而不是由 UI 或通知面推断意图。",
+          "nodeRefs":["native-hooks","prompt-router"],
+          "edgeRefs":[["native-hooks","prompt-router","event","UserPromptSubmit"]]
+        },
+        {
+          "id":"authorize-transition","from":"routing-gates","to":"workflow-orchestration","kind":"command","label":"3 · 授权合法迁移","detail":"Prompt Router 产生候选激活决策；Workflow Transition Gate 校验当前状态、前置证据和下一状态。",
+          "nodeRefs":["prompt-router","workflow-transition","deep-interview","ralplan","ultragoal"],
+          "edgeRefs":[["prompt-router","workflow-transition","command","activation decision"],["workflow-transition","deep-interview","command","clarify ambiguity"],["workflow-transition","ralplan","command","enter consensus planning"],["workflow-transition","ultragoal","command","activate durable goal"]]
+        },
+        {
+          "id":"dispatch-work","from":"workflow-orchestration","to":"execution-state","kind":"command","label":"4 · 派发执行并保存进度","detail":"选中的工作流把任务交给 Codex、原生子代理或 Team 执行，并由各自的权威状态所有者记录进度。",
+          "nodeRefs":["team-orchestrator","team-delivery","native-subagents","rust-runtime-core","state-plane"],
+          "edgeRefs":[["team-orchestrator","team-delivery","command","task + dispatch"],["team-delivery","state-plane","state","task claims + lease state"]]
+        },
+        {
+          "id":"submit-evidence","from":"execution-state","to":"verification-terminal","kind":"state","label":"5 · 提交验证证据","detail":"执行结果、任务状态和持久化记录进入完成审计；自述成功不能替代命令结果与 artifact 证据。",
+          "nodeRefs":["state-plane","ralph","verification-terminal"],
+          "edgeRefs":[]
+        },
+        {
+          "id":"return-outcome","from":"verification-terminal","to":"input-entry","kind":"return","label":"6 · 返回 completed / blocked / failed","detail":"验证层给出 completed、blocked 或 failed；需要持久化的终态经状态门禁写入，证据不足时不得伪造完成。",
+          "nodeRefs":["verification-terminal","state-plane","omx-cli"],
+          "edgeRefs":[["verification-terminal","state-plane","state","normalized terminal record"]]
+        }
+      ]
+    },
+    {
+      "id":"session-launch","label":"会话启动","summary":"OMX 从安装 Hook 到阻塞启动 Codex，并把 UserPromptSubmit 交给路由。","flow":"session-launch",
+      "participants":["input-entry","execution-state","host-events","routing-gates"],
+      "messages":[
+        {"id":"bind-hooks","from":"input-entry","to":"host-events","kind":"command","label":"安装并绑定 Hooks","detail":"OMX CLI 在 setup/launch 边界配置原生 hooks。","nodeRefs":["omx-cli","native-hooks"],"edgeRefs":[["omx-cli","native-hooks","command","install + bind hooks"]]},
+        {"id":"launch-exec","from":"input-entry","to":"execution-state","kind":"command","label":"启动 Codex Exec","detail":"OMX CLI 进入 session-scoped blocking exec launcher。","nodeRefs":["omx-cli","tool-exec"],"edgeRefs":[["omx-cli","tool-exec","command","codex exec launch"]]},
+        {"id":"start-host","from":"execution-state","to":"host-events","kind":"command","label":"阻塞启动 Codex Host","detail":"Exec launcher 启动宿主进程并等待其生命周期结束。","nodeRefs":["tool-exec","codex-host"],"edgeRefs":[["tool-exec","codex-host","command","blocking codex exec process"]]},
+        {"id":"emit-lifecycle","from":"host-events","to":"host-events","kind":"event","label":"发出原生生命周期事件","detail":"Codex Host 把 lifecycle payload 交给 Native Hook Event Bus。","nodeRefs":["codex-host","native-hooks"],"edgeRefs":[["codex-host","native-hooks","event","native lifecycle events"]]},
+        {"id":"route-prompt","from":"host-events","to":"routing-gates","kind":"event","label":"提交 UserPromptSubmit","detail":"Hook 总线把规范化输入交给 Prompt Router。","nodeRefs":["native-hooks","prompt-router"],"edgeRefs":[["native-hooks","prompt-router","event","UserPromptSubmit"]]}
+      ]
+    },
+    {
+      "id":"workflow-convergence","label":"工作流收敛","summary":"路由、迁移门禁、计划或目标工作流与完成审计之间的收敛路径。","flow":"workflow-convergence",
+      "participants":["routing-gates","workflow-orchestration","verification-terminal"],
+      "messages":[
+        {"id":"activation-decision","from":"routing-gates","to":"routing-gates","kind":"command","label":"产生激活决策","detail":"Prompt Router 把候选模式交给 Workflow Transition Gate。","nodeRefs":["prompt-router","workflow-transition"],"edgeRefs":[["prompt-router","workflow-transition","command","activation decision"]]},
+        {"id":"enter-ralplan","from":"routing-gates","to":"workflow-orchestration","kind":"command","label":"进入共识规划","detail":"合法迁移可进入 Ralplan；host verifier 不可用时仍 fail-closed。","nodeRefs":["workflow-transition","ralplan"],"edgeRefs":[["workflow-transition","ralplan","command","enter consensus planning"]]},
+        {"id":"activate-ultragoal","from":"routing-gates","to":"workflow-orchestration","kind":"command","label":"激活长期目标","detail":"合法迁移可建立 Ultragoal durable artifacts。","nodeRefs":["workflow-transition","ultragoal"],"edgeRefs":[["workflow-transition","ultragoal","command","activate durable goal"]]},
+        {"id":"activate-ralph","from":"routing-gates","to":"verification-terminal","kind":"command","label":"激活完成审计","detail":"合法迁移可进入 Ralph completion audit。","nodeRefs":["workflow-transition","ralph"],"edgeRefs":[["workflow-transition","ralph","command","activate iterative audit"]]},
+        {"id":"ralplan-failed","from":"workflow-orchestration","to":"verification-terminal","kind":"event","label":"共识不可用 → failed","detail":"缺少 host consensus verifier 时，Ralplan 不得声称授权成功。","nodeRefs":["ralplan","verification-terminal"],"edgeRefs":[["ralplan","verification-terminal","event","consensus unavailable → failed"]]},
+        {"id":"completion-audit","from":"verification-terminal","to":"verification-terminal","kind":"state","label":"核验完成声明","detail":"Ralph 以状态和验证证据形成 completion audit。","nodeRefs":["ralph","verification-terminal"],"edgeRefs":[["ralph","verification-terminal","state","completion audit"]]}
+      ]
+    },
+    {
+      "id":"team-dispatch","label":"Team 派发","summary":"leader 启动 Team、派发与通知 worker，并通过状态、heartbeat 和 events 收敛。","flow":"team-dispatch",
+      "participants":["input-entry","workflow-orchestration","execution-state"],
+      "messages":[
+        {"id":"start-team","from":"input-entry","to":"workflow-orchestration","kind":"command","label":"启动 Team 生命周期","detail":"OMX CLI 建立 Team leader 生命周期。","nodeRefs":["omx-cli","team-orchestrator"],"edgeRefs":[["omx-cli","team-orchestrator","command","start team lifecycle"]]},
+        {"id":"dispatch-task","from":"workflow-orchestration","to":"execution-state","kind":"command","label":"持久化任务并派发","detail":"Team Orchestrator 先交给 task/delivery state，再放行 work。","nodeRefs":["team-orchestrator","team-delivery"],"edgeRefs":[["team-orchestrator","team-delivery","command","task + dispatch"]]},
+        {"id":"launch-worker","from":"workflow-orchestration","to":"execution-state","kind":"command","label":"启动交互式 Worker","detail":"交互式模式通过 TypeScript tmux-session 创建 worker pane。","nodeRefs":["team-orchestrator","mux-tmux"],"edgeRefs":[["team-orchestrator","mux-tmux","command","interactive worker launch"]]},
+        {"id":"persist-claim","from":"execution-state","to":"execution-state","kind":"state","label":"保存 claim 与 lease","detail":"TypeScript Team state 原子维护 task claim、version 和 lease。","nodeRefs":["team-delivery","state-plane"],"edgeRefs":[["team-delivery","state-plane","state","task claims + lease state"]]},
+        {"id":"bridge-dispatch","from":"execution-state","to":"execution-state","kind":"command","label":"尝试 Runtime Bridge","detail":"符合条件的 dispatch/mailbox 经 TS bridge 进入 native runtime。","nodeRefs":["team-delivery","ts-runtime-bridge"],"edgeRefs":[["team-delivery","ts-runtime-bridge","command","conditional dispatch/mailbox bridge"]]},
+        {"id":"notify-worker","from":"execution-state","to":"execution-state","kind":"command","label":"通知交互式 Worker","detail":"Delivery state 通过 tmux transport 通知已启动的 worker。","nodeRefs":["team-delivery","mux-tmux"],"edgeRefs":[["team-delivery","mux-tmux","command","interactive worker notify"]]},
+        {"id":"monitor-feedback","from":"execution-state","to":"workflow-orchestration","kind":"event","label":"轮询任务与 Heartbeat","detail":"Leader 依据持久任务、heartbeat 和 events 推进阶段或进入终态。","nodeRefs":["state-plane","team-orchestrator"],"edgeRefs":[["state-plane","team-orchestrator","event","poll tasks + heartbeat/events"]]},
+        {"id":"enter-runtime-core","from":"execution-state","to":"execution-state","kind":"command","label":"进入 Rust Runtime Core","detail":"omx-runtime executor 把已序列化命令交给 durable runtime state machine。","nodeRefs":["ts-runtime-bridge","rust-runtime-core"],"edgeRefs":[["ts-runtime-bridge","rust-runtime-core","command","omx-runtime exec → core"]]}
+      ]
+    }
+  ],
+  "nodes":[
+    {
+      "id":"codex-host","title":"Codex Host","summary":"执行模型、工具调用与原生 lifecycle 事件的宿主；OMX 在其上提供控制与工作流层。","owner":"Codex 执行引擎与宿主事件边界","notOwner":"不拥有 OMX 的工作流策略、持久状态或交付编排。","plane":"host","status":"external-core","lenses":["overview","lifecycle","delivery"],
+      "inputs":["用户输入","仓库上下文","OMX 注入的指令与 hooks"],"outputs":["模型执行","工具事件","会话 lifecycle 事件"],"artifacts":["Codex session","native hook payloads"],"failure":"宿主不可用时执行链无法启动；OMX 不伪造宿主成功。","evidenceLevel":"documentation-confirmed","evidence":[{"path":"README.md","start":295,"end":305},{"path":"src/config/codex-hooks.ts","start":5,"end":13},{"path":"src/cli/index.ts","start":3934,"end":4066},{"path":"src/scripts/codex-native-hook.ts","start":22387,"end":22471}]
+    },
+    {
+      "id":"omx-cli","title":"OMX CLI","summary":"面向 Codex 的控制入口，解析命令并装配 setup、运行、team、API 与诊断路径。","owner":"命令路由、参数校验与控制面入口","notOwner":"不替代 Codex 执行引擎，也不直接拥有 Rust durable state machine。","plane":"control","status":"core","lenses":["overview","lifecycle","delivery"],
+      "inputs":["omx 命令","CLI flags","仓库与用户作用域"],"outputs":["受控子命令调用","hook 安装请求","readiness/authority 诊断"],"artifacts":["bin/omx","package command map","CLI JSON contracts"],"failure":"非法参数或关键启动条件失败时返回非零退出码；doctor 对 runtime readiness/authority 异常给出失败诊断，不继续放行。","evidenceLevel":"code-confirmed","evidence":[{"path":"package.json","start":7,"end":9},{"path":"src/cli/omx.ts","start":15,"end":24},{"path":"src/cli/index.ts","start":3296,"end":3475},{"path":"src/cli/doctor.ts","start":527,"end":563}]
+    },
+    {
+      "id":"setup-assets","title":"Scoped Asset Setup","summary":"按用户或项目作用域生成并验证 agents、skills、hooks 与配置资产。","owner":"安装计划、作用域解析、受管资产写入与校验","notOwner":"不拥有运行期任务状态，不把生成资产当作已执行工作流。","plane":"bootstrap","status":"core","lenses":["overview","delivery"],
+      "inputs":["setup mode","scope selection","bundled templates"],"outputs":["scoped Codex assets","安装摘要","冲突诊断"],"artifacts":[".codex agents","skills","hook configuration"],"failure":"写入或验证关键资产失败即中止 setup，并保留可诊断结果。","evidenceLevel":"code-confirmed","evidence":[{"path":"src/cli/setup.ts","start":3877,"end":3929},{"path":"src/cli/setup.ts","start":3930,"end":4099},{"path":"src/cli/setup.ts","start":4194,"end":4320},{"path":"src/cli/setup.ts","start":4898,"end":4914}]
+    },
+    {
+      "id":"native-hooks","title":"Native Hook Event Bus","summary":"以 Codex 原生事件承载主要 lifecycle，总线化连接输入、工具、停止与恢复路径。","owner":"hook 注册、事件规范化与关键 lifecycle 分派","notOwner":"通知和观察者不是授权源；hook 也不替代状态转换规则。","plane":"event","status":"critical","lenses":["overview","lifecycle","state","delivery"],
+      "inputs":["SessionStart","UserPromptSubmit","tool lifecycle events","Stop events"],"outputs":["规范化 hook payload","路由触发","关键门禁结果","native subagent lifecycle observation"],"artifacts":["Codex hook configuration","hook command bindings","hook lifecycle log"],"failure":"transition、write 与 Stop 关键路径 fail-closed；子代理身份或 planning write authority 冲突时拒绝授权，非关键观察器可降级。","evidenceLevel":"code-confirmed","evidence":[{"path":"src/config/codex-hooks.ts","start":5,"end":13},{"path":"src/config/codex-hooks.ts","start":377,"end":451},{"path":"src/scripts/codex-native-hook.ts","start":10531,"end":10570},{"path":"src/scripts/codex-native-hook.ts","start":10859,"end":10886},{"path":"src/scripts/codex-native-hook.ts","start":22324,"end":22355},{"path":"src/scripts/codex-native-hook.ts","start":22649,"end":22713},{"path":"src/scripts/codex-native-hook.ts","start":23219,"end":23357},{"path":"src/scripts/codex-native-hook.ts","start":23455,"end":23509}]
+    },
+    {
+      "id":"prompt-router","title":"Prompt Router","summary":"识别显式模式和关键词，把用户意图转换为受约束的工作流激活决策。","owner":"输入分类、关键词检测与候选模式选择","notOwner":"不直接写终态，也不越过 transition gate 授权执行。","plane":"policy","status":"core","lenses":["overview","lifecycle","state"],
+      "inputs":["用户 prompt","模式关键词","当前 workflow context"],"outputs":["activation decision","mode metadata","route diagnostics"],"artifacts":["keyword rules","routing result"],"failure":"无可靠匹配时保持普通执行路径，不臆造工作流激活。","evidenceLevel":"code-confirmed","evidence":[{"path":"src/hooks/keyword-detector.ts","start":3398,"end":3451},{"path":"src/scripts/codex-native-hook.ts","start":22649,"end":22713}]
+    },
+    {
+      "id":"workflow-transition","title":"Workflow Transition Gate","summary":"校验合法状态迁移、前置证据和终态条件，是写状态前的 fail-closed 门禁。","owner":"转换合法性、前置条件与持久化门禁","notOwner":"不执行模型任务，也不把本地迹象提升为外部授权。","plane":"policy","status":"critical","lenses":["overview","lifecycle","state"],
+      "inputs":["activation decision","current state","transition evidence"],"outputs":["allowed transition","拒绝原因","normalized next state"],"artifacts":["workflow transition record","gate diagnostics","atomically persisted workflow state"],"failure":"缺少必需证据或非法转换时拒绝写入并保持原权威状态；通过门禁后才原子持久化。","evidenceLevel":"code-confirmed","evidence":[{"path":"src/state/workflow-transition.ts","start":765,"end":956},{"path":"src/state/operations.ts","start":928,"end":1084}]
+    },
+    {
+      "id":"deep-interview","title":"Deep Interview","summary":"在实施前递进澄清不确定性，把模糊目标收敛为可验证需求与约束。","owner":"需求访谈协议、歧义收敛与 readiness 判断","notOwner":"不拥有执行授权，也不替代计划审查和终态验证。","plane":"workflow","status":"mode","lenses":["overview","lifecycle"],
+      "inputs":["模糊需求","用户回答","已知约束"],"outputs":["澄清后的目标","验收条件","残余风险"],"artifacts":["interview transcript","requirements evidence"],"failure":"关键歧义未解除时保持访谈状态，不提前进入实现。","evidenceLevel":"documentation-confirmed","evidence":[{"path":"skills/deep-interview/SKILL.md"}]
+    },
+    {
+      "id":"ralplan","title":"Ralplan Consensus Planning","summary":"组织多角色计划审查并通过 consensus gate 决定能否进入执行。","owner":"计划轮次、审查证据与 consensus gate","notOwner":"当前 host consensus verifier 不可用；local evidence 不能表示成功授权。","plane":"workflow","status":"degraded-gate","lenses":["overview","lifecycle","state"],
+      "inputs":["需求证据","候选计划","review feedback"],"outputs":["revised plan","consensus evidence","blocked decision"],"artifacts":["ralplan state","review rounds","gate record"],"failure":"host verifier 不可用或共识证据不足时 fail-closed，禁止声称已获授权。","evidenceLevel":"code-confirmed","evidence":[{"path":"src/ralplan/runtime.ts","start":347,"end":552},{"path":"src/ralplan/consensus-gate.ts","start":7,"end":116}]
+    },
+    {
+      "id":"ultragoal","title":"Ultragoal","summary":"把长期目标拆为可续跑的 durable story plan、ledger checkpoints、阶段证据与明确终止条件。","owner":"repo-native goal artifacts、resume/checkpoint 协议与最终质量门禁","notOwner":"不暗改 Codex thread goal，不绕过验证终态，也不替代 Team 的任务交付权威。","plane":"workflow","status":"mode","lenses":["overview","lifecycle","state"],
+      "inputs":["目标定义","阶段计划","Codex goal snapshot 与执行证据"],"outputs":["durable story plan","续跑上下文","完成、阻塞或 review-blocked signal"],"artifacts":[".omx/ultragoal/brief.md",".omx/ultragoal/goals.json",".omx/ultragoal/ledger.jsonl"],"failure":"缺少匹配的 goal snapshot、可验证进展或最终 cleanup/review gate 时拒绝完成 checkpoint，保留阻塞与续跑信息。","evidenceLevel":"code-confirmed","evidence":[{"path":"docs/ultragoal.md","start":23,"end":25},{"path":"docs/ultragoal.md","start":45,"end":83},{"path":"docs/ultragoal.md","start":137,"end":159},{"path":"docs/ultragoal.md","start":205,"end":218},{"path":"src/ultragoal/artifacts.ts","start":1732,"end":1761},{"path":"src/ultragoal/artifacts.ts","start":1774,"end":1865}]
+    },
+    {
+      "id":"ralph","title":"Ralph Completion Audit","summary":"在迭代执行末端审计完成声明、验证证据和残余工作。","owner":"completion audit 与完成条件核验","notOwner":"不生成业务实现，也不以自述替代命令和 artifact 证据。","plane":"verification","status":"critical","lenses":["overview","lifecycle"],
+      "inputs":["完成声明","验证结果","任务状态"],"outputs":["audit verdict","缺口清单","terminal recommendation"],"artifacts":["completion audit record","verification evidence"],"failure":"证据不足时拒绝 completed 判定并要求继续或明确 blocked。","evidenceLevel":"code-confirmed","evidence":[{"path":"src/ralph/completion-audit.ts","start":74,"end":108}]
+    },
+    {
+      "id":"team-orchestrator","title":"Team Orchestrator","summary":"先持久化、后放行的 leader/worker 编排与五阶段（five phases）生命周期。","owner":"TypeScript Team lifecycle、阶段推进、worker readiness、terminal epoch 与 authority-checked shutdown","notOwner":"具体 task claim/version/lease 状态由 Team Task & Delivery State 管理；runtime bridge 只承接可选 dispatch/mailbox runtime 路径。","plane":"orchestration","status":"core","lenses":["overview","lifecycle","state"],
+      "inputs":["team configuration","task graph","worker launch policy","persisted task/heartbeat/event snapshots"],"outputs":["worker readiness","task transitions","terminal epoch"],"artifacts":[".omx/state/team/<team>/manifest.v2.json",".omx/state/team/<team>/tasks/",".omx/state/team/<team>/events/events.ndjson"],"failure":"缺少启动证据即终止 startup；monitor 按持久 task、heartbeat 与 events 收敛状态，shutdown 必须有权威 leader 证明。","evidenceLevel":"code-confirmed","evidence":[{"path":"src/team/orchestrator.ts","start":8,"end":118},{"path":"src/team/runtime.ts","start":3388,"end":4187},{"path":"src/team/runtime.ts","start":4420,"end":4659},{"path":"src/team/runtime.ts","start":4848,"end":4984},{"path":"src/team/runtime.ts","start":5487,"end":5508},{"path":"src/team/state.ts","start":698,"end":700}]
+    },
+    {
+      "id":"team-delivery","title":"Team Task & Delivery State","summary":"TypeScript 通过 lock、atomic task files、heartbeat 与 events 管理 task claim/version/lease；dispatch/mailbox 在启用时尝试 Rust bridge，禁用或失败时符合条件的操作回落 legacy TS JSON，并通知 interactive worker。","owner":"TypeScript task claim/version/lease、task lock、atomic files、heartbeat、mailbox shadow 与 Team events","notOwner":"Rust core 不拥有 Team task claim/version/lease files；本层不拥有 worker lifecycle、readiness 或 shutdown authority，interactive pane transport 也不授予这些权威。","plane":"state","status":"critical","lenses":["overview","lifecycle","state"],
+      "inputs":["task transition request","worker claim token + expected version","heartbeat/events","dispatch/mailbox request"],"outputs":["versioned task + lease state","append-only Team events","bridge or legacy JSON mailbox record","interactive worker notification request"],"artifacts":["tasks/*.json",".omx/state/team/<team>/events/events.ndjson","workers/*/heartbeat.json","mailbox/*.json","dispatch compatibility JSON"],"failure":"claim/version/lease 冲突或 atomic write 失败时拒绝 task mutation；Rust bridge 禁用或失败时，符合条件的 dispatch/mailbox 回落 legacy TS JSON，而不转移 task、readiness 或 worker lifecycle authority。","evidenceLevel":"code-confirmed","evidence":[{"path":"src/team/state/tasks.ts","start":28,"end":346},{"path":"src/team/state/events.ts","start":88,"end":165},{"path":"src/team/state/dispatch.ts","start":176,"end":183},{"path":"src/team/state/dispatch.ts","start":255,"end":310},{"path":"src/team/state/mailbox.ts","start":41,"end":49},{"path":"src/team/state/mailbox.ts","start":63,"end":150},{"path":"src/team/state/mailbox.ts","start":193,"end":275},{"path":"src/team/state.ts","start":1621,"end":1646},{"path":"src/team/state.ts","start":1964,"end":1975},{"path":"src/team/state.ts","start":1977,"end":2007},{"path":"src/team/state.ts","start":698,"end":700},{"path":"src/runtime/bridge.ts","start":1,"end":7}]
+    },
+    {
+      "id":"native-subagents","title":"Native Subagents","summary":"从原生 SessionStart 与 turn lifecycle 识别父子线程、记录活动和终态，并将经过严格校验的 tracking state 原子投影到 State Plane。","owner":"native subagent identity correlation、turn tracking、authority observation 与状态投影","notOwner":"不取代 Codex 的子代理调度，不成为 Team task 权威，也不以 tracking 记录本身证明产品工作完成。","plane":"orchestration","status":"integration","lenses":["overview","lifecycle","delivery"],
+      "inputs":["native SessionStart","turn lifecycle events","child/parent thread identity","canonical session context"],"outputs":["tracked agent state","activity/terminal observation","authority observation or revocation fence"],"artifacts":[".omx/state/subagent-tracking.json","subagent lifecycle log entries"],"failure":"身份冲突、外部 parent 或 malformed/stale tracker authority 时 fail-closed 并拒绝或撤销 authority；非关键 turn 可观测性失败不得伪造执行、终态或任务交付状态。","evidenceLevel":"code-confirmed","evidence":[{"path":"src/scripts/codex-native-hook.ts","start":483,"end":539},{"path":"src/scripts/codex-native-hook.ts","start":22387,"end":22471},{"path":"src/scripts/notify-hook.ts","start":714,"end":738},{"path":"src/subagents/tracker.ts","start":837,"end":929},{"path":"src/subagents/tracker.ts","start":1070,"end":1077}]
+    },
+    {
+      "id":"tool-exec","title":"Codex Exec Session Launcher","summary":"execWithOverlay 准备 session-scoped Codex Home 与 overlay；preLaunch 成功后 blocking 调用 codex exec，并在该阶段的 finally 执行 postLaunch 与 runtime-home cleanup。","owner":"Codex exec 子进程的 session overlay、hook binding、阻塞启动与分阶段 launch cleanup 编排","notOwner":"不是通用工具引擎；不拥有任意工具超时、structured tool-result adapter 或任务成功判定。","plane":"execution","status":"core","lenses":["overview","lifecycle","delivery"],
+      "inputs":["worktree/context launch options","Codex exec arguments","session-scoped Codex Home"],"outputs":["blocking codex exec process lifecycle","successful preLaunch binding","phase-correct cleanup evidence"],"artifacts":["session model-instructions overlay","runtime Codex Home","launch binding"],"failure":"worktree 或 child launch 错误显式失败；preLaunch 失败时仅执行 runtime-home cleanup，不调用 postLaunch；preLaunch 成功后才由 finally 执行 postLaunch 与最终 cleanup，且 child 退出不代表任务成功。","evidenceLevel":"code-confirmed","evidence":[{"path":"src/cli/index.ts","start":3934,"end":4066}]
+    },
+    {
+      "id":"verification-terminal","title":"Verification & Terminal Outcome","summary":"规范化显式 run outcome 与 terminal lifecycle outcome；循环只在收到 terminal outcome 时返回，完成声明仍需证据。","owner":"run outcome normalization、loop termination 与 terminal semantics","notOwner":"不负责实现内容，也不把非终态进度或抛出的异常自动标记成已持久化终态。","plane":"verification","status":"critical","lenses":["overview","lifecycle","state","delivery"],
+      "inputs":["execution result","verification evidence","loop state"],"outputs":["normalized terminal outcome","exit semantics","completion evidence"],"artifacts":["run outcome normalization result","validated terminal state record"],"failure":"无效 terminal 写入由 state operation gate 拒绝并保留原状态；循环达到上限时抛错，异常是否转换为非成功终态由调用方负责，不能把抛错视为自动持久化。","evidenceLevel":"code-confirmed","evidence":[{"path":"src/runtime/run-outcome.ts","start":170,"end":215},{"path":"src/runtime/run-loop.ts","start":57,"end":116},{"path":"src/state/operations.ts","start":928,"end":1084}]
+    },
+    {
+      "id":"ts-runtime-bridge","title":"TS Bridge & omx-runtime Executor","summary":"TS 序列化 RuntimeCommand 并启动 native binary；omx-runtime exec 获取 mutation lock、加载 engine、处理 command，并按固定顺序串行写入 runtime 文件后再写 compatibility view。","owner":"TS 的 JSON/process adapter 与 omx-runtime executor 的锁定、加载、执行和串行持久化边界","notOwner":"Runtime core 拥有 authority/dispatch/mailbox/replay/readiness 语义；此桥不拥有 TS task claim/version/lease files。","plane":"runtime","status":"bridge","lenses":["overview","state","delivery"],
+      "inputs":["serialized RuntimeCommand JSON","canonical runtime state directory","bridge enablement"],"outputs":["RuntimeEvent JSON","persisted runtime files","authority/readiness compatibility diagnostics"],"artifacts":["omx-runtime native binary","runtime-mutation.lock","Rust compatibility JSON"],"failure":"bridge 禁用或 spawn/protocol/persist 失败时显式返回未交付；后段写入失败可能留下已部分发布的较早文件，且不提供回滚；符合条件的 Team dispatch/mailbox 回落 legacy JSON，不在 TS 侧臆造 core 状态或 readiness。","evidenceLevel":"code-confirmed","evidence":[{"path":"src/runtime/bridge.ts","start":1,"end":7},{"path":"src/runtime/bridge.ts","start":181,"end":217},{"path":"src/runtime/bridge.ts","start":275,"end":282},{"path":"crates/omx-runtime/src/main.rs","start":59,"end":124},{"path":"crates/omx-runtime-core/src/engine.rs","start":320,"end":351}]
+    },
+    {
+      "id":"rust-runtime-core","title":"Rust Runtime Core","summary":"拥有 authority、dispatch、mailbox、replay 与 readiness 的 durable state machine。","owner":"Runtime authority、dispatch/mailbox、持久事件、replay 去重与 readiness 判定","notOwner":"不拥有 Codex 推理、TS task claim/version/lease files 或 Team task atomic JSON；tmux 是独立 mux adapter。","plane":"runtime","status":"authoritative","lenses":["overview","lifecycle","state"],
+      "inputs":["runtime authority command","dispatch/mailbox command","persisted runtime journal for replay/readiness"],"outputs":["durable runtime transition","dispatch/mailbox result","readiness snapshot"],"artifacts":["runtime journal","mailbox state","replay cursor"],"failure":"Runtime authority、dispatch/mailbox、replay 或 readiness 命令违反权限/顺序时 process 返回错误；persist 失败也显式报错，已有文件可能部分写入且不保证回滚；不接管 TS task claim/version/lease files。","evidenceLevel":"code-confirmed","evidence":[{"path":"crates/omx-runtime-core/src/lib.rs","start":17,"end":45},{"path":"crates/omx-runtime-core/src/engine.rs","start":134,"end":258},{"path":"crates/omx-runtime-core/src/engine.rs","start":291,"end":405}]
+    },
+    {
+      "id":"mux-tmux","title":"Team Worker Transport & Mux/tmux","summary":"Team interactive 模式由 TypeScript tmux-session 控制 worker panes，prompt 模式绕过 tmux。独立 Rust omx-mux 提供 typed adapter contract；omx-runtime 调用 adapter sample，而 SparkShell 只复用 build_capture_pane_args 后直接执行 tmux，不调用 MuxAdapter。","owner":"TypeScript Team tmux-session transport；Rust typed adapter contract 与共享 build_capture_pane_args argv helper","notOwner":"Rust omx-mux 不是当前 Team launcher，也不拥有 Team task、worker readiness、lifecycle 或 shutdown authority；SparkShell 不经 MuxAdapter，prompt workers 不经 tmux。","plane":"runtime","status":"adapter","lenses":["overview","lifecycle","delivery"],
+      "inputs":["Team interactive worker launch spec","interactive notification text","prompt-mode launch decision","omx-runtime typed mux operation","SparkShell shared capture argv request"],"outputs":["TypeScript-created worker pane identity","interactive worker notification","prompt child-process bypass","Rust typed mux outcome","shared capture argv"],"artifacts":["TypeScript tmux session and worker panes","prompt worker child processes","Rust MuxOperation/MuxOutcome contract","build_capture_pane_args"],"failure":"interactive tmux 创建或通知失败时上层 startup/delivery 路径显式失败；prompt 模式保持直接子进程路径；Rust adapter 失败只返回 mux error，SparkShell 的直接 tmux 执行失败则作为 shell command failure 返回。","evidenceLevel":"code-confirmed","evidence":[{"path":"src/team/runtime.ts","start":3874,"end":3945},{"path":"src/team/tmux-session.ts","start":2320,"end":2475},{"path":"src/team/tmux-session.ts","start":3714,"end":3775},{"path":"crates/omx-sparkshell/src/main.rs","start":1,"end":100},{"path":"crates/omx-runtime/src/main.rs","start":59,"end":69},{"path":"crates/omx-mux/src/types.rs","start":237,"end":304},{"path":"crates/omx-mux/src/tmux.rs","start":103,"end":190}]
+    },
+    {
+      "id":"sparkshell","title":"SparkShell","summary":"以原生进程执行命令；Rust command.output 与 TypeScript spawnSync 缓冲收集 stdout/stderr/result，再由 CLI 传递结果。tmux tail 只共享 omx-mux 的 argv helper 后直接执行 tmux。","owner":"原生命令执行、缓冲 stdout/stderr 捕获、CLI 启停与结果传递","notOwner":"不调用 MuxAdapter，也不拥有 workflow 决策或 terminal success 判定。","plane":"execution","status":"native-tool","lenses":["overview","lifecycle","delivery"],
+      "inputs":["shell request","working directory","environment policy","shared tmux capture argv"],"outputs":["command result","buffered stdout/stderr/result","health status"],"artifacts":["sparkshell process","request/response protocol"],"failure":"进程或协议异常作为工具失败返回，由上层验证和归一终态。","evidenceLevel":"code-confirmed","evidence":[{"path":"crates/omx-sparkshell/src/main.rs","start":1,"end":100},{"path":"crates/omx-sparkshell/src/main.rs","start":85,"end":156},{"path":"crates/omx-sparkshell/src/exec.rs","start":107,"end":125},{"path":"src/cli/sparkshell.ts","start":190,"end":223},{"path":"src/cli/sparkshell.ts","start":406,"end":452},{"path":"crates/omx-sparkshell/src/codex_bridge.rs","start":59,"end":119}]
+    },
+    {
+      "id":"omx-api","title":"OMX Loopback Model Gateway","summary":"Rust localhost model gateway，提供 Responses、Chat、Image、health、telemetry 与 stop 路由；TS CLI 只发现、校验并启动 native binary。","owner":"Rust loopback HTTP 路由、模型请求适配、telemetry 与本地服务生命周期","notOwner":"不是 workflow 或 runtime authority；TS 包装层不拥有 gateway 语义，也不提供持久控制接口。","plane":"local-gateway","status":"localhost-only","lenses":["overview","lifecycle","delivery"],
+      "inputs":["localhost HTTP request","Responses/Chat/Image payload","可选 local bearer"],"outputs":["model-compatible HTTP response","health 与 telemetry snapshot","stop acknowledgement"],"artifacts":["omx-api native binary","loopback listener","local bearer state"],"failure":"强制 localhost 绑定；非 loopback host 被拒绝，配置 bearer 时认证不匹配返回 401，TS 启动失败显式报错。","evidenceLevel":"code-confirmed","evidence":[{"path":"crates/omx-api/src/lib.rs","start":467,"end":528},{"path":"src/cli/api.ts","start":136,"end":225},{"path":"crates/omx-api/src/lib.rs","start":2228,"end":2242}]
+    },
+    {
+      "id":"state-plane","title":"State Plane","summary":"以 state root 和 session/team scope 解析权威文件路径，定义作用域隔离、状态布局与兼容访问入口。","owner":"路径解析、作用域隔离、状态布局与兼容访问规则","notOwner":"不拥有 runtime 事件语义或 terminal outcome 归一，也不把 UI cache 或 MCP 响应当作权威写入源。","plane":"state","status":"authoritative","lenses":["overview","lifecycle","state","delivery"],
+      "inputs":["state root","session/team scope","path resolution request"],"outputs":["scoped canonical paths","state directory layout","compatibility access paths"],"artifacts":[".omx/state/","session/team scopes","state directory layout"],"failure":"路径越出 workspace/state root、scope 不匹配或 state root 无效时拒绝解析，不静默扩大访问范围。","evidenceLevel":"code-confirmed","evidence":[{"path":"docs/STATE_MODEL.md","start":12,"end":46},{"path":"src/mcp/state-paths.ts","start":337,"end":717}]
+    },
+    {
+      "id":"hud-sidecar","title":"HUD & Sidecar","summary":"只读投影 runtime 与 workflow 快照，为人和工具提供近实时可观测性。","owner":"状态读取、展示聚合与 compatibility snapshot 消费","notOwner":"不拥有 lifecycle authority，不通过 UI 写入任务或终态。","plane":"observability","status":"best-effort","lenses":["overview","state","delivery"],
+      "inputs":["compatibility snapshot","state files","activity telemetry"],"outputs":["HUD view model","sidecar observations","health summary"],"artifacts":["HUD state cache","sidecar snapshot"],"failure":"读取失败可 best-effort 降级，不改变或推断权威状态。","evidenceLevel":"code-confirmed","evidence":[{"path":"src/hud/state.ts","start":614,"end":741},{"path":"src/sidecar/collector.ts","start":360,"end":400}]
+    },
+    {
+      "id":"notifications-openclaw","title":"Notifications & OpenClaw","summary":"生命周期调用方等待 best-effort 渠道分发，dispatcher 以 15 秒有界等待封顶；仅非问答 OpenClaw wake 采用 fire-and-forget。","owner":"通知路由、渠道适配、15 秒 timeout 与 OpenClaw 集成投递","notOwner":"不是状态机门禁；投递成功不代表任务完成，timeout 也不改写核心生命周期。","plane":"delivery","status":"best-effort","lenses":["overview","lifecycle","delivery"],
+      "inputs":["CLI session start/end","notify-hook session-idle","channel config","OpenClaw integration settings"],"outputs":["bounded-wait channel result","仅非问答 OpenClaw 不等待的 wake attempt","diagnostics"],"artifacts":["notification payload","channel result","OpenClaw event"],"failure":"渠道失败或 15 秒 timeout 作为 best-effort 结果返回；调用方可记录并继续 cleanup，但分发等待可能延迟生命周期调用。","evidenceLevel":"code-confirmed","evidence":[{"path":"src/notifications/index.ts","start":315,"end":340},{"path":"src/notifications/dispatcher.ts","start":388,"end":480},{"path":"src/scripts/notify-hook.ts","start":1101,"end":1133},{"path":"src/cli/index.ts","start":5846,"end":5859},{"path":"src/cli/index.ts","start":6828,"end":6844},{"path":"docs/openclaw-integration.md","start":3,"end":23}]
+    },
+    {
+      "id":"mcp-compat","title":"MCP Compatibility Layer","summary":"为外部客户端提供可选集成和兼容访问；CLI/JSON 仍是 durable control plane。","owner":"MCP tool facade、兼容查询与有限适配","notOwner":"不是持久控制面的唯一入口，也不拥有 runtime authority。","plane":"integration","status":"optional","lenses":["overview","state","delivery"],
+      "inputs":["MCP request","CLI-compatible operation","state query"],"outputs":["compatibility response","delegated command","read projection"],"artifacts":["MCP tools","compatibility taxonomy"],"failure":"MCP 不可用时核心 CLI/JSON 路径保持可操作，不阻断 durable workflow。","evidenceLevel":"documentation-confirmed","evidence":[{"path":"docs/architecture/cli-first-mcp-taxonomy.md","start":3,"end":65}]
+    },
+    {
+      "id":"plugin-bundle","title":"Generated Plugin Bundle","summary":"从 canonical sources 生成并验证的官方交付产物，包含 skills、hooks、MCP、apps 与 plugin metadata。","owner":"生成后的 plugin discovery surface、bundle 完整性校验与发布一致性","notOwner":"不拥有 authoring SSOT；不包含 plugin-scoped agents 或 prompts，native agent TOML 是 setup-owned asset。","plane":"delivery","status":"generated-verified","lenses":["overview","delivery"],
+      "inputs":["canonical skill sources","first-party MCP 与 app metadata","plugin hooks 和 package metadata"],"outputs":["validated official bundle","plugin manifest","Codex discovery surface"],"artifacts":["plugins/oh-my-codex/skills/","plugins/oh-my-codex/hooks/hooks.json","plugins/oh-my-codex/.mcp.json","plugins/oh-my-codex/.app.json","plugins/oh-my-codex/.codex-plugin/plugin.json"],"failure":"生成物偏离 canonical authoring sources 或误带 agents/prompts 时验证失败并阻止交付。","evidenceLevel":"code-confirmed","evidence":[{"path":"docs/plugin-bundle-ssot.md","start":3,"end":52},{"path":"plugins/oh-my-codex/.codex-plugin/plugin.json","start":20,"end":30}]
+    },
+    {
+      "id":"vscode-extension","title":"VS Code Extension","summary":"本地开发与 dogfood 的 thin UI，通过 Chat 直接 launch、resume、stop OMX session，并展示 transcripts、logs、doctor 与 health。","owner":"编辑器 Chat、direct session 启停、本地 transcript/log 浏览和 doctor/health 入口","notOwner":"不拥有也不读取 authoritative State Plane，不拥有 workflow authority 或核心执行引擎。","plane":"delivery","status":"thin-client","lenses":["overview","delivery"],
+      "inputs":["active workspace","Chat prompt","direct session launch/resume/stop action"],"outputs":["streamed session output","local transcript and log view","doctor/health result"],"artifacts":["VS Code extension package","workspace-local chat transcripts","direct-session logs"],"failure":"扩展或 direct session 失败只影响本地 UI，并显示 launch/stream/doctor 错误；CLI 与 runtime 路径继续可用。","evidenceLevel":"code-confirmed","evidence":[{"path":"packages/vscode-extension/src/core.ts","start":41,"end":72},{"path":"packages/vscode-extension/README.md","start":100,"end":127},{"path":"packages/vscode-extension/README.md","start":3,"end":18},{"path":"packages/vscode-extension/src/sessionManager.ts","start":37,"end":145}]
+    }
+  ],
+  "edges":[
+    {"from":"codex-host","to":"native-hooks","kind":"event","label":"native lifecycle events","flow":"session-launch"},
+    {"from":"omx-cli","to":"setup-assets","kind":"command","label":"scoped setup"},
+    {"from":"omx-cli","to":"native-hooks","kind":"command","label":"install + bind hooks","flow":"session-launch"},
+    {"from":"native-hooks","to":"prompt-router","kind":"event","label":"UserPromptSubmit","flow":"session-launch"},
+    {"from":"prompt-router","to":"workflow-transition","kind":"command","label":"activation decision","flow":"workflow-convergence"},
+    {"from":"workflow-transition","to":"deep-interview","kind":"command","label":"clarify ambiguity"},
+    {"from":"workflow-transition","to":"ralplan","kind":"command","label":"enter consensus planning","flow":"workflow-convergence"},
+    {"from":"workflow-transition","to":"ultragoal","kind":"command","label":"activate durable goal","flow":"workflow-convergence"},
+    {"from":"workflow-transition","to":"ralph","kind":"command","label":"activate iterative audit","flow":"workflow-convergence"},
+    {"from":"deep-interview","to":"ralplan","kind":"state","label":"requirements evidence"},
+    {"from":"ralplan","to":"verification-terminal","kind":"event","label":"consensus unavailable → failed","flow":"workflow-convergence"},
+    {"from":"ralph","to":"verification-terminal","kind":"state","label":"completion audit","flow":"workflow-convergence"},
+    {"from":"omx-cli","to":"team-orchestrator","kind":"command","label":"start team lifecycle","flow":"team-dispatch"},
+    {"from":"team-orchestrator","to":"team-delivery","kind":"command","label":"task + dispatch","flow":"team-dispatch"},
+    {"from":"team-orchestrator","to":"mux-tmux","kind":"command","label":"interactive worker launch","flow":"team-dispatch"},
+    {"from":"team-delivery","to":"state-plane","kind":"state","label":"task claims + lease state","flow":"team-dispatch"},
+    {"from":"team-delivery","to":"ts-runtime-bridge","kind":"command","label":"conditional dispatch/mailbox bridge","flow":"team-dispatch"},
+    {"from":"team-delivery","to":"mux-tmux","kind":"command","label":"interactive worker notify","flow":"team-dispatch"},
+    {"from":"state-plane","to":"team-orchestrator","kind":"event","label":"poll tasks + heartbeat/events","flow":"team-dispatch"},
+    {"from":"codex-host","to":"native-subagents","kind":"command","label":"typed agent spawn"},
+    {"from":"native-hooks","to":"native-subagents","kind":"event","label":"SessionStart + turn lifecycle tracking"},
+    {"from":"native-subagents","to":"state-plane","kind":"state","label":"subagent-tracking.json"},
+    {"from":"omx-cli","to":"tool-exec","kind":"command","label":"codex exec launch","flow":"session-launch"},
+    {"from":"tool-exec","to":"codex-host","kind":"command","label":"blocking codex exec process","flow":"session-launch"},
+    {"from":"verification-terminal","to":"state-plane","kind":"state","label":"normalized terminal record"},
+    {"from":"ts-runtime-bridge","to":"omx-cli","kind":"state","label":"readiness + authority diagnostics"},
+    {"from":"ts-runtime-bridge","to":"rust-runtime-core","kind":"command","label":"omx-runtime exec → core","flow":"team-dispatch"},
+    {"from":"rust-runtime-core","to":"state-plane","kind":"state","label":"journal + replay"},
+    {"from":"ts-runtime-bridge","to":"hud-sidecar","kind":"state","label":"read compatibility snapshot"},
+    {"from":"omx-cli","to":"sparkshell","kind":"command","label":"sparkshell subcommand"},
+    {"from":"sparkshell","to":"mux-tmux","kind":"command","label":"shared tmux capture argv helper"},
+    {"from":"sparkshell","to":"omx-api","kind":"command","label":"local summary request"},
+    {"from":"state-plane","to":"hud-sidecar","kind":"event","label":"read-only state projection"},
+    {"from":"native-hooks","to":"notifications-openclaw","kind":"event","label":"notify-hook session-idle"},
+    {"from":"mcp-compat","to":"omx-cli","kind":"command","label":"optional CLI delegation"},
+    {"from":"state-plane","to":"mcp-compat","kind":"event","label":"compatibility read model"},
+    {"from":"plugin-bundle","to":"codex-host","kind":"state","label":"plugin discovery surface"},
+    {"from":"vscode-extension","to":"omx-cli","kind":"command","label":"thin local UI action"},
+    {"from":"omx-cli","to":"notifications-openclaw","kind":"event","label":"session start/end best-effort"}
+  ]
+}
+  </script>
+  <script id="atlas-app">
+  (() => {
+    document.documentElement.classList.add('js');
+
+    const data = JSON.parse(document.getElementById('atlas-data').textContent);
+    const state = {
+      lens: 'overview',
+      query: '',
+      selectedId: null,
+      selectedRoleId: null,
+      selectedMessageId: null,
+      sequenceId: 'complete-request',
+      theme: 'dark'
+    };
+    const byId = new Map(data.nodes.map((node) => [node.id, node]));
+    const roleById = new Map(data.roleGroups.map((role) => [role.id, role]));
+    const sequenceById = new Map(data.sequences.map((sequence) => [sequence.id, sequence]));
+    const mainElement = document.querySelector('main');
+    const skipLink = document.querySelector('.skip-link');
+    const graph = document.getElementById('atlas-graph');
+    const coreRoles = document.getElementById('core-roles');
+    const coreRoleGrid = document.getElementById('core-role-grid');
+    const sequenceTabs = document.getElementById('sequence-tabs');
+    const sequenceStage = document.getElementById('sequence-stage');
+    const completeAtlas = document.getElementById('complete-atlas');
+    const completeAtlasControls = document.getElementById('complete-atlas-controls');
+    const atlasContext = document.getElementById('atlas-context');
+    const lensTabs = document.getElementById('lens-tabs');
+    const evidenceDrawer = document.getElementById('evidence-drawer');
+    const searchInput = document.getElementById('atlas-search');
+    const clearSearch = document.getElementById('clear-search');
+    const themeToggle = document.getElementById('theme-toggle');
+    const resultStatus = document.getElementById('result-status');
+    const knownLenses = new Set(data.lenses.map((lens) => lens.id));
+    const flowLabels = Object.freeze({
+      'session-launch': 'SESSION LAUNCH',
+      'workflow-convergence': 'WORKFLOW CONVERGENCE',
+      'team-dispatch': 'TEAM DISPATCH'
+    });
+    let authoredHash = null;
+    let renderedEvidenceId;
+    let lastEvidenceFocus = null;
+
+    completeAtlasControls.append(lensTabs, atlasContext);
+
+    const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (character) => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    })[character]);
+
+    const listMarkup = (items) => Array.isArray(items) && items.length
+      ? `<ul>${items.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul>`
+      : '';
+
+    function updateResultStatus(message) {
+      if (resultStatus.textContent !== message) resultStatus.textContent = message;
+    }
+
+    function focusRenderedControl(elements, datasetKey, value) {
+      const control = [...elements].find((element) => element.dataset[datasetKey] === value);
+      if (control) control.focus();
+    }
+
+    function ensureCompleteAtlasVisible(reason) {
+      if (!completeAtlas.open) completeAtlas.open = true;
+      completeAtlas.dataset.openedBy = reason;
+    }
+
+    function activateSkipLink(event) {
+      event.preventDefault();
+      ensureCompleteAtlasVisible('skip-link');
+      graph.focus({ preventScroll: true });
+      graph.scrollIntoView({ block: 'start' });
+    }
+
+    function captureDynamicFocus() {
+      const activeControl = document.activeElement;
+      if (activeControl?.dataset?.messageId) return { kind: 'message', id: activeControl.dataset.messageId };
+      if (activeControl?.dataset?.roleId) return {
+        kind: 'role',
+        id: activeControl.dataset.roleId,
+        scope: activeControl.closest('#sequence-stage') ? 'sequence' : 'core'
+      };
+      if (activeControl?.dataset?.sequenceId) return { kind: 'sequence', id: activeControl.dataset.sequenceId };
+      if (activeControl?.dataset?.nodeId) return { kind: 'node', id: activeControl.dataset.nodeId };
+      if (activeControl?.dataset?.lens) return { kind: 'lens', id: activeControl.dataset.lens };
+      return null;
+    }
+
+    function restoreDynamicFocus(snapshot) {
+      if (!snapshot) return;
+      if (snapshot.kind === 'node') {
+        focusRenderedControl(graph.querySelectorAll('[data-node-id]'), 'nodeId', snapshot.id);
+      } else if (snapshot.kind === 'lens') {
+        focusRenderedControl(lensTabs.querySelectorAll('[data-lens]'), 'lens', snapshot.id);
+      } else if (snapshot.kind === 'message') {
+        focusRenderedControl(sequenceStage.querySelectorAll('[data-message-id]'), 'messageId', snapshot.id);
+      } else if (snapshot.kind === 'role') {
+        const roleSurface = snapshot.scope === 'sequence' ? sequenceStage : coreRoles;
+        focusRenderedControl(roleSurface.querySelectorAll('[data-role-id]'), 'roleId', snapshot.id);
+      } else if (snapshot.kind === 'sequence') {
+        focusRenderedControl(sequenceTabs.querySelectorAll('[data-sequence-id]'), 'sequenceId', snapshot.id);
+      }
+    }
+
+    function renderLenses() {
+      lensTabs.innerHTML = data.lenses.map((lens) => `
+        <button type="button" data-lens="${escapeHtml(lens.id)}" aria-current="${lens.id === state.lens ? 'page' : 'false'}">
+          <strong>${escapeHtml(lens.label)}</strong>
+          <span>${escapeHtml(lens.summary)}</span>
+        </button>`).join('');
+      lensTabs.querySelectorAll('[data-lens]').forEach((button) => button.addEventListener('click', selectLens));
+    }
+
+    function renderCoreRoles() {
+      coreRoleGrid.innerHTML = data.roleGroups.map((role, index) => {
+        const representativeComponentNames = role.nodeIds.slice(0, 2).map((nodeId) => byId.get(nodeId).title);
+        const remainingComponentCount = role.nodeIds.length - representativeComponentNames.length;
+        const componentNames = `${representativeComponentNames.join(' · ')}${remainingComponentCount ? ` · +${remainingComponentCount}` : ''}`;
+        return `<button type="button" class="core-role" data-role-id="${escapeHtml(role.id)}" aria-pressed="${role.id === state.selectedRoleId}">
+          <span class="role-number">${String(index + 1).padStart(2, '0')}</span>
+          <strong>${escapeHtml(role.title)}</strong>
+          <span class="role-question">${escapeHtml(role.question)}</span>
+          <span class="role-components">${escapeHtml(componentNames)}</span>
+        </button>`;
+      }).join('');
+      coreRoleGrid.querySelectorAll('[data-role-id]').forEach((button) => button.addEventListener('click', selectRole));
+    }
+
+    function renderSequence() {
+      const sequence = sequenceById.get(state.sequenceId) || data.sequences[0];
+      const participantIndex = new Map(sequence.participants.map((roleId, index) => [roleId, index]));
+      sequenceTabs.innerHTML = data.sequences.map((item) => `
+        <button id="sequence-tab-${escapeHtml(item.id)}" type="button" role="tab" data-sequence-id="${escapeHtml(item.id)}"
+          aria-selected="${item.id === sequence.id}" aria-controls="sequence-panel-${escapeHtml(item.id)}" tabindex="${item.id === sequence.id ? '0' : '-1'}">
+          <strong>${escapeHtml(item.label)}</strong><span>${escapeHtml(item.summary)}</span>
+        </button>`).join('');
+
+      const participantMarkup = sequence.participants.map((roleId) => {
+        const role = roleById.get(roleId);
+        const componentNames = role.nodeIds.map((nodeId) => byId.get(nodeId).title).slice(0, 2).join(' · ');
+        return `<button type="button" class="sequence-participant" data-role-id="${escapeHtml(role.id)}" aria-pressed="${role.id === state.selectedRoleId}">
+          <strong>${escapeHtml(role.title)}</strong><span>${escapeHtml(componentNames)}</span>
+        </button>`;
+      }).join('');
+      const lifelineMarkup = sequence.participants.map(() => '<span class="sequence-lifeline" aria-hidden="true"></span>').join('');
+      const messageMarkup = sequence.messages.map((message, index) => {
+        const fromIndex = participantIndex.get(message.from);
+        const toIndex = participantIndex.get(message.to);
+        const start = Math.min(fromIndex, toIndex) + 1;
+        const end = Math.max(fromIndex, toIndex) + 2;
+        const classes = ['sequence-message'];
+        if (fromIndex > toIndex) classes.push('is-reverse');
+        if (fromIndex === toIndex) classes.push('is-self');
+        if (message.kind === 'state' || message.kind === 'return') classes.push('is-result');
+        return `<button type="button" class="${classes.join(' ')}" data-message-id="${escapeHtml(message.id)}"
+          data-message-kind="${escapeHtml(message.kind)}" style="grid-column:${start}/${end};grid-row:${index + 1}"
+          aria-label="${escapeHtml(`${message.label}：${message.detail}`)}">
+          <span class="sequence-message-label">${escapeHtml(message.label)}</span>
+        </button>`;
+      }).join('');
+
+      sequenceStage.innerHTML = `
+        <div id="sequence-panel-${escapeHtml(sequence.id)}" role="tabpanel" aria-labelledby="sequence-tab-${escapeHtml(sequence.id)}">
+          <div class="sequence-meta"><span>${escapeHtml(sequence.summary)}</span><span class="sequence-legend"><span><i aria-hidden="true"></i>调用 / 事件</span><span><i class="result-line" aria-hidden="true"></i>结果 / 状态</span></span></div>
+          <div class="sequence-scroll" tabindex="0" aria-label="${escapeHtml(sequence.label)}时序图，可横向滚动">
+            <div class="sequence-canvas" style="--lane-count:${sequence.participants.length};--message-count:${sequence.messages.length}">
+              <div class="sequence-participants">${participantMarkup}</div>
+              <div class="sequence-lifelines" aria-hidden="true">${lifelineMarkup}</div>
+              <div class="sequence-messages">${messageMarkup}</div>
+            </div>
+          </div>
+          <p class="sequence-footnote">点击角色查看责任边界；点击消息查看其来源节点、关系与源码证据。</p>
+        </div>`;
+
+      sequenceTabs.querySelectorAll('[data-sequence-id]').forEach((button) => {
+        button.addEventListener('click', selectSequence);
+        button.addEventListener('keydown', handleSequenceKeydown);
+      });
+      sequenceStage.querySelectorAll('[data-role-id]').forEach((button) => button.addEventListener('click', selectRole));
+      sequenceStage.querySelectorAll('[data-message-id]').forEach((button) => button.addEventListener('click', selectMessage));
+    }
+
+    function selectSequence(event) {
+      const sequenceId = event.currentTarget.dataset.sequenceId;
+      const sequence = sequenceById.get(sequenceId);
+      if (!sequence) return;
+      state.sequenceId = sequenceId;
+      state.selectedMessageId = null;
+      renderedEvidenceId = undefined;
+      renderSequence();
+      renderSelectedEvidence();
+      updateResultStatus(`${sequence.label} · ${sequence.participants.length} 个责任角色 · ${sequence.messages.length} 条时序消息`);
+      focusRenderedControl(sequenceTabs.querySelectorAll('[data-sequence-id]'), 'sequenceId', sequenceId);
+    }
+
+    function handleSequenceKeydown(event) {
+      if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+      const tabs = [...sequenceTabs.querySelectorAll('[data-sequence-id]')];
+      const currentIndex = tabs.indexOf(event.currentTarget);
+      let nextIndex = currentIndex;
+      if (event.key === 'ArrowLeft') nextIndex = (currentIndex - 1 + tabs.length) % tabs.length;
+      if (event.key === 'ArrowRight') nextIndex = (currentIndex + 1) % tabs.length;
+      if (event.key === 'Home') nextIndex = 0;
+      if (event.key === 'End') nextIndex = tabs.length - 1;
+      event.preventDefault();
+      tabs[nextIndex].click();
+    }
+
+    function nodeMatchesQuery(node) {
+      const query = state.query.trim().toLowerCase();
+      return !query || JSON.stringify(node).toLowerCase().includes(query);
+    }
+
+    function visibleNodes() {
+      return data.nodes.filter((node) => node.lenses.includes(state.lens));
+    }
+
+    function renderGraph(nodes) {
+      const lensLabel = data.lenses.find((lens) => lens.id === state.lens)?.label || state.lens;
+      const queryActive = Boolean(state.query.trim());
+      const matchingIds = new Set(queryActive ? nodes.filter(nodeMatchesQuery).map((node) => node.id) : []);
+      if (!nodes.length) {
+        updateResultStatus(`0 个节点 · 0 条当前关系 · ${lensLabel}`);
+        graph.innerHTML = `
+          <section class="empty-result">
+            <h2>没有匹配的架构节点</h2>
+            <p>清空搜索可恢复“${escapeHtml(lensLabel)}”视角。</p>
+          </section>`;
+        return;
+      }
+
+      const visibleIds = new Set(nodes.map((node) => node.id));
+      const relatedIds = new Set();
+      if (state.selectedId) {
+        data.edges.forEach((edge) => {
+          if (edge.from === state.selectedId) relatedIds.add(edge.to);
+          if (edge.to === state.selectedId) relatedIds.add(edge.from);
+        });
+      }
+
+      const planes = new Map();
+      nodes.forEach((node) => {
+        if (!planes.has(node.plane)) planes.set(node.plane, []);
+        planes.get(node.plane).push(node);
+      });
+
+      const planeMarkup = [...planes].map(([plane, planeNodes]) => `
+        <section class="plane" data-plane="${escapeHtml(plane)}">
+          <header><h2>${escapeHtml(plane)}</h2><p>${planeNodes.length} nodes</p></header>
+          <div class="node-grid">
+            ${planeNodes.map((node) => {
+              const classes = ['node'];
+              if (node.id === state.selectedId) classes.push('is-selected');
+              else if (relatedIds.has(node.id)) classes.push('is-related');
+              if (queryActive) classes.push(matchingIds.has(node.id) ? 'is-search-match' : 'is-search-dimmed');
+              return `<button type="button" class="${classes.join(' ')}" data-node-id="${escapeHtml(node.id)}" data-status="${escapeHtml(node.status)}" aria-pressed="${node.id === state.selectedId}">
+                <strong>${escapeHtml(node.title)}</strong>
+                <span>${escapeHtml(node.summary)}</span>
+                <small>${escapeHtml(node.status)}</small>
+              </button>`;
+            }).join('')}
+          </div>
+        </section>`).join('');
+
+      const edges = data.edges.filter((edge) => visibleIds.has(edge.from) && visibleIds.has(edge.to));
+      const matchStatus = queryActive ? `${matchingIds.size} 个匹配 · ` : '';
+      updateResultStatus(`${matchStatus}${nodes.length} 个节点 · ${edges.length} 条当前关系 · ${lensLabel}`);
+      const edgeMarkup = `
+        <section class="edge-register" aria-label="当前视角的数据流">
+          <h2>数据流</h2>
+          <span class="flow-legend" role="group" aria-label="重点流程">
+            <span class="flow-legend-title">重点流程</span>
+            <span class="flow-family" data-flow-family="session-launch">SESSION LAUNCH</span>
+            <span class="flow-family" data-flow-family="workflow-convergence">WORKFLOW CONVERGENCE</span>
+            <span class="flow-family" data-flow-family="team-dispatch">TEAM DISPATCH</span>
+          </span>
+          <ul>${edges.map((edge) => {
+            const flowLabel = Object.hasOwn(flowLabels, edge.flow) ? flowLabels[edge.flow] : null;
+            const flowAttribute = flowLabel ? ` data-flow="${escapeHtml(edge.flow)}"` : '';
+            const flowBadge = flowLabel ? `<span class="flow-family">${escapeHtml(flowLabel)}</span>` : '';
+            const edgeClasses = queryActive
+              ? [matchingIds.has(edge.from) || matchingIds.has(edge.to) ? 'is-search-related' : 'is-search-dimmed']
+              : [];
+            const edgeClassAttribute = edgeClasses.length ? ` class="${edgeClasses.join(' ')}"` : '';
+            return `<li${edgeClassAttribute} data-edge-kind="${escapeHtml(edge.kind)}"${flowAttribute}>${flowBadge}<strong>${escapeHtml(byId.get(edge.from).title)}</strong> — ${escapeHtml(edge.label)} → <strong>${escapeHtml(byId.get(edge.to).title)}</strong></li>`;
+          }).join('')}</ul>
+        </section>`;
+
+      graph.innerHTML = planeMarkup + edgeMarkup;
+      graph.querySelectorAll('[data-node-id]').forEach((button) => button.addEventListener('click', selectNode));
+    }
+
+    function evidenceSection(title, items) {
+      const markup = listMarkup(items);
+      return markup ? `<section><h3>${escapeHtml(title)}</h3>${markup}</section>` : '';
+    }
+
+    function evidenceHeader(kicker, title, summary) {
+      return `<header>
+        <p>${escapeHtml(kicker)}</p>
+        <button type="button" class="evidence-close" data-evidence-close aria-label="关闭证据面板">关闭</button>
+        <h2>${escapeHtml(title)}</h2>
+        <p>${escapeHtml(summary)}</p>
+      </header>`;
+    }
+
+    function evidenceNodeControls(nodes, detailField) {
+      return `<section><h3>来源节点</h3><div class="evidence-node-list">${nodes.map((node) => `
+        <button type="button" class="evidence-node-link" data-node-id="${escapeHtml(node.id)}">
+          <strong>${escapeHtml(node.title)}</strong><span>${escapeHtml(node[detailField])}</span>
+        </button>`).join('')}</div></section>`;
+    }
+
+    function openEvidenceDrawer() {
+      evidenceDrawer.hidden = false;
+      mainElement.classList.add('has-evidence');
+    }
+
+    function hideEvidenceDrawer() {
+      evidenceDrawer.hidden = true;
+      evidenceDrawer.innerHTML = '';
+      mainElement.classList.remove('has-evidence');
+    }
+
+    function bindEvidenceControls() {
+      evidenceDrawer.querySelector('[data-evidence-close]')?.addEventListener('click', closeEvidence);
+      evidenceDrawer.querySelectorAll('[data-node-id]').forEach((button) => button.addEventListener('click', selectNode));
+    }
+
+    function renderEvidence(node) {
+      const nextEvidenceId = node?.id ?? null;
+      if (renderedEvidenceId === nextEvidenceId) return;
+      renderedEvidenceId = nextEvidenceId;
+      if (!node) {
+        evidenceDrawer.innerHTML = '';
+        hideEvidenceDrawer();
+        return;
+      }
+      openEvidenceDrawer();
+
+      const locations = Array.isArray(node.evidence) ? node.evidence.map((entry) => {
+        const range = Number.isInteger(entry.start)
+          ? `:${entry.start}${Number.isInteger(entry.end) ? `-${entry.end}` : ''}`
+          : '';
+        return `${entry.path}${range}`;
+      }) : [];
+      const recoveryItems = [];
+      if (node.failure) recoveryItems.push(`失败：${node.failure}`);
+      if (node.recovery) recoveryItems.push(`恢复：${node.recovery}`);
+      const incomingEdges = data.edges.filter((edge) => edge.to === node.id);
+      const outgoingEdges = data.edges.filter((edge) => edge.from === node.id);
+      const upstreamDependencies = incomingEdges.map((edge) =>
+        `[${edge.kind.toUpperCase()}] ${byId.get(edge.from).title} — ${edge.label} → 当前节点`
+      );
+      const downstreamDependencies = outgoingEdges.map((edge) =>
+        `[${edge.kind.toUpperCase()}] 当前节点 — ${edge.label} → ${byId.get(edge.to).title}`
+      );
+
+      evidenceDrawer.innerHTML = `
+        ${evidenceHeader(node.plane, node.title, node.summary)}
+        <dl>
+          <dt>负责</dt><dd>${escapeHtml(node.owner)}</dd>
+          <dt>不负责</dt><dd>${escapeHtml(node.notOwner)}</dd>
+          <dt>证据等级</dt><dd>${escapeHtml(node.evidenceLevel)}</dd>
+        </dl>
+        ${evidenceSection('上游依赖', upstreamDependencies)}
+        ${evidenceSection('下游依赖', downstreamDependencies)}
+        ${evidenceSection('输入', node.inputs)}
+        ${evidenceSection('输出', node.outputs)}
+        ${evidenceSection('产物', node.artifacts)}
+        ${evidenceSection('失败与恢复', recoveryItems)}
+        ${evidenceSection('源码证据', locations)}`;
+      bindEvidenceControls();
+    }
+
+    function sourceLocations(nodes) {
+      const seen = new Set();
+      return nodes.flatMap((node) => node.evidence || []).map((entry) => {
+        const range = Number.isInteger(entry.start)
+          ? `:${entry.start}${Number.isInteger(entry.end) ? `-${entry.end}` : ''}`
+          : '';
+        return `${entry.path}${range}`;
+      }).filter((location) => {
+        if (seen.has(location)) return false;
+        seen.add(location);
+        return true;
+      });
+    }
+
+    function renderRoleEvidence(roleId) {
+      const role = roleById.get(roleId);
+      if (!role) return;
+      const nextEvidenceId = `role:${roleId}`;
+      if (renderedEvidenceId === nextEvidenceId) return;
+      renderedEvidenceId = nextEvidenceId;
+      openEvidenceDrawer();
+      const nodes = role.nodeIds.map((nodeId) => byId.get(nodeId));
+      const componentControls = `<section><h3>包含模块</h3><div class="evidence-node-list">${nodes.map((node) => `
+        <button type="button" class="evidence-node-link" data-node-id="${escapeHtml(node.id)}">
+          <strong>${escapeHtml(node.title)}</strong><span>${escapeHtml(node.summary)}</span>
+        </button>`).join('')}</div></section>`;
+      const boundaryItems = nodes.map((node) => `${node.title} 不负责：${node.notOwner}`);
+      evidenceDrawer.innerHTML = `
+        ${evidenceHeader('核心责任角色', role.title, role.question)}
+        <dl><dt>责任摘要</dt><dd>${escapeHtml(role.summary)}</dd><dt>真实模块</dt><dd>${nodes.length} 个</dd></dl>
+        ${componentControls}
+        ${evidenceSection('责任边界', boundaryItems)}
+        ${evidenceSection('源码证据', sourceLocations(nodes))}`;
+      bindEvidenceControls();
+    }
+
+    function renderMessageEvidence(sequenceId, messageId) {
+      const sequence = sequenceById.get(sequenceId);
+      const message = sequence?.messages.find((item) => item.id === messageId);
+      if (!message) return;
+      const nextEvidenceId = `message:${sequenceId}:${messageId}`;
+      if (renderedEvidenceId === nextEvidenceId) return;
+      renderedEvidenceId = nextEvidenceId;
+      openEvidenceDrawer();
+      const nodes = message.nodeRefs.map((nodeId) => byId.get(nodeId));
+      const tracedEdges = message.edgeRefs.map(([from, to, kind, label]) =>
+        `[${kind.toUpperCase()}] ${byId.get(from).title} — ${label} → ${byId.get(to).title}`
+      );
+      evidenceDrawer.innerHTML = `
+        ${evidenceHeader(`${sequence.label} · 时序消息`, message.label, message.detail)}
+        <dl><dt>类型</dt><dd>${escapeHtml(message.kind)}</dd><dt>责任流向</dt><dd>${escapeHtml(roleById.get(message.from).title)} → ${escapeHtml(roleById.get(message.to).title)}</dd></dl>
+        ${evidenceSection('来源关系', tracedEdges)}
+        ${evidenceNodeControls(nodes, 'owner')}
+        ${evidenceSection('源码证据', sourceLocations(nodes))}`;
+      bindEvidenceControls();
+    }
+
+    function renderSelectedEvidence() {
+      if (state.selectedRoleId) {
+        renderRoleEvidence(state.selectedRoleId);
+      } else if (state.selectedMessageId) {
+        renderMessageEvidence(state.sequenceId, state.selectedMessageId);
+      } else {
+        renderEvidence(state.selectedId ? byId.get(state.selectedId) : null);
+      }
+    }
+
+    function closeEvidence() {
+      const focusTarget = captureDynamicFocus() || lastEvidenceFocus;
+      const hadNodeSelection = Boolean(state.selectedId) || location.hash.startsWith('#node=');
+      state.selectedId = null;
+      state.selectedRoleId = null;
+      state.selectedMessageId = null;
+      renderedEvidenceId = undefined;
+      if (hadNodeSelection) updateHash(`lens=${state.lens}`);
+      render();
+      restoreDynamicFocus(focusTarget);
+      lastEvidenceFocus = null;
+    }
+
+    function render() {
+      document.documentElement.dataset.theme = state.theme;
+      searchInput.value = state.query;
+      themeToggle.setAttribute('aria-pressed', String(state.theme === 'light'));
+      renderLenses();
+      renderCoreRoles();
+      renderSequence();
+      renderGraph(visibleNodes());
+      renderSelectedEvidence();
+      if (!completeAtlas.open
+        && !state.query.trim()
+        && !state.selectedId
+        && !state.selectedRoleId
+        && !state.selectedMessageId) {
+        const sequence = sequenceById.get(state.sequenceId);
+        updateResultStatus(`当前主视图 · ${sequence.label} · ${sequence.participants.length} 个责任角色 · ${sequence.messages.length} 条时序消息`);
+      }
+    }
+
+    function selectRole(event) {
+      const roleId = event.currentTarget.dataset.roleId;
+      if (!roleById.has(roleId)) return;
+      lastEvidenceFocus = captureDynamicFocus() || {
+        kind: 'role',
+        id: roleId,
+        scope: event.currentTarget.closest('#sequence-stage') ? 'sequence' : 'core'
+      };
+      if (state.selectedRoleId === roleId) {
+        closeEvidence();
+        return;
+      }
+      state.selectedRoleId = roleId;
+      state.selectedMessageId = null;
+      state.selectedId = null;
+      renderedEvidenceId = undefined;
+      renderCoreRoles();
+      renderSequence();
+      renderSelectedEvidence();
+      if (state.selectedRoleId) updateResultStatus(`${roleById.get(roleId).title} · ${roleById.get(roleId).nodeIds.length} 个核心模块`);
+      restoreDynamicFocus(lastEvidenceFocus);
+    }
+
+    function selectMessage(event) {
+      const messageId = event.currentTarget.dataset.messageId;
+      const sequence = sequenceById.get(state.sequenceId);
+      if (!sequence?.messages.some((message) => message.id === messageId)) return;
+      lastEvidenceFocus = { kind: 'message', id: messageId };
+      if (state.selectedMessageId === messageId) {
+        closeEvidence();
+        return;
+      }
+      state.selectedMessageId = messageId;
+      state.selectedRoleId = null;
+      state.selectedId = null;
+      renderedEvidenceId = undefined;
+      renderCoreRoles();
+      renderSequence();
+      renderSelectedEvidence();
+      if (state.selectedMessageId) updateResultStatus(`${sequence.label} · ${sequence.messages.find((message) => message.id === messageId).label}`);
+      focusRenderedControl(sequenceStage.querySelectorAll('[data-message-id]'), 'messageId', messageId);
+    }
+
+    function selectLens(event) {
+      const lens = event.currentTarget.dataset.lens;
+      if (!knownLenses.has(lens)) return;
+      state.lens = lens;
+      state.selectedRoleId = null;
+      state.selectedMessageId = null;
+      if (state.selectedId && !byId.get(state.selectedId).lenses.includes(lens)) state.selectedId = null;
+      updateHash(`lens=${lens}`);
+      render();
+      focusRenderedControl(lensTabs.querySelectorAll('[data-lens]'), 'lens', lens);
+    }
+
+    function selectNode(event) {
+      const id = event.currentTarget.dataset.nodeId;
+      if (!byId.has(id)) return;
+      lastEvidenceFocus = { kind: 'node', id };
+      if (state.selectedId === id) {
+        closeEvidence();
+        return;
+      }
+      ensureCompleteAtlasVisible('node-selection');
+      state.selectedRoleId = null;
+      state.selectedMessageId = null;
+      state.selectedId = id;
+      updateHash(state.selectedId ? `node=${state.selectedId}` : `lens=${state.lens}`);
+      render();
+      focusRenderedControl(graph.querySelectorAll('[data-node-id]'), 'nodeId', id);
+    }
+
+    function updateHash(value) {
+      const nextHash = `#${value}`;
+      if (location.hash === nextHash) return;
+      authoredHash = nextHash;
+      location.hash = value;
+    }
+
+    function restoreHash() {
+      const match = location.hash.match(/^#(lens|node)=([a-z0-9-]+)$/);
+      state.query = '';
+      state.selectedId = null;
+      state.selectedRoleId = null;
+      state.selectedMessageId = null;
+      lastEvidenceFocus = null;
+      if (match?.[1] === 'lens' && knownLenses.has(match[2])) {
+        state.lens = match[2];
+      } else if (match?.[1] === 'node' && byId.has(match[2])) {
+        state.selectedId = match[2];
+        lastEvidenceFocus = { kind: 'node', id: match[2] };
+        state.lens = byId.get(match[2]).lenses[0];
+        ensureCompleteAtlasVisible('node-hash');
+      } else {
+        state.lens = 'overview';
+        if (location.hash) history.replaceState(null, '', '#lens=overview');
+      }
+      render();
+    }
+
+    searchInput.addEventListener('input', (event) => {
+      state.query = event.currentTarget.value;
+      state.selectedId = null;
+      state.selectedRoleId = null;
+      state.selectedMessageId = null;
+      const query = state.query.trim().toLowerCase();
+      const globalMatches = query ? data.nodes.filter(nodeMatchesQuery) : [];
+      const exactMatch = globalMatches.find((node) => node.id.toLowerCase() === query || node.title.toLowerCase() === query);
+      const preferredMatch = exactMatch || globalMatches[0];
+      if (query) ensureCompleteAtlasVisible('search');
+      if (preferredMatch && !preferredMatch.lenses.includes(state.lens)) {
+        state.lens = preferredMatch.lenses[0];
+        updateHash(`lens=${state.lens}`);
+      }
+      render();
+      if (exactMatch) focusRenderedControl(graph.querySelectorAll('[data-node-id]'), 'nodeId', exactMatch.id);
+    });
+    clearSearch.addEventListener('click', () => {
+      const hadSelection = Boolean(state.selectedId);
+      state.query = '';
+      state.selectedId = null;
+      state.selectedRoleId = null;
+      state.selectedMessageId = null;
+      if (hadSelection || location.hash.startsWith('#node=')) updateHash(`lens=${state.lens}`);
+      render();
+    });
+    themeToggle.addEventListener('click', () => {
+      state.theme = state.theme === 'dark' ? 'light' : 'dark';
+      render();
+    });
+    skipLink.addEventListener('click', activateSkipLink);
+    document.addEventListener('keydown', (event) => {
+      if (event.key !== 'Escape') return;
+      if (state.selectedId || state.selectedRoleId || state.selectedMessageId) {
+        event.preventDefault();
+        closeEvidence();
+        return;
+      }
+      const priorDynamicFocus = captureDynamicFocus();
+      if (state.query) {
+        state.query = '';
+        if (location.hash.startsWith('#node=')) updateHash(`lens=${state.lens}`);
+      }
+      render();
+      restoreDynamicFocus(priorDynamicFocus);
+    });
+    window.addEventListener('hashchange', () => {
+      if (authoredHash === location.hash) {
+        authoredHash = null;
+        return;
+      }
+      authoredHash = null;
+      restoreHash();
+    });
+
+    restoreHash();
+  })();
+  </script>
+</body>
+</html>
