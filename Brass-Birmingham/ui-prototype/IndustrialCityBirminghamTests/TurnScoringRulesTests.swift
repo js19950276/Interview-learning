@@ -8,10 +8,7 @@ struct TurnScoringRulesTests {
         let catalog = try verifiedCatalog()
         var state = try setup(playerCount: playerCount, catalog: catalog)
         let originalOrder = state.playerOrder
-        let exhausted = Array(state.standardDrawDeck.dropFirst(playerCount - 1))
-        state.standardDrawDeck = Array(state.standardDrawDeck.prefix(playerCount - 1))
-        state.publicDiscard.append(contentsOf: exhausted)
-        let availableDraws = state.standardDrawDeck.count
+        let drawCountBefore = state.standardDrawDeck.count
         let roomID = GameCore.RoomID(rawValue: "turn-room")
         let tokens = Dictionary(uniqueKeysWithValues: state.players.map {
             ($0.id, GameCore.ReconnectToken(rawValue: "token-\($0.id.rawValue)"))
@@ -41,10 +38,109 @@ struct TurnScoringRulesTests {
         #expect(engine.gameState.actionsRemaining == 2)
         #expect(engine.gameState.activePlayerID == originalOrder.first)
         #expect(engine.gameState.playerOrder == originalOrder)
-        #expect(engine.gameState.standardDrawDeck.isEmpty)
-        #expect(engine.gameState.players.reduce(0) { $0 + $1.hand.count } == playerCount * 7 + availableDraws)
+        #expect(engine.gameState.standardDrawDeck.count == drawCountBefore - playerCount)
+        #expect(engine.gameState.players.allSatisfy { $0.hand.count == 8 })
         #expect(engine.gameState.actionNumber == playerCount)
         #expect(engine.gameState.authoritativeVersion.rawValue == playerCount)
+    }
+
+    @Test func authorityRejectsEarlyCardExhaustionThatWouldStrandTheNextRound() throws {
+        let catalog = try verifiedCatalog()
+        var state = try setup(playerCount: 2, catalog: catalog)
+        let actor = state.playerOrder[1]
+        let actorIndex = try #require(state.players.firstIndex { $0.id == actor })
+        let actionCard = state.players[actorIndex].hand.removeFirst()
+        let finalDrawCard = state.standardDrawDeck.removeFirst()
+        state.publicDiscard.append(contentsOf: state.standardDrawDeck)
+        state.standardDrawDeck = [finalDrawCard]
+        for playerIndex in state.players.indices {
+            state.publicDiscard.append(contentsOf: state.players[playerIndex].hand)
+            state.players[playerIndex].hand = playerIndex == actorIndex ? [actionCard] : []
+        }
+        state.roundNumber = 2
+        state.turnsCompletedInRound = 1
+        state.actionsRemaining = 1
+        state.activePlayerID = actor
+        state.actionNumber = 5
+        state.authoritativeVersion = .init(rawValue: 5)
+
+        #expect(GameCore.GameStateAuthorityValidator.isValid(state, catalog: catalog) == false)
+
+        let roomID = GameCore.RoomID(rawValue: "early-card-exhaustion")
+        let tokens = Dictionary(uniqueKeysWithValues: state.players.map {
+            ($0.id, GameCore.ReconnectToken(rawValue: "token-\($0.id.rawValue)"))
+        })
+        var engine = try state.makeHostEngine(
+            roomID: roomID, reconnectTokens: tokens, protocolVersion: 1
+        )
+        let before = engine.gameState
+        let result = engine.submit(.init(
+            protocolVersion: 1, rulesetVersion: state.rulesetVersion,
+            roomID: roomID, senderID: actor,
+            reconnectToken: try #require(tokens[actor]),
+            baseVersion: state.authoritativeVersion,
+            payload: .pass(.init(cardID: actionCard.id))
+        ), catalog: catalog)
+
+        #expect(result == .internalFailure(.init(code: .invalidAuthorityState)))
+        #expect(engine.gameState == before)
+    }
+
+    @Test func authorityRejectsBoardIndustryWhosePhysicalTileBelongsToAnotherPlayer() throws {
+        let catalog = try verifiedCatalog()
+        var state = try setup(playerCount: 2, catalog: catalog)
+        let declaredOwner = state.players[0].id
+        let physicalOwnerIndex = 1
+        let stackIndex = try #require(state.players[physicalOwnerIndex].industryStacks.firstIndex {
+            $0.industryDefinitionID == "brewery"
+        })
+        let tile = state.players[physicalOwnerIndex].industryStacks[stackIndex].tiles.removeFirst()
+        let location = try #require(catalog.catalog.board.locations.first { location in
+            location.playerCounts.contains(state.playerCount)
+                && location.industrySlots.contains { $0.contains(tile.industryDefinitionID) }
+        })
+        let slotIndex = try #require(location.industrySlots.firstIndex {
+            $0.contains(tile.industryDefinitionID)
+        })
+        state.boardIndustryPlacements = [.init(
+            placementID: "forged-owner", locationID: location.id, slotIndex: slotIndex,
+            ownerID: declaredOwner, tile: tile, resourceCount: 0, isFlipped: true
+        )]
+
+        #expect(GameCore.GameStateAuthorityValidator.isValid(state, catalog: catalog) == false)
+    }
+
+    @Test func authorityRejectsTamperedRailOpeningHandDistribution() throws {
+        let catalog = try verifiedCatalog()
+        var state = try setup(playerCount: 2, catalog: catalog)
+        _ = try GameCore.GameRulesEngine.prepareRailEra(state: &state, catalog: catalog)
+        #expect(state.players.map(\.hand.count) == [8, 8])
+        #expect(state.standardDrawDeck.count == 24)
+        #expect(GameCore.GameStateAuthorityValidator.isValid(state, catalog: catalog))
+
+        let displaced = state.players[0].hand.removeLast()
+        state.standardDrawDeck.append(displaced)
+        #expect(state.players.map(\.hand.count) == [7, 8])
+        #expect(state.standardDrawDeck.count == 25)
+
+        #expect(GameCore.GameStateAuthorityValidator.isValid(state, catalog: catalog) == false)
+    }
+
+    @Test func authorityRejectsRailOpeningStateBeforeEveryNonblankMerchantIsRefilled() throws {
+        let catalog = try verifiedCatalog()
+        var state = try setup(playerCount: 2, catalog: catalog)
+        _ = try GameCore.GameRulesEngine.prepareRailEra(state: &state, catalog: catalog)
+        #expect(GameCore.GameStateAuthorityValidator.isValid(state, catalog: catalog))
+
+        let merchantsByID = Dictionary(uniqueKeysWithValues: catalog.catalog.merchants.map { ($0.id, $0) })
+        let merchantIndex = try #require(state.merchants.firstIndex { placement in
+            placement.hasBeer
+                && merchantsByID[placement.merchantDefinitionID]?.acceptedIndustryIDs.isEmpty == false
+        })
+        state.merchants[merchantIndex].hasBeer = false
+        state.publicSupply.beer += 1
+
+        #expect(GameCore.GameStateAuthorityValidator.isValid(state, catalog: catalog) == false)
     }
 
     @Test func roundEndUsesStableAscendingSpendingOrderAndResetsTurnState() throws {
@@ -71,7 +167,7 @@ struct TurnScoringRulesTests {
         #expect(replayed == state)
     }
 
-    @Test func incomePausesForTheDebtorToChooseOrderedHalfCostSalesThenCreatesDebt() throws {
+    @Test func incomePausesForTheDebtorToChooseOrderedHalfCostSalesThenLosesOnlyAvailableVictoryPoints() throws {
         let catalog = try verifiedCatalog()
         var state = try setup(playerCount: 2, catalog: catalog)
         let positive = state.playerOrder[0]
@@ -111,7 +207,8 @@ struct TurnScoringRulesTests {
         #expect(state.boardIndustryPlacements.contains { $0.placementID == sale.placementID } == false)
         #expect(state.publicSupply.beer == 15)
         #expect(debtorAfter.cash == 0)
-        #expect(debtorAfter.victoryPointDebt == max(0, 10 - saleCost / 2))
+        #expect(debtorAfter.victoryPoints == max(0, 4 - max(0, 10 - saleCost / 2)))
+        #expect(debtorAfter.victoryPointDebt == 0)
         #expect(state.authoritativeVersion.rawValue == previousVersion.rawValue + 1)
         #expect(state.actionNumber == previousActionNumber + 1)
         #expect(event.payload == .forcedSaleResolved(.init(placementIDs: [sale.placementID])))
@@ -121,8 +218,13 @@ struct TurnScoringRulesTests {
     func eraTransitionBatchReplaysAtomicallyAndRejectsEveryTamperedPosition(era: GameCore.Era) throws {
         let catalog = try verifiedCatalog()
         var source = try setup(playerCount: 2, catalog: catalog)
-        source.era = era
-        source.roundNumber = era == .canal ? source.canalRoundCapacity : source.railRoundCapacity
+        let lastCard = try prepareFinalAction(in: &source, era: era)
+        let actor = try #require(source.activePlayerID)
+        let actorIndex = try #require(source.players.firstIndex { $0.id == actor })
+        source.players[actorIndex].hand.removeAll()
+        source.publicDiscard.append(lastCard)
+        source.actionsRemaining = 0
+        source.turnsCompletedInRound = source.playerCount
         source.players.indices.forEach { source.players[$0].incomePosition = 15 }
         let before = source
         let events = try GameCore.GameRulesEngine.resolveRoundEnd(state: &source, catalog: catalog)
@@ -186,6 +288,90 @@ struct TurnScoringRulesTests {
         #expect(details.removedRouteIDs == [route.id])
     }
 
+    @Test func eraLinkScoringIncludesTheTwoIconsAtAnAdjacentMerchantLocation() throws {
+        let catalog = try verifiedCatalog()
+        var state = try setup(playerCount: 2, catalog: catalog)
+        let owner = state.playerOrder[0]
+        var ironWorks = try placement(
+            ownerID: owner, industryID: "iron-works", level: 1,
+            placementID: "coalbrookdale-iron", locationID: "coalbrookdale",
+            catalog: catalog.catalog
+        )
+        ironWorks.isFlipped = true
+        state.boardIndustryPlacements = [ironWorks]
+        state.placedLinks = [
+            .init(routeID: "coalbrookdale-shrewsbury", ownerID: owner, era: .canal),
+        ]
+        let industryLinkPoints = try #require(
+            catalog.catalog.industries.first { $0.id == "iron-works" }?
+                .levels.first { $0.level == 1 }?.linkPoints
+        )
+
+        let event = try GameCore.GameRulesEngine.scoreEra(
+            .canal, state: &state, catalog: catalog
+        )
+
+        guard case .eraScored(let details) = event,
+              let ownerAward = details.awards.first(where: { $0.playerID == owner })
+        else {
+            Issue.record("expected an era score for the link owner")
+            return
+        }
+        #expect(ownerAward.linkPoints == industryLinkPoints + 2)
+    }
+
+    @Test func eraLinkScoringCountsPrintedMerchantIconsOnceWhenTwoMerchantTilesShareTheLocation() throws {
+        let catalog = try verifiedCatalog()
+        var state = try setup(playerCount: 2, catalog: catalog)
+        let owner = state.playerOrder[0]
+        let gloucesterSlotIDs = Set(catalog.catalog.board.merchantSlots.filter {
+            $0.locationID == "gloucester"
+        }.map(\.id))
+        #expect(state.merchants.filter { gloucesterSlotIDs.contains($0.slotID) }.count == 2)
+        state.boardIndustryPlacements = []
+        state.placedLinks = [
+            .init(routeID: "gloucester-worcester", ownerID: owner, era: .canal),
+        ]
+
+        let event = try GameCore.GameRulesEngine.scoreEra(
+            .canal, state: &state, catalog: catalog
+        )
+
+        guard case .eraScored(let details) = event,
+              let ownerAward = details.awards.first(where: { $0.playerID == owner })
+        else {
+            Issue.record("expected an era score for the link owner")
+            return
+        }
+        #expect(ownerAward.linkPoints == 2)
+    }
+
+    @Test func eraLinkScoringUsesPrintedMerchantIconsEvenWhenNoMerchantTileWasPlacedThere() throws {
+        let catalog = try verifiedCatalog()
+        var state = try setup(playerCount: 2, catalog: catalog)
+        let owner = state.playerOrder[0]
+        let warringtonSlotIDs = Set(catalog.catalog.board.merchantSlots.filter {
+            $0.locationID == "warrington"
+        }.map(\.id))
+        #expect(state.merchants.contains { warringtonSlotIDs.contains($0.slotID) } == false)
+        state.boardIndustryPlacements = []
+        state.placedLinks = [
+            .init(routeID: "stoke-on-trent-warrington", ownerID: owner, era: .canal),
+        ]
+
+        let event = try GameCore.GameRulesEngine.scoreEra(
+            .canal, state: &state, catalog: catalog
+        )
+
+        guard case .eraScored(let details) = event,
+              let ownerAward = details.awards.first(where: { $0.playerID == owner })
+        else {
+            Issue.record("expected an era score for the link owner")
+            return
+        }
+        #expect(ownerAward.linkPoints == 2)
+    }
+
     @Test func pendingForcedSaleRejectsOtherActionsAndIncompletePrefixesWithoutConsumingAHandAction() throws {
         let catalog = try verifiedCatalog()
         var state = try setup(playerCount: 2, catalog: catalog)
@@ -196,15 +382,23 @@ struct TurnScoringRulesTests {
             placementID: "choice-a", catalog: catalog.catalog
         )
         var second = try placement(
-            ownerID: debtor, industryID: "manufacturer", level: 1,
+            ownerID: debtor, industryID: "brewery", level: 1,
             placementID: "choice-b", catalog: catalog.catalog
         )
         let otherLocation = try #require(catalog.catalog.board.locations.first { location in
-            location.id != first.locationID && location.industrySlots.contains { $0.contains("manufacturer") }
+            location.id != first.locationID
+                && location.industrySlots.contains { $0.contains(second.tile.industryDefinitionID) }
         })
         second.locationID = otherLocation.id
-        second.slotIndex = try #require(otherLocation.industrySlots.firstIndex { $0.contains("manufacturer") })
+        second.slotIndex = try #require(otherLocation.industrySlots.firstIndex {
+            $0.contains(second.tile.industryDefinitionID)
+        })
         state.boardIndustryPlacements = [first, second]
+        repairIndustryFixture(&state, catalog: catalog)
+        state.publicDiscard.append(contentsOf: state.standardDrawDeck.prefix(2))
+        state.standardDrawDeck.removeFirst(2)
+        state.actionNumber = 2
+        state.authoritativeVersion = .init(rawValue: 2)
         _ = try GameCore.GameRulesEngine.resolveRoundEnd(state: &state, catalog: catalog)
         let roomID = GameCore.RoomID(rawValue: "forced-sale-room")
         let tokens = Dictionary(uniqueKeysWithValues: state.players.map {
@@ -311,6 +505,72 @@ struct TurnScoringRulesTests {
         #expect(complete.completePayload == .forcedSale(.init(placementIDs: ["z-low", "a-high"])))
     }
 
+    @Test func forcedSaleLegalQueryCompletesAfterTheLastAssetEvenWhenProceedsAreInsufficient() throws {
+        let catalog = try verifiedCatalog()
+        var state = try setup(playerCount: 2, catalog: catalog)
+        let debtor = state.playerOrder[0]
+        let onlyAsset = try placement(
+            ownerID: debtor, industryID: "brewery", level: 2,
+            placementID: "only-asset", catalog: catalog.catalog
+        )
+        let liquidationValue = try #require(
+            GameCore.TurnRules.liquidationValue(of: onlyAsset, catalog: catalog.catalog)
+        )
+        state.boardIndustryPlacements = [onlyAsset]
+        state.activePlayerID = debtor
+        state.turnPhase = .forcedSale(.init(
+            playerID: debtor, shortfall: liquidationValue + 1,
+            eligiblePlacementIDs: [onlyAsset.placementID]
+        ))
+
+        let response = try GameCore.LegalActionQueryEngine.respond(
+            to: .init(
+                requestID: "forced-insufficient",
+                baseVersion: state.authoritativeVersion,
+                draft: .init(
+                    action: .forcedSale, cardID: nil,
+                    selections: [.industryPlacement(id: onlyAsset.placementID)]
+                )
+            ),
+            actorID: debtor, state: state, catalog: catalog
+        )
+
+        #expect(response.nextChoices.isEmpty)
+        #expect(response.completePayload == .forcedSale(.init(placementIDs: [onlyAsset.placementID])))
+    }
+
+    @Test func negativeIncomeWithoutAssetsCannotReduceVictoryPointsEarnedLater() throws {
+        let catalog = try verifiedCatalog()
+        var state = try setup(playerCount: 2, catalog: catalog)
+        let debtor = state.playerOrder[0]
+        let opponent = state.playerOrder[1]
+        state.boardIndustryPlacements.removeAll()
+        mutatePlayer(debtor, in: &state) {
+            $0.cash = 0
+            $0.incomePosition = 0
+            $0.victoryPoints = 0
+        }
+        mutatePlayer(opponent, in: &state) {
+            $0.cash = 0
+            $0.incomePosition = 10
+            $0.victoryPoints = 0
+        }
+
+        _ = try GameCore.GameRulesEngine.resolveRoundEnd(state: &state, catalog: catalog)
+        let afterIncome = try #require(state.players.first { $0.id == debtor })
+        #expect(afterIncome.victoryPoints == 0)
+        #expect(afterIncome.victoryPointDebt == 0)
+
+        mutatePlayer(debtor, in: &state) { $0.victoryPoints = 10 }
+        mutatePlayer(opponent, in: &state) { $0.victoryPoints = 6 }
+        let event = try GameCore.GameRulesEngine.resolveWinner(state: &state)
+        guard case .gameEnded(let details) = event else {
+            Issue.record("expected winner event")
+            return
+        }
+        #expect(details.standings.first == [debtor])
+    }
+
     @Test func canalPreparationPreservesMarketsRefillsMerchantsRedealsAndPreservesLongLivedState() throws {
         let catalog = try verifiedCatalog()
         var state = try setup(playerCount: 3, catalog: catalog)
@@ -398,8 +658,13 @@ struct TurnScoringRulesTests {
     @Test func finalRailScoringRepeatsPreservedLevelTwoAwardsNoIncomeAndResolvesAllWinnerTies() throws {
         let catalog = try verifiedCatalog()
         var state = try setup(playerCount: 4, catalog: catalog)
-        state.era = .rail
-        state.roundNumber = state.railRoundCapacity
+        let lastCard = try prepareFinalAction(in: &state, era: .rail)
+        let lastActor = try #require(state.activePlayerID)
+        let lastActorIndex = try #require(state.players.firstIndex { $0.id == lastActor })
+        state.players[lastActorIndex].hand.removeAll()
+        state.publicDiscard.append(lastCard)
+        state.actionsRemaining = 0
+        state.turnsCompletedInRound = 0
         let order = state.playerOrder
         mutatePlayer(order[0], in: &state) { $0.victoryPoints = 20; $0.incomePosition = 12; $0.cash = 5 }
         mutatePlayer(order[1], in: &state) { $0.victoryPoints = 20; $0.incomePosition = 11; $0.cash = 99 }
@@ -417,24 +682,62 @@ struct TurnScoringRulesTests {
             return
         }
         #expect(details.standings == [[order[0], order[3]], [order[2]], [order[1]]])
+        #expect(state.finalStandings == details.standings)
+
+        let restoredState = try JSONDecoder().decode(
+            GameCore.GameState.self,
+            from: JSONEncoder.canonical.encode(state)
+        )
+        #expect(restoredState.finalStandings == details.standings)
+        #expect(GameCore.GameStateAuthorityValidator.isValid(restoredState, catalog: catalog))
 
         let roomID = GameCore.RoomID(rawValue: "ended-room")
         let tokens = Dictionary(uniqueKeysWithValues: state.players.map {
             ($0.id, GameCore.ReconnectToken(rawValue: "token-\($0.id.rawValue)"))
         })
         var engine = try state.makeHostEngine(roomID: roomID, reconnectTokens: tokens, protocolVersion: 1)
+        let snapshot = try engine.snapshot(for: order[0], catalog: catalog)
+        #expect(snapshot.match?.finalStandings == details.standings)
         let winner = try #require(state.activePlayerID)
-        let card = try #require(state.players.first { $0.id == winner }?.hand.first)
         let rejected = engine.submit(.init(
             protocolVersion: 1, rulesetVersion: state.rulesetVersion, roomID: roomID,
             senderID: winner, reconnectToken: try #require(tokens[winner]),
-            baseVersion: state.authoritativeVersion, payload: .pass(.init(cardID: card.id))
+            baseVersion: state.authoritativeVersion,
+            payload: .pass(.init(cardID: "already-ended"))
         ), catalog: catalog)
         guard case .rejected(let rejection) = rejected else {
             Issue.record("an ended game must reject ordinary actions")
             return
         }
         #expect(rejection.reasonCode == .invalidAction)
+    }
+
+    @Test func winnerUsesOfficialVictoryPointsAndIgnoresLegacyDeferredDebt() throws {
+        let catalog = try verifiedCatalog()
+        var state = try setup(playerCount: 2, catalog: catalog)
+        let leader = state.playerOrder[0]
+        let challenger = state.playerOrder[1]
+        mutatePlayer(leader, in: &state) {
+            $0.victoryPoints = 10
+            $0.victoryPointDebt = 2
+            $0.incomePosition = 10
+            $0.cash = 0
+        }
+        mutatePlayer(challenger, in: &state) {
+            $0.victoryPoints = 9
+            $0.victoryPointDebt = 0
+            $0.incomePosition = 15
+            $0.cash = 100
+        }
+
+        let event = try GameCore.GameRulesEngine.resolveWinner(state: &state)
+
+        guard case .gameEnded(let details) = event else {
+            Issue.record("expected a game-ended event")
+            return
+        }
+        #expect(details.standings.first == [leader])
+        #expect(state.finalStandings?.first == [leader])
     }
 
     @Test func pendingPhasePersistsInHostArchiveAndLegacyStateDefaultsNewFields() throws {
@@ -531,6 +834,25 @@ struct TurnScoringRulesTests {
             #expect(observerBytes.contains(Data(placementID.utf8)) == false)
         }
 
+        let valuedDebtorEvent = try engine.clientEvent(
+            event, for: debtor, catalog: catalog
+        )
+        #expect(valuedDebtorEvent.snapshot.forcedSale?.options == [
+            .init(placementID: "a-sale", liquidationValue: 3),
+            .init(placementID: "z-sale", liquidationValue: 4),
+        ])
+        let envelope = SessionProtocol.SessionEnvelope(
+            protocolVersion: 2, rulesetVersion: state.rulesetVersion,
+            roomID: roomID, messageID: .init(rawValue: "forced-sale-required"),
+            senderID: observer, recipientID: debtor,
+            authoritativeVersion: event.version,
+            payload: .clientEvent(valuedDebtorEvent)
+        )
+        try SessionProtocol.EnvelopeValidator().validate(
+            clientEvent: valuedDebtorEvent, in: envelope,
+            expectedRoster: Set(state.players.map(\.id))
+        )
+
         let archive = SessionArchive.guest(
             protocolVersion: 1, rulesetVersion: state.rulesetVersion,
             hostPlayerID: observer, snapshot: debtorSnapshot,
@@ -545,6 +867,72 @@ struct TurnScoringRulesTests {
             return
         }
         #expect(guest.snapshot.forcedSale == debtorSnapshot.forcedSale)
+    }
+
+    @Test func recipientSnapshotValidatorRejectsForcedSaleDetailsForANondebtor() throws {
+        let catalog = try verifiedCatalog()
+        var state = try setup(playerCount: 2, catalog: catalog)
+        let debtor = state.playerOrder[0]
+        let observer = state.playerOrder[1]
+        mutatePlayer(debtor, in: &state) { $0.cash = 0; $0.incomePosition = 0 }
+        state.boardIndustryPlacements = [
+            try placement(
+                ownerID: debtor, industryID: "manufacturer", level: 1,
+                placementID: "private-sale", catalog: catalog.catalog
+            ),
+        ]
+        _ = try GameCore.GameRulesEngine.resolveRoundEnd(state: &state, catalog: catalog)
+        let roomID = GameCore.RoomID(rawValue: "forced-sale-privacy")
+        let tokens = Dictionary(uniqueKeysWithValues: state.players.map {
+            ($0.id, GameCore.ReconnectToken(rawValue: "token-\($0.id.rawValue)"))
+        })
+        let engine = try state.makeHostEngine(
+            roomID: roomID, reconnectTokens: tokens, protocolVersion: 2
+        )
+        let debtorSnapshot = try engine.snapshot(for: debtor, catalog: catalog)
+        let observerSnapshot = try engine.snapshot(for: observer, catalog: catalog)
+        let leakedForcedSale = try #require(debtorSnapshot.forcedSale)
+        let checksum = try GameCore.snapshotChecksum(
+            roomID: observerSnapshot.roomID,
+            recipient: observerSnapshot.recipient,
+            gameVariant: observerSnapshot.gameVariant,
+            players: observerSnapshot.players,
+            activePlayerID: observerSnapshot.activePlayerID,
+            turn: observerSnapshot.turn,
+            actionNumber: observerSnapshot.actionNumber,
+            authoritativeVersion: observerSnapshot.authoritativeVersion,
+            discardPile: observerSnapshot.discardPile,
+            forcedSale: leakedForcedSale,
+            match: observerSnapshot.match
+        )
+        let leaked = GameCore.ViewSnapshot(
+            roomID: observerSnapshot.roomID,
+            recipient: observerSnapshot.recipient,
+            players: observerSnapshot.players,
+            activePlayerID: observerSnapshot.activePlayerID,
+            turn: observerSnapshot.turn,
+            actionNumber: observerSnapshot.actionNumber,
+            authoritativeVersion: observerSnapshot.authoritativeVersion,
+            discardPile: observerSnapshot.discardPile,
+            forcedSale: leakedForcedSale,
+            match: observerSnapshot.match,
+            gameVariant: observerSnapshot.gameVariant,
+            checksum: checksum
+        )
+
+        #expect(throws: GameCore.RecipientSnapshotValidationError.privateSurfaceViolation) {
+            try GameCore.RecipientSnapshotValidator.validate(
+                leaked,
+                context: .init(
+                    protocolVersion: 2,
+                    rulesetVersion: state.rulesetVersion,
+                    roomID: roomID,
+                    recipient: observer,
+                    roster: Set(state.playerOrder),
+                    authoritativeVersion: state.authoritativeVersion
+                )
+            )
+        }
     }
 
     @Test func authorityRejectsRoundOverflowCardLossAndIncompleteOrUnsortedForcedSaleEligibility() throws {
@@ -569,14 +957,22 @@ struct TurnScoringRulesTests {
         #expect(GameCore.GameStateAuthorityValidator.isValid(wrongFirstCanalBudget, catalog: catalog) == false)
 
         var pending = valid
+        pending.publicDiscard.append(contentsOf: pending.standardDrawDeck.prefix(2))
+        pending.standardDrawDeck.removeFirst(2)
+        pending.actionNumber = 2
+        pending.authoritativeVersion = .init(rawValue: 2)
         let debtor = pending.playerOrder[0]
         pending.boardIndustryPlacements = [
             try placement(ownerID: debtor, industryID: "manufacturer", level: 1, placementID: "z-sale", catalog: catalog.catalog),
             try placement(ownerID: debtor, industryID: "brewery", level: 2, placementID: "a-sale", catalog: catalog.catalog),
         ]
+        repairIndustryFixture(&pending, catalog: catalog)
         pending.actionsRemaining = 0
         pending.activePlayerID = debtor
         pending.roundIncomeCursor = 1
+        let debtorIndex = try #require(pending.players.firstIndex { $0.id == debtor })
+        pending.players[debtorIndex].cash = 0
+        pending.players[debtorIndex].incomePosition = 0
         pending.turnPhase = .forcedSale(.init(
             playerID: debtor, shortfall: 1, eligiblePlacementIDs: ["a-sale"]
         ))
@@ -589,6 +985,24 @@ struct TurnScoringRulesTests {
             playerID: debtor, shortfall: 1, eligiblePlacementIDs: ["a-sale", "z-sale"]
         ))
         #expect(GameCore.GameStateAuthorityValidator.isValid(pending, catalog: catalog))
+        var impossibleCash = pending
+        impossibleCash.players[debtorIndex].cash = 17
+        #expect(GameCore.GameStateAuthorityValidator.isValid(
+            impossibleCash, catalog: catalog
+        ) == false)
+        var nonnegativeIncome = pending
+        nonnegativeIncome.players[debtorIndex].incomePosition = 10
+        #expect(GameCore.GameStateAuthorityValidator.isValid(
+            nonnegativeIncome, catalog: catalog
+        ) == false)
+        var excessiveShortfall = pending
+        excessiveShortfall.turnPhase = .forcedSale(.init(
+            playerID: debtor, shortfall: 11,
+            eligiblePlacementIDs: ["a-sale", "z-sale"]
+        ))
+        #expect(GameCore.GameStateAuthorityValidator.isValid(
+            excessiveShortfall, catalog: catalog
+        ) == false)
         var wrongCursor = pending
         wrongCursor.roundIncomeCursor = 0
         #expect(GameCore.GameStateAuthorityValidator.isValid(wrongCursor, catalog: catalog) == false)
@@ -703,6 +1117,9 @@ struct TurnScoringRulesTests {
         state.activePlayerID = actor
         state.turnsCompletedInRound = state.playerCount - 1
         state.actionsRemaining = 1
+        state.publicDiscard.append(state.standardDrawDeck.removeFirst())
+        state.actionNumber = 1
+        state.authoritativeVersion = .init(rawValue: 1)
         state.players[actorIndex].cash = Int.max
         state.players[actorIndex].incomePosition = 15
         let card = try #require(state.players[actorIndex].hand.first)
@@ -726,12 +1143,9 @@ struct TurnScoringRulesTests {
     @Test func eraVictoryPointOverflowIsInternalAndLeavesHostAuthorityUnchanged() throws {
         let catalog = try verifiedCatalog()
         var state = try setup(playerCount: 2, catalog: catalog)
-        let actor = state.playerOrder.last!
+        let card = try prepareFinalAction(in: &state, era: .canal)
+        let actor = try #require(state.activePlayerID)
         let actorIndex = try #require(state.players.firstIndex { $0.id == actor })
-        state.activePlayerID = actor
-        state.roundNumber = state.canalRoundCapacity
-        state.turnsCompletedInRound = state.playerCount - 1
-        state.actionsRemaining = 1
         state.players.indices.forEach { state.players[$0].incomePosition = 10 }
         state.players[actorIndex].victoryPoints = Int.max
         var scored = try placement(
@@ -740,7 +1154,7 @@ struct TurnScoringRulesTests {
         )
         scored.isFlipped = true
         state.boardIndustryPlacements = [scored]
-        let card = try #require(state.players[actorIndex].hand.first)
+        repairIndustryFixture(&state, catalog: catalog)
         let roomID = GameCore.RoomID(rawValue: "vp-overflow")
         let tokens = Dictionary(uniqueKeysWithValues: state.players.map {
             ($0.id, GameCore.ReconnectToken(rawValue: "token-\($0.id.rawValue)"))
@@ -762,19 +1176,7 @@ struct TurnScoringRulesTests {
     func finalSeatActionAtomicallyCarriesReplayableEraTransitionsAndRailSkipsIncome(era: GameCore.Era) throws {
         let catalog = try verifiedCatalog()
         var state = try setup(playerCount: 2, catalog: catalog)
-        state.era = era
-        if era == .rail {
-            for index in state.players.indices {
-                if let bottom = state.players[index].privateBottomDiscard {
-                    state.standardDrawDeck.append(bottom)
-                    state.players[index].privateBottomDiscard = nil
-                }
-            }
-        }
-        state.roundNumber = era == .canal ? state.canalRoundCapacity : state.railRoundCapacity
-        state.actionsRemaining = 1
-        state.turnsCompletedInRound = state.playerCount - 1
-        state.activePlayerID = state.playerOrder.last
+        let card = try prepareFinalAction(in: &state, era: era)
         for index in state.players.indices {
             state.players[index].cash = 20
             state.players[index].incomePosition = 15
@@ -786,7 +1188,6 @@ struct TurnScoringRulesTests {
         })
         var engine = try state.makeHostEngine(roomID: roomID, reconnectTokens: tokens, protocolVersion: 1)
         let actor = try #require(state.activePlayerID)
-        let card = try #require(state.players.first { $0.id == actor }?.hand.first)
 
         let result = engine.submit(.init(
             protocolVersion: 1, rulesetVersion: state.rulesetVersion, roomID: roomID,
@@ -814,12 +1215,188 @@ struct TurnScoringRulesTests {
         #expect(replayed == engine.gameState)
     }
 
+    @Test(arguments: [GameCore.Era.canal, .rail])
+    func authorityRejectsFinalRoundStateWhileDeckAndHandsExceedRemainingActions(
+        era: GameCore.Era
+    ) throws {
+        let catalog = try verifiedCatalog()
+        var state = try setup(playerCount: 2, catalog: catalog)
+        state.era = era
+        if era == .rail {
+            for index in state.players.indices {
+                if let bottom = state.players[index].privateBottomDiscard {
+                    state.standardDrawDeck.append(bottom)
+                    state.players[index].privateBottomDiscard = nil
+                }
+            }
+        }
+        state.roundNumber = era == .canal ? state.canalRoundCapacity : state.railRoundCapacity
+        state.actionsRemaining = 1
+        state.turnsCompletedInRound = state.playerCount - 1
+        state.activePlayerID = state.playerOrder.last
+
+        #expect(GameCore.GameStateAuthorityValidator.isValid(state, catalog: catalog) == false)
+
+        let actor = try #require(state.activePlayerID)
+        let card = try #require(state.players.first { $0.id == actor }?.hand.first)
+        let roomID = GameCore.RoomID(rawValue: "invalid-final-card-progress-\(era.rawValue)")
+        let tokens = Dictionary(uniqueKeysWithValues: state.players.map {
+            ($0.id, GameCore.ReconnectToken(rawValue: "token-\($0.id.rawValue)"))
+        })
+        var engine = try state.makeHostEngine(
+            roomID: roomID, reconnectTokens: tokens, protocolVersion: 1
+        )
+        let before = engine.gameState
+
+        #expect(engine.submit(.init(
+            protocolVersion: 1, rulesetVersion: state.rulesetVersion,
+            roomID: roomID, senderID: actor,
+            reconnectToken: try #require(tokens[actor]),
+            baseVersion: state.authoritativeVersion,
+            payload: .pass(.init(cardID: card.id))
+        ), catalog: catalog) == .internalFailure(.init(code: .invalidAuthorityState)))
+        #expect(engine.gameState == before)
+    }
+
+    @Test func authorityRejectsAnActiveEraThatHasNoDrawDeckOrPlayerCards() throws {
+        let catalog = try verifiedCatalog()
+        var state = try setup(playerCount: 2, catalog: catalog)
+        state.publicDiscard.append(contentsOf: state.standardDrawDeck)
+        state.standardDrawDeck.removeAll()
+        for index in state.players.indices {
+            state.publicDiscard.append(contentsOf: state.players[index].hand)
+            state.players[index].hand.removeAll()
+        }
+
+        #expect(GameCore.GameStateAuthorityValidator.isValid(state, catalog: catalog) == false)
+
+        state.turnPhase = .ended
+        state.actionsRemaining = 0
+        state.turnsCompletedInRound = 0
+        state.finalStandings = [state.playerOrder]
+        #expect(GameCore.GameStateAuthorityValidator.isValid(state, catalog: catalog) == false)
+    }
+
+    @Test func authorityRejectsARecoveryStateWhoseActiveSeatCannotFinishItsTurn() throws {
+        let catalog = try verifiedCatalog()
+        let roomID = GameCore.RoomID(rawValue: "stranded-active-seat")
+        let initial = try setup(playerCount: 2, catalog: catalog)
+        let tokens = Dictionary(uniqueKeysWithValues: initial.players.map {
+            ($0.id, GameCore.ReconnectToken(rawValue: "token-\($0.id.rawValue)"))
+        })
+        let firstActor = try #require(initial.activePlayerID)
+        let firstCard = try #require(
+            initial.players.first { $0.id == firstActor }?.hand.first
+        )
+        var liveHost = try initial.makeHostEngine(
+            roomID: roomID, reconnectTokens: tokens, protocolVersion: 1
+        )
+        guard case .accepted = liveHost.submit(.init(
+            protocolVersion: 1, rulesetVersion: initial.rulesetVersion,
+            roomID: roomID, senderID: firstActor,
+            reconnectToken: try #require(tokens[firstActor]),
+            baseVersion: initial.authoritativeVersion,
+            payload: .pass(.init(cardID: firstCard.id))
+        ), catalog: catalog) else {
+            Issue.record("the legal first pass must establish the recovery boundary")
+            return
+        }
+
+        var corrupted = liveHost.gameState
+        let strandedActor = try #require(corrupted.activePlayerID)
+        let strandedIndex = try #require(
+            corrupted.players.firstIndex { $0.id == strandedActor }
+        )
+        let strandedCards = corrupted.players[strandedIndex].hand
+        #expect(strandedCards.count == 8)
+        corrupted.players[strandedIndex].hand.removeAll()
+        corrupted.standardDrawDeck.append(contentsOf: strandedCards)
+
+        #expect(corrupted.actionsRemaining == 1)
+        #expect(corrupted.players[strandedIndex].hand.isEmpty)
+        #expect(GameCore.GameStateAuthorityValidator.isValid(corrupted, catalog: catalog) == false)
+
+        var restoredHost = try corrupted.makeHostEngine(
+            roomID: roomID, reconnectTokens: tokens, protocolVersion: 1
+        )
+        let before = restoredHost.gameState
+        let result = restoredHost.submit(.init(
+            protocolVersion: 1, rulesetVersion: corrupted.rulesetVersion,
+            roomID: roomID, senderID: strandedActor,
+            reconnectToken: try #require(tokens[strandedActor]),
+            baseVersion: corrupted.authoritativeVersion,
+            payload: .pass(.init(cardID: try #require(strandedCards.first).id))
+        ), catalog: catalog)
+        if case .accepted = result {
+            Issue.record("an invalid recovery state must never accept another action")
+        }
+        #expect(restoredHost.gameState == before)
+    }
+
+    @Test func authorityRejectsCardZoneSwapsInvalidInitialHandsMissingBottomCardsAndBiasedOrder() throws {
+        let catalog = try verifiedCatalog()
+        let state = try setup(playerCount: 2, catalog: catalog)
+
+        var zoneSwap = state
+        let standard = zoneSwap.standardDrawDeck[0]
+        let wild = try #require(zoneSwap.wildLocationPool.last)
+        zoneSwap.standardDrawDeck[0] = wild
+        zoneSwap.wildLocationPool[zoneSwap.wildLocationPool.count - 1] = standard
+        #expect(GameCore.GameStateAuthorityValidator.isValid(zoneSwap, catalog: catalog) == false)
+
+        var unevenHands = state
+        unevenHands.players[0].hand.append(unevenHands.players[1].hand.removeLast())
+        #expect(unevenHands.players.map(\.hand.count) == [9, 7])
+        #expect(GameCore.GameStateAuthorityValidator.isValid(unevenHands, catalog: catalog) == false)
+
+        var missingBottomCard = state
+        let bottom = try #require(missingBottomCard.players[0].privateBottomDiscard)
+        missingBottomCard.players[0].privateBottomDiscard = nil
+        missingBottomCard.standardDrawDeck.append(bottom)
+        #expect(GameCore.GameStateAuthorityValidator.isValid(missingBottomCard, catalog: catalog) == false)
+
+        var biasedOrder = state
+        biasedOrder.playerOrder.swapAt(0, 1)
+        biasedOrder.activePlayerID = biasedOrder.playerOrder[0]
+        #expect(GameCore.GameStateAuthorityValidator.isValid(biasedOrder, catalog: catalog) == false)
+    }
+
     private func setup(playerCount: Int, catalog: GameCore.VerifiedGameDataCatalog) throws -> GameCore.GameState {
         var rules = GameCore.SetupRules(seed: UInt64(9_000 + playerCount))
         return try rules.makeGame(
             catalog: catalog,
             playerIDs: (1...playerCount).map { .init(rawValue: "p\($0)") }
         ).state
+    }
+
+    private func prepareFinalAction(
+        in state: inout GameCore.GameState,
+        era: GameCore.Era
+    ) throws -> GameCore.CardInstance {
+        state.era = era
+        var playableCards = state.standardDrawDeck
+        state.standardDrawDeck.removeAll()
+        for index in state.players.indices {
+            playableCards.append(contentsOf: state.players[index].hand)
+            state.players[index].hand.removeAll()
+            if era == .rail, let bottom = state.players[index].privateBottomDiscard {
+                playableCards.append(bottom)
+                state.players[index].privateBottomDiscard = nil
+            }
+        }
+        try #require(playableCards.isEmpty == false)
+        let card = playableCards.removeLast()
+        state.publicDiscard.append(contentsOf: playableCards)
+        let actor = try #require(state.playerOrder.last)
+        let actorIndex = try #require(state.players.firstIndex { $0.id == actor })
+        state.players[actorIndex].hand = [card]
+        state.roundNumber = era == .canal ? state.canalRoundCapacity : state.railRoundCapacity
+        state.actionsRemaining = 1
+        state.turnsCompletedInRound = state.playerCount - 1
+        state.activePlayerID = actor
+        state.turnPhase = .active
+        state.roundIncomeCursor = nil
+        return card
     }
 
     private func setSpent(_ amount: Int, for playerID: GameCore.PlayerID, in state: inout GameCore.GameState) {

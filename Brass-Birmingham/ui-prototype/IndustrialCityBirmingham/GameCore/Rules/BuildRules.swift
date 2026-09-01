@@ -141,7 +141,6 @@ extension GameCore {
             let requirements: [ResourceKind] =
                 Array(repeating: .coal, count: level.coalCost)
                 + Array(repeating: .iron, count: level.ironCost)
-                + Array(repeating: .beer, count: level.beerCost)
             guard requirements.count == intent.resourceSources.count else {
                 throw BuildRuleError.illegalResourcePlan
             }
@@ -251,7 +250,6 @@ extension GameCore {
             else { return [] }
             let requirements = Array(repeating: ResourceKind.coal, count: level.coalCost)
                 + Array(repeating: .iron, count: level.ironCost)
-                + Array(repeating: .beer, count: level.beerCost)
             var result: [BuildTarget] = []
             for location in verifiedCatalog.catalog.board.locations
                 .filter({ location in

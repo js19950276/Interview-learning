@@ -203,4 +203,5 @@ nonisolated struct DemoMatchState: Equatable, Codable, Sendable {
     var hand: [HandCard]
     var locations: [MapLocation]
     var routes: [MapRoute]
+    var finalStandings: [[String]]? = nil
 }

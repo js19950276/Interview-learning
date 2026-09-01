@@ -78,7 +78,7 @@ enum NearbyHostRecoveryRoute {
                 rulesetVersion: reference.rulesetVersion,
                 roomID: reference.roomID,
                 playerID: reference.playerID,
-                reconnectToken: identity.reconnectToken,
+                reconnectToken: identity.reconnectToken(for: reference.roomID),
                 hostPlayerID: reference.playerID
             ),
             role: .host,
@@ -125,6 +125,7 @@ final class SessionViewStore {
     private(set) var hostPlayerID: GameCore.PlayerID
     private(set) var players: [GameCore.PlayerID] = []
     private(set) var readyPlayerIDs: [GameCore.PlayerID] = []
+    private(set) var connectedPlayerIDs: Set<GameCore.PlayerID> = []
     private(set) var snapshot: GameCore.ViewSnapshot?
     private(set) var syncStatus: SyncStatus = .connecting
     private(set) var errorMessage: String?
@@ -147,7 +148,13 @@ final class SessionViewStore {
 #if DEBUG
     var showsRecoveryUIFixtureControl: Bool { recoveryUIFixtureStatusOverride != nil }
 #endif
-    var canStart: Bool { isHost && players.count >= 2 && Set(players) == Set(readyPlayerIDs) && snapshot == nil }
+    var canStart: Bool {
+        isHost
+            && players.count >= 2
+            && Set(players) == Set(readyPlayerIDs)
+            && Set(players) == connectedPlayerIDs
+            && snapshot == nil
+    }
     var canSubmitPass: Bool {
         guard let selectedCardID else { return false }
 #if DEBUG
@@ -162,6 +169,7 @@ final class SessionViewStore {
         return didConnect
             && syncStatus == .synchronized
             && snapshot?.activePlayerID == localPlayerID
+            && snapshot?.match?.finalStandings == nil
             && hand.contains(selectedCardID)
             && hasVerifiedPass
             && pendingSubmissionVersion == nil
@@ -176,6 +184,7 @@ final class SessionViewStore {
     var canInteract: Bool {
         didConnect && syncStatus == .synchronized
             && snapshot?.activePlayerID == localPlayerID
+            && snapshot?.match?.finalStandings == nil
             && pendingSubmissionVersion == nil
             && snapshot?.match != nil
     }
@@ -303,7 +312,7 @@ final class SessionViewStore {
         let coordinator = try await persistenceFactory.makeCoordinator(
             configuration: .init(
                 protocolVersion: 2, rulesetVersion: catalog.catalog.rulesetVersion, roomID: roomID,
-                playerID: hostID, reconnectToken: identity.reconnectToken, hostPlayerID: hostID
+                playerID: hostID, reconnectToken: identity.reconnectToken(for: roomID), hostPlayerID: hostID
             ),
             role: .host,
             transport: transport,
@@ -353,7 +362,7 @@ final class SessionViewStore {
         let coordinator = try await persistenceFactory.makeCoordinator(
             configuration: .init(
                 protocolVersion: 2, rulesetVersion: catalog.catalog.rulesetVersion, roomID: roomID,
-                playerID: identity.playerID, reconnectToken: identity.reconnectToken, hostPlayerID: hostID
+                playerID: identity.playerID, reconnectToken: identity.reconnectToken(for: roomID), hostPlayerID: hostID
             ),
             role: .guest,
             transport: transport,
@@ -467,6 +476,10 @@ final class SessionViewStore {
     func startGame() async {
         guard isHost else {
             errorMessage = Self.message(for: SessionCoordinator.Error.hostOnly)
+            return
+        }
+        guard canStart else {
+            errorMessage = Self.message(for: SessionCoordinator.Error.notAllPlayersReady)
             return
         }
         do { try await coordinator.startGame() }
@@ -639,6 +652,7 @@ final class SessionViewStore {
         hostPlayerID = state.hostPlayerID
         players = state.playerIDs
         readyPlayerIDs = state.readyPlayerIDs
+        connectedPlayerIDs = state.connectedPlayerIDs
         let previousVersion = snapshot?.authoritativeVersion
 #if DEBUG
         snapshot = localUIFixturePresentationSnapshot(from: state.snapshot)
@@ -655,10 +669,13 @@ final class SessionViewStore {
         } else if state.pauseReason == .hostDisconnected {
             syncStatus = .recovering
             errorMessage = Self.hostDisconnectedMessage
+        } else if state.pauseReason == .actorDisconnected {
+            syncStatus = .recovering
+            errorMessage = Self.actorDisconnectedMessage
         } else if state.pauseReason == .stateRecovery {
             syncStatus = .recovering
             errorMessage = nil
-        } else if !state.peersNeedingRecovery.isEmpty || state.lastDeliveryError != nil {
+        } else if state.lastDeliveryError != nil {
             syncStatus = .recovering
         } else if didConnect && (state.snapshot != nil || !state.playerIDs.isEmpty) {
             syncStatus = .synchronized
@@ -668,7 +685,9 @@ final class SessionViewStore {
             pendingSubmissionVersion = nil
         } else if state.persistenceError != nil {
             pendingSubmissionVersion = nil
-        } else if state.pauseReason == .hostDisconnected || state.pauseReason == .stateRecovery {
+        } else if state.pauseReason == .hostDisconnected
+            || state.pauseReason == .actorDisconnected
+            || state.pauseReason == .stateRecovery {
             pendingSubmissionVersion = nil
         } else if let rejection = state.lastIntentRejection {
             pendingSubmissionVersion = nil
@@ -685,6 +704,8 @@ final class SessionViewStore {
         } else if errorMessage == Self.persistenceFailureMessage {
             errorMessage = nil
         } else if state.pauseReason == nil, errorMessage == Self.hostDisconnectedMessage {
+            errorMessage = nil
+        } else if state.pauseReason == nil, errorMessage == Self.actorDisconnectedMessage {
             errorMessage = nil
         }
 
@@ -741,6 +762,7 @@ final class SessionViewStore {
 
     private static let persistenceFailureMessage = "无法安全保存对局，已暂停新行动。请重试恢复。"
     private static let hostDisconnectedMessage = "正在等待原房主恢复连接，期间无法提交新行动。"
+    private static let actorDisconnectedMessage = "当前行动玩家已断线，正在等待其恢复连接。"
     private static let recoveryMaterialFailureMessage = "本机恢复材料连续校验失败，已安全清理。请返回附近房间重新连接。"
 
     private static func message(for error: any Swift.Error) -> String {

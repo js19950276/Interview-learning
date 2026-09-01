@@ -131,9 +131,6 @@ extension GameCore {
                     throw SellRuleError.illegalBeer
                 }
 
-                candidate.boardIndustryPlacements[placementIndex].isFlipped = true
-                try advanceIncome(level.incomeReward, playerIndex: playerIndex, state: &candidate, catalog: catalog)
-
                 let receivesBonus = merchantBeerCount == 1
                 var bonusDevelopTile: IndustryTile?
                 if receivesBonus {
@@ -170,6 +167,13 @@ extension GameCore {
                 } else if selection.bonusDevelopTileID != nil {
                     throw SellRuleError.illegalBonusDevelopTile
                 }
+                candidate.boardIndustryPlacements[placementIndex].isFlipped = true
+                try advanceIncome(
+                    level.incomeReward,
+                    playerIndex: playerIndex,
+                    state: &candidate,
+                    catalog: catalog
+                )
                 sales.append(.init(
                     selection: selection,
                     placement: placement,
@@ -200,12 +204,6 @@ extension GameCore {
                     sale.resourceRequests, actorID: target.actorID,
                     state: &state, catalog: verifiedCatalog
                 )
-                state.boardIndustryPlacements[placementIndex].isFlipped = true
-                effects.append(.industryFlipped(placementID: sale.placement.placementID))
-                effects += try incomeEffects(
-                    sale.incomeReward, actorID: target.actorID,
-                    playerIndex: playerIndex, state: &state, catalog: verifiedCatalog.catalog
-                )
                 if let bonus = sale.bonus {
                     switch bonus.kind {
                     case .develop:
@@ -232,6 +230,12 @@ extension GameCore {
                         effects.append(.victoryPointsReceived(playerID: target.actorID, amount: bonus.amount))
                     }
                 }
+                state.boardIndustryPlacements[placementIndex].isFlipped = true
+                effects.append(.industryFlipped(placementID: sale.placement.placementID))
+                effects += try incomeEffects(
+                    sale.incomeReward, actorID: target.actorID,
+                    playerIndex: playerIndex, state: &state, catalog: verifiedCatalog.catalog
+                )
             }
             return effects
         }

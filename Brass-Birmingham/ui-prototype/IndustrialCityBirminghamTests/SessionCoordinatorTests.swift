@@ -89,6 +89,8 @@ struct SessionCoordinatorTests {
             $0.industryDefinitionID == "manufacturer"
         })
         state.players[guestIndex].industryStacks[stackIndex].tiles.removeFirst()
+        state.players[guestIndex].cash = 0
+        state.players[guestIndex].incomePosition = 0
         state.boardIndustryPlacements = [.init(
             placementID: "remote-sale", locationID: location.id, slotIndex: slot,
             ownerID: guestID, tile: tile
@@ -100,6 +102,9 @@ struct SessionCoordinatorTests {
         state.actionsRemaining = 0
         state.turnsCompletedInRound = 0
         state.roundIncomeCursor = try #require(state.playerOrder.firstIndex(of: guestID)) + 1
+        state.actionNumber = state.playerCount
+        state.authoritativeVersion = .init(rawValue: state.playerCount)
+        repairCardFixture(&state, catalog: catalog)
         let tokens: [GameCore.PlayerID: GameCore.ReconnectToken] = [
             hostID: .init(rawValue: "t-host"), guestID: .init(rawValue: "t-guest"),
         ]
@@ -139,13 +144,13 @@ struct SessionCoordinatorTests {
         let cardID = try #require(await guest.snapshot?.players.first { $0.id == guestID }?.hand?.first)
         try await guest.submit(.pass(.init(cardID: cardID)))
         try await eventually { await guest.lastIntentRejection?.reasonCode == .invalidAction }
-        #expect(await guest.snapshot?.authoritativeVersion == .init(rawValue: 0))
+        #expect(await guest.snapshot?.authoritativeVersion == .init(rawValue: 2))
 
         try await guest.submit(.forcedSale(.init(placementIDs: ["remote-sale"])))
         try await eventually {
             let hostVersion = await host.snapshot?.authoritativeVersion
             let guestVersion = await guest.snapshot?.authoritativeVersion
-            return hostVersion == .init(rawValue: 1) && guestVersion == .init(rawValue: 1)
+            return hostVersion == .init(rawValue: 3) && guestVersion == .init(rawValue: 3)
         }
         #expect(await host.forcedSale == nil)
         #expect(await guest.forcedSale == nil)
@@ -158,6 +163,9 @@ struct SessionCoordinatorTests {
         let hostIndex = try #require(state.players.firstIndex { $0.id == hostID })
         state.activePlayerID = hostID
         state.turnsCompletedInRound = try #require(state.playerOrder.firstIndex(of: hostID))
+        state.actionNumber = state.turnsCompletedInRound
+        state.authoritativeVersion = .init(rawValue: state.actionNumber)
+        repairCardFixture(&state, catalog: catalog)
         state.players[hostIndex].cash = Int.max
         let cardID = try #require(state.players[hostIndex].hand.first?.id)
         let tokens: [GameCore.PlayerID: GameCore.ReconnectToken] = [
@@ -202,6 +210,9 @@ struct SessionCoordinatorTests {
         let hostIndex = try #require(state.players.firstIndex { $0.id == hostID })
         state.activePlayerID = hostID
         state.turnsCompletedInRound = try #require(state.playerOrder.firstIndex(of: hostID))
+        state.actionNumber = state.turnsCompletedInRound
+        state.authoritativeVersion = .init(rawValue: state.actionNumber)
+        repairCardFixture(&state, catalog: catalog)
         state.players[hostIndex].cash = Int.max
         let loanCardID = try #require(state.players[hostIndex].hand.first?.id)
         let guestCardID = try #require(state.players.first(where: { $0.id == guestID })?.hand.first?.id)
@@ -364,6 +375,125 @@ struct SessionCoordinatorTests {
         })
     }
 
+    @Test func startGameRejectsReadySeatThatDisconnectedBeforeInitialSnapshots() async throws {
+        let catalog = try verifiedCatalog()
+        let liveHub = LoopbackTransportHub()
+        let host = realCoordinator(
+            id: hostID, token: "t-host", transport: liveHub.makeTransport(peerID: hostID), catalog: catalog
+        )
+        let guest = realCoordinator(
+            id: guestID, token: "t-guest", transport: liveHub.makeTransport(peerID: guestID), catalog: catalog
+        )
+        try await host.createRoom()
+        try await guest.joinRoom()
+        try await host.setReady(true)
+        try await guest.setReady(true)
+        try await eventually { await host.readyPlayerIDs.count == 2 }
+
+        await guest.disconnect()
+        try await eventually {
+            let readyCount = await host.readyPlayerIDs.count
+            let connected = await host.connectedPlayerIDs
+            return readyCount == 2 && connected == [self.hostID]
+        }
+
+        await #expect(throws: SessionCoordinator.Error.notAllPlayersReady) {
+            try await host.startGame()
+        }
+        #expect(await host.snapshot == nil)
+    }
+
+    @Test func startedGameRejectsANewSeatButStillAllowsAssignedSeatReconnect() async throws {
+        let pair = makePair()
+        try await pair.host.createRoom()
+        try await pair.guest.joinRoom()
+        try await pair.host.setReady(true)
+        try await pair.guest.setReady(true)
+        try await eventually { await pair.host.readyPlayerIDs.count == 2 }
+        try await pair.host.startGame()
+        try await eventually { await pair.guest.snapshot != nil }
+
+        let late = coordinator(
+            id: "late-player", token: "late-token",
+            transport: pair.hub.makeTransport(peerID: .init(rawValue: "late-player"))
+        )
+        await #expect(throws: SessionCoordinator.Error.roomFull) {
+            try await late.joinRoom()
+        }
+        #expect(Set(await pair.host.playerIDs) == [hostID, guestID])
+
+        await pair.guest.disconnect()
+        let reconnected = coordinator(
+            id: guestID.rawValue, token: "t-guest",
+            transport: pair.hub.makeTransport(peerID: .init(rawValue: "guest-reconnected-after-start"))
+        )
+        try await reconnected.joinRoom()
+        try await eventually { await reconnected.snapshot != nil }
+        #expect(Set(await pair.host.playerIDs) == [hostID, guestID])
+    }
+
+    @Test func activeGuestDisconnectPausesEveryOnlineSeatUntilThatSeatRecovers() async throws {
+        let hub = LoopbackTransportHub()
+        let guestOneID = GameCore.PlayerID(rawValue: "g1")
+        let guestTwoID = GameCore.PlayerID(rawValue: "g2")
+        let host = coordinator(
+            id: hostID.rawValue, token: "t-host",
+            transport: hub.makeTransport(peerID: hostID)
+        )
+        let guestOne = coordinator(
+            id: guestOneID.rawValue, token: "t-g1",
+            transport: hub.makeTransport(peerID: guestOneID)
+        )
+        let guestTwo = coordinator(
+            id: guestTwoID.rawValue, token: "t-g2",
+            transport: hub.makeTransport(peerID: guestTwoID)
+        )
+
+        try await host.createRoom()
+        try await guestOne.joinRoom()
+        try await guestTwo.joinRoom()
+        try await host.setReady(true)
+        try await guestOne.setReady(true)
+        try await guestTwo.setReady(true)
+        try await eventually { await host.readyPlayerIDs.count == 3 }
+        try await host.startGame()
+        try await eventually { await guestTwo.snapshot != nil }
+
+        let hostCard = try #require(await host.snapshot?.players
+            .first(where: { $0.id == hostID })?.hand?.first)
+        try await host.pass(discardCardID: hostCard)
+        try await eventually { await guestTwo.snapshot?.activePlayerID == guestOneID }
+
+        await guestOne.disconnect()
+        try await eventually {
+            let hostPause = await host.pauseReason
+            let guestTwoPause = await guestTwo.pauseReason
+            return hostPause == .actorDisconnected && guestTwoPause == .actorDisconnected
+        }
+        let secondHostCard = try #require(await host.snapshot?.players
+            .first(where: { $0.id == hostID })?.hand?.first)
+        await #expect(throws: SessionCoordinator.Error.sessionPaused) {
+            try await host.pass(discardCardID: secondHostCard)
+        }
+
+        let reconnectedGuestOne = coordinator(
+            id: guestOneID.rawValue, token: "t-g1",
+            transport: hub.makeTransport(peerID: .init(rawValue: "g1-reconnected"))
+        )
+        try await reconnectedGuestOne.joinRoom()
+        try await eventually {
+            let version = await host.snapshot?.authoritativeVersion
+            let hostPause = await host.pauseReason
+            let guestTwoPause = await guestTwo.pauseReason
+            let reconnectedPause = await reconnectedGuestOne.pauseReason
+            let reconnectedVersion = await reconnectedGuestOne.snapshot?.authoritativeVersion
+            return hostPause == nil
+                && guestTwoPause == nil
+                && reconnectedPause == nil
+                && reconnectedVersion == version
+        }
+    }
+
     @Test func appEnvironmentParsesLocalHarnessArgumentsWithoutAffectingDefaultLaunch() {
         #expect(AppEnvironment(arguments: ["app"]).localHarness == nil)
         #expect(AppEnvironment(arguments: ["app", "-online-fixture"]).localHarness == nil)
@@ -447,6 +577,29 @@ struct SessionCoordinatorTests {
         #expect(await host.playerIDs == [hostID])
     }
 
+    @Test func verifiedCatalogVersionMustMatchTheSessionConfigurationBeforeHosting() async throws {
+        let catalog = try GameCore.GameDataLoader.loadBundledFixtureCatalog()
+        let hub = LoopbackTransportHub()
+        let host = SessionCoordinator(
+            configuration: .init(
+                protocolVersion: 2,
+                rulesetVersion: "wrong-ruleset",
+                roomID: room,
+                playerID: hostID,
+                reconnectToken: .init(rawValue: "wrong-version-host"),
+                hostPlayerID: hostID
+            ),
+            transport: hub.makeTransport(peerID: hostID),
+            rulesMode: .verified(catalog)
+        )
+
+        await #expect(throws: SessionCoordinator.Error.dataUnavailable) {
+            try await host.createRoom()
+        }
+        #expect(await host.playerIDs.isEmpty)
+        #expect(await host.isProcessing == false)
+    }
+
     @Test func reconnectTokenIsBoundToRoomAndPlayer() async throws {
         let hub = LoopbackTransportHub()
         let host = coordinator(id: "host", token: "t-host", transport: hub.makeTransport(peerID: .init(rawValue: "host")))
@@ -457,6 +610,160 @@ struct SessionCoordinatorTests {
         let impostor = coordinator(id: "guest", token: "wrong", transport: hub.makeTransport(peerID: .init(rawValue: "guest-reconnect")))
         await #expect(throws: SessionCoordinator.Error.reconnectTokenMismatch) { try await impostor.joinRoom() }
         #expect(await host.playerIDs.count == 2)
+    }
+
+    @Test func existingSeatReconnectDoesNotRewriteTokenOrEvictRosterWhenTokenStoreBecomesUnavailable() async throws {
+        let hub = LoopbackTransportHub()
+        let adapter = ToggleFailingSecureItemAdapter()
+        let tokenStore = RoomTokenStore(adapter: adapter)
+        let host = coordinator(
+            id: "host", token: "t-host", transport: hub.makeTransport(peerID: hostID),
+            tokenStore: tokenStore
+        )
+        let original = coordinator(
+            id: "guest", token: "right", transport: hub.makeTransport(peerID: guestID)
+        )
+
+        try await host.createRoom()
+        try await original.joinRoom()
+        try await eventually { Set(await host.playerIDs) == [self.hostID, self.guestID] }
+        let writesBeforeReconnect = adapter.writeCount
+
+        await original.disconnect()
+        try await eventually { await host.connectedPlayerIDs == [self.hostID] }
+        adapter.setFailWrites(true)
+
+        let reconnected = coordinator(
+            id: "guest", token: "right",
+            transport: hub.makeTransport(peerID: .init(rawValue: "guest-reconnected"))
+        )
+        try await reconnected.joinRoom()
+        try await eventually { await host.connectedPlayerIDs == [self.hostID, self.guestID] }
+
+        #expect(Set(await host.playerIDs) == [hostID, guestID])
+        #expect(adapter.writeCount == writesBeforeReconnect)
+    }
+
+    @Test func pendingNewSeatCannotEnterRosterOrStartGameBeforeTokenPersistenceCommits() async throws {
+        let hub = LoopbackTransportHub()
+        let secondGuestID = GameCore.PlayerID(rawValue: "guest-two")
+        let adapter = ToggleFailingSecureItemAdapter()
+        let tokenStore = RoomTokenStore(adapter: adapter)
+        let host = coordinator(
+            id: "host", token: "t-host", transport: hub.makeTransport(peerID: hostID),
+            tokenStore: tokenStore
+        )
+        let firstGuest = coordinator(
+            id: "guest", token: "t-guest", transport: hub.makeTransport(peerID: guestID)
+        )
+        let secondGuest = coordinator(
+            id: secondGuestID.rawValue, token: "t-guest-two",
+            transport: hub.makeTransport(peerID: secondGuestID)
+        )
+
+        try await host.createRoom()
+        try await firstGuest.joinRoom()
+        try await host.setReady(true)
+        try await firstGuest.setReady(true)
+        try await eventually { Set(await host.readyPlayerIDs) == [self.hostID, self.guestID] }
+
+        adapter.blockNextWrite(thenFail: true)
+        let pendingJoin = Task { try await secondGuest.joinRoom() }
+        #expect(adapter.waitUntilWriteBlocks())
+
+        #expect(Set(await host.playerIDs) == [hostID, guestID])
+        #expect(await host.connectedPlayerIDs == [hostID, guestID])
+        await #expect(throws: SessionCoordinator.Error.notAllPlayersReady) {
+            try await host.startGame()
+        }
+        #expect(await host.snapshot == nil)
+
+        adapter.releaseBlockedWrite()
+        await #expect(throws: SessionCoordinator.Error.persistenceUnavailable) {
+            try await pendingJoin.value
+        }
+        try await eventually {
+            let players = Set(await host.playerIDs)
+            let ready = Set(await host.readyPlayerIDs)
+            let connected = await host.connectedPlayerIDs
+            return players == [self.hostID, self.guestID]
+                && ready == [self.hostID, self.guestID]
+                && connected == [self.hostID, self.guestID]
+        }
+
+        try await host.startGame()
+        #expect(await host.snapshot != nil)
+    }
+
+    @Test func pendingNewSeatBecomesVisibleOnlyAfterTokenPersistenceCommits() async throws {
+        let hub = LoopbackTransportHub()
+        let adapter = ToggleFailingSecureItemAdapter()
+        let tokenStore = RoomTokenStore(adapter: adapter)
+        let host = coordinator(
+            id: "host", token: "t-host", transport: hub.makeTransport(peerID: hostID),
+            tokenStore: tokenStore
+        )
+        let guest = coordinator(
+            id: "guest", token: "t-guest", transport: hub.makeTransport(peerID: guestID)
+        )
+
+        try await host.createRoom()
+        adapter.blockNextWrite(thenFail: false)
+        let pendingJoin = Task { try await guest.joinRoom() }
+        #expect(adapter.waitUntilWriteBlocks())
+
+        #expect(await host.playerIDs == [hostID])
+        #expect(await host.connectedPlayerIDs == [hostID])
+
+        adapter.releaseBlockedWrite()
+        try await pendingJoin.value
+        try await eventually {
+            let players = Set(await host.playerIDs)
+            let connected = await host.connectedPlayerIDs
+            return players == [self.hostID, self.guestID]
+                && connected == [self.hostID, self.guestID]
+        }
+    }
+
+    @Test func disconnectDuringSuccessfulSeatPersistenceCommitsAnOfflineReconnectableSeat() async throws {
+        let hub = LoopbackTransportHub()
+        let adapter = ToggleFailingSecureItemAdapter()
+        let tokenStore = RoomTokenStore(adapter: adapter)
+        let host = coordinator(
+            id: "host", token: "t-host", transport: hub.makeTransport(peerID: hostID),
+            tokenStore: tokenStore
+        )
+        let firstAttempt = coordinator(
+            id: "guest", token: "t-guest", transport: hub.makeTransport(peerID: guestID)
+        )
+
+        try await host.createRoom()
+        adapter.blockNextWrite(thenFail: false)
+        let pendingJoin = Task { try await firstAttempt.joinRoom() }
+        #expect(adapter.waitUntilWriteBlocks())
+
+        await firstAttempt.disconnect()
+        adapter.releaseBlockedWrite()
+        try await eventually {
+            let players = Set(await host.playerIDs)
+            let connected = await host.connectedPlayerIDs
+            return players == [self.hostID, self.guestID]
+                && connected == [self.hostID]
+        }
+        pendingJoin.cancel()
+        _ = await pendingJoin.result
+
+        let reconnected = coordinator(
+            id: "guest", token: "t-guest",
+            transport: hub.makeTransport(peerID: .init(rawValue: "guest-reconnected-after-persist"))
+        )
+        try await reconnected.joinRoom()
+        try await eventually {
+            let players = Set(await host.playerIDs)
+            let connected = await host.connectedPlayerIDs
+            return players == [self.hostID, self.guestID]
+                && connected == [self.hostID, self.guestID]
+        }
     }
 
     @Test func readyMessageIsBoundToTheAuthenticatedTransportPeer() async throws {
@@ -838,10 +1145,15 @@ struct SessionCoordinatorTests {
                 coordinator(id: "guest", token: "t-guest", transport: guestTransport), hostTransport, guestTransport, hub)
     }
 
-    private func coordinator(id: String, token: String, transport: some Transport) -> SessionCoordinator {
+    private func coordinator(
+        id: String,
+        token: String,
+        transport: some Transport,
+        tokenStore: RoomTokenStore? = nil
+    ) -> SessionCoordinator {
         SessionCoordinator(configuration: .init(protocolVersion: 1, rulesetVersion: "rules-v1", roomID: room,
             playerID: .init(rawValue: id), reconnectToken: .init(rawValue: token), hostPlayerID: hostID),
-            transport: transport, rulesMode: .fixtureOnlyLegacy)
+            transport: transport, tokenStore: tokenStore, rulesMode: .fixtureOnlyLegacy)
     }
 
     private func realCoordinator(
@@ -976,6 +1288,86 @@ private actor SelectiveFailingTransport: Transport {
         try await base.send(data, to: peer)
     }
     func disconnect() async { await base.disconnect() }
+}
+
+private final class ToggleFailingSecureItemAdapter: SecureItemAdapter, @unchecked Sendable {
+    private let lock = NSLock()
+    private let blockedWriteEntered = DispatchSemaphore(value: 0)
+    private let blockedWriteRelease = DispatchSemaphore(value: 0)
+    private var storage: [String: Data] = [:]
+    private var shouldFailWrites = false
+    private var blockedWriteShouldFail: Bool?
+    private var writes = 0
+
+    var writeCount: Int { lock.withLock { writes } }
+
+    func setFailWrites(_ value: Bool) {
+        lock.withLock { shouldFailWrites = value }
+    }
+
+    func blockNextWrite(thenFail: Bool) {
+        lock.withLock { blockedWriteShouldFail = thenFail }
+    }
+
+    func waitUntilWriteBlocks() -> Bool {
+        blockedWriteEntered.wait(timeout: .now() + 2) == .success
+    }
+
+    func releaseBlockedWrite() {
+        blockedWriteRelease.signal()
+    }
+
+    func read(service: String, account: String) throws -> Data? {
+        lock.withLock { storage[key(service: service, account: account)] }
+    }
+
+    func readAll(service: String) throws -> [Data] {
+        lock.withLock {
+            let prefix = "\(service)|"
+            return storage.compactMap { item, value in item.hasPrefix(prefix) ? value : nil }
+        }
+    }
+
+    func add(_ data: Data, service: String, account: String) throws {
+        try blockOrFailIfNeeded()
+        try lock.withLock {
+            let itemKey = key(service: service, account: account)
+            guard storage[itemKey] == nil else { throw SecureItemAdapterError.duplicateItem }
+            storage[itemKey] = data
+            writes += 1
+        }
+    }
+
+    func update(_ data: Data, service: String, account: String) throws {
+        try blockOrFailIfNeeded()
+        try lock.withLock {
+            let itemKey = key(service: service, account: account)
+            guard storage[itemKey] != nil else { throw SecureItemAdapterError.itemNotFound }
+            storage[itemKey] = data
+            writes += 1
+        }
+    }
+
+    func delete(service: String, account: String) throws {
+        lock.withLock { storage[key(service: service, account: account)] = nil }
+    }
+
+    private func blockOrFailIfNeeded() throws {
+        let blockedFailure = lock.withLock {
+            let outcome = blockedWriteShouldFail
+            blockedWriteShouldFail = nil
+            return outcome
+        }
+        if let blockedFailure {
+            blockedWriteEntered.signal()
+            blockedWriteRelease.wait()
+            if blockedFailure { throw SecureItemAdapterError.unavailable(status: -1) }
+        }
+        let shouldFail = lock.withLock { shouldFailWrites }
+        guard !shouldFail else { throw SecureItemAdapterError.unavailable(status: -1) }
+    }
+
+    private func key(service: String, account: String) -> String { "\(service)|\(account)" }
 }
 
 private struct TestTimeout: Error {}

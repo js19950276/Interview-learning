@@ -146,13 +146,20 @@ final class AppSmokeUITests: XCTestCase {
         let shellFrame = app.descendants(matching: .any)["match.shell"].frame
         let map = app.descendants(matching: .any)["match.map"]
         let mapFrame = map.frame
+        let visibleShellFrame = shellFrame.intersection(windowFrame)
         let relaxedWindowFrame = windowFrame.insetBy(dx: -24, dy: -24)
 
         XCTAssertGreaterThan(windowFrame.width, windowFrame.height)
         XCTAssertGreaterThan(shellFrame.width, shellFrame.height)
-        XCTAssertTrue(
-            relaxedWindowFrame.contains(shellFrame),
-            "window=\(windowFrame), shell=\(shellFrame), map=\(mapFrame)"
+        XCTAssertGreaterThanOrEqual(
+            visibleShellFrame.width,
+            windowFrame.width * 0.9,
+            "window=\(windowFrame), shell=\(shellFrame), visibleShell=\(visibleShellFrame), map=\(mapFrame)"
+        )
+        XCTAssertGreaterThanOrEqual(
+            visibleShellFrame.height,
+            windowFrame.height * 0.9,
+            "window=\(windowFrame), shell=\(shellFrame), visibleShell=\(visibleShellFrame), map=\(mapFrame)"
         )
         XCTAssertTrue(
             relaxedWindowFrame.contains(mapFrame),

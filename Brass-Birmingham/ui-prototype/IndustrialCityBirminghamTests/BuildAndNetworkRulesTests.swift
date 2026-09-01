@@ -17,7 +17,7 @@ struct BuildAndNetworkRulesTests {
                   draft: .init(action: .pass, cardID: String(repeating: "c", count: 257), selections: [])),
             .init(requestID: "too-many-selections", baseVersion: state.authoritativeVersion,
                   draft: .init(action: .scout, cardID: card.id,
-                               selections: Array(repeating: .card(id: card.id), count: 33))),
+                               selections: Array(repeating: .card(id: card.id), count: 129))),
         ]
         for query in invalidDrafts {
             #expect(throws: GameCore.LegalActionQueryError.malformedQuery) {
@@ -100,6 +100,87 @@ struct BuildAndNetworkRulesTests {
 
         #expect(availability.byCardID.isEmpty == false)
         #expect(started.duration(to: clock.now) < .seconds(1))
+    }
+
+    @Test func buildDoesNotConsumeTheBeerPrintedForSellingTheIndustry() throws {
+        let catalog = try verifiedCatalog()
+        var state = try setupState(catalog: catalog)
+        let actor = try #require(state.activePlayerID)
+        let playerIndex = try #require(state.players.firstIndex { $0.id == actor })
+        let card = GameCore.CardInstance(
+            id: "location-birmingham-no-build-beer", definitionID: "location-birmingham"
+        )
+        state.players[playerIndex].hand = [card]
+        state.players[playerIndex].cash = 20
+        repairCardFixture(&state, catalog: catalog)
+        let canonicalCard = try #require(
+            state.players[playerIndex].hand.first { $0.definitionID == card.definitionID }
+        )
+        let publicBeerBefore = state.publicSupply.beer
+        let merchantBeerBefore = state.merchants
+
+        let target = try GameCore.BuildRules.validate(
+            .init(
+                cardID: canonicalCard.id, locationID: "birmingham",
+                industryDefinitionID: "cotton-mill", slotIndex: 0,
+                resourceSources: []
+            ),
+            actorID: actor, state: state, catalog: catalog
+        )
+        _ = try GameCore.GameRulesEngine.resolveBuild(
+            target, roomID: .init(rawValue: "build-without-sell-beer"),
+            state: &state, catalog: catalog
+        )
+
+        #expect(state.boardIndustryPlacements.contains {
+            $0.ownerID == actor && $0.locationID == "birmingham"
+                && $0.tile.industryDefinitionID == "cotton-mill"
+        })
+        #expect(state.publicSupply.beer == publicBeerBefore)
+        #expect(state.merchants == merchantBeerBefore)
+    }
+
+    @Test func buildQueryCompletesWithoutRequestingTheBeerPrintedForSelling() throws {
+        let catalog = try verifiedCatalog()
+        var state = try setupState(catalog: catalog)
+        let actor = try #require(state.activePlayerID)
+        let playerIndex = try #require(state.players.firstIndex { $0.id == actor })
+        let card = GameCore.CardInstance(
+            id: "location-birmingham-query-no-build-beer", definitionID: "location-birmingham"
+        )
+        state.players[playerIndex].hand = [card]
+        state.players[playerIndex].cash = 20
+        repairCardFixture(&state, catalog: catalog)
+        let canonicalCard = try #require(
+            state.players[playerIndex].hand.first { $0.definitionID == card.definitionID }
+        )
+        let tile = try #require(
+            state.players[playerIndex].industryStacks.first {
+                $0.industryDefinitionID == "cotton-mill"
+            }?.tiles.first
+        )
+
+        let response = try GameCore.LegalActionQueryEngine.respond(
+            to: .init(
+                requestID: "build-query-no-sell-beer",
+                baseVersion: state.authoritativeVersion,
+                draft: .init(
+                    action: .build, cardID: canonicalCard.id,
+                    selections: [
+                        .industryTile(id: tile.id),
+                        .buildTarget(locationID: "birmingham", slotIndex: 0),
+                    ]
+                )
+            ),
+            actorID: actor, state: state, catalog: catalog
+        )
+
+        #expect(response.nextChoices.isEmpty)
+        #expect(response.completePayload == .build(.init(
+            cardID: canonicalCard.id, locationID: "birmingham",
+            industryDefinitionID: "cotton-mill", slotIndex: 0,
+            resourceSources: []
+        )))
     }
 
     @Test func exactAvailabilitySearchDoesNotHideCompletionAfterThe129thBranch() throws {
@@ -283,7 +364,87 @@ struct BuildAndNetworkRulesTests {
         #expect(labelsBySlotID.values.allSatisfy { !$0.contains("商人市场") })
     }
 
-    @Test func sellQueryMarksRewardUnavailableWhenMatchingMerchantBeerIsAlreadyUsed() throws {
+    @Test func sellQueryLabelsEveryBeerSourceByPlaceOwnershipAndRemainingBeer() throws {
+        let catalog = try verifiedCatalog()
+        var state = try setupState(catalog: catalog)
+        let actor = try #require(state.activePlayerID)
+        let opponent = try #require(state.players.first(where: { $0.id != actor })?.id)
+        let playerIndex = try #require(state.players.firstIndex { $0.id == actor })
+        let card = try #require(state.players[playerIndex].hand.first)
+        state.merchants = knownQueryMerchants()
+        state.placedLinks = [
+            .init(routeID: "birmingham-oxford", ownerID: actor, era: .canal),
+            .init(routeID: "birmingham-walsall", ownerID: actor, era: .canal),
+        ]
+        state.players[playerIndex].linksRemaining = 12
+        state.boardIndustryPlacements = [
+            .init(
+                placementID: "beer-label-sale", locationID: "birmingham", slotIndex: 0,
+                ownerID: actor,
+                tile: .init(
+                    id: "beer-label-cotton", industryDefinitionID: "cotton-mill", level: 1
+                )
+            ),
+            .init(
+                placementID: "beer-label-own", locationID: "derby", slotIndex: 0,
+                ownerID: actor,
+                tile: .init(
+                    id: "beer-label-own-tile", industryDefinitionID: "brewery", level: 1
+                ),
+                resourceCount: 1
+            ),
+            .init(
+                placementID: "beer-label-opponent", locationID: "walsall", slotIndex: 1,
+                ownerID: opponent,
+                tile: .init(
+                    id: "beer-label-opponent-tile", industryDefinitionID: "brewery", level: 1
+                ),
+                resourceCount: 1
+            ),
+        ]
+        state.publicSupply.beer -= 2
+        repairCardFixture(&state, catalog: catalog)
+
+        let response = try GameCore.LegalActionQueryEngine.respond(
+            to: .init(
+                requestID: "sell-beer-source-labels",
+                baseVersion: state.authoritativeVersion,
+                draft: .init(
+                    action: .sell,
+                    cardID: card.id,
+                    selections: [
+                        .industryPlacement(id: "beer-label-sale"),
+                        .merchant(id: "oxford-1"),
+                    ]
+                )
+            ),
+            actorID: actor,
+            state: state,
+            catalog: catalog
+        )
+        let labelsBySource = Dictionary(uniqueKeysWithValues: response.nextChoices.compactMap {
+            choice -> (GameCore.ResourceSource, String)? in
+            guard case .resourceSource(let source) = choice.value else { return nil }
+            return (source, choice.label)
+        })
+        let ownLabel = try #require(labelsBySource[.industry(placementID: "beer-label-own")])
+        let opponentLabel = try #require(labelsBySource[.industry(placementID: "beer-label-opponent")])
+        let merchantLabel = try #require(labelsBySource[.merchantBeer(slotID: "oxford-1")])
+
+        #expect(Set(labelsBySource.values).count == 3)
+        #expect(ownLabel.contains("德比"))
+        #expect(ownLabel.contains("你的"))
+        #expect(ownLabel.contains("啤酒厂"))
+        #expect(ownLabel.contains("剩余 1"))
+        #expect(opponentLabel.contains("沃尔索尔"))
+        #expect(opponentLabel.contains("对手"))
+        #expect(opponentLabel.contains("啤酒厂"))
+        #expect(opponentLabel.contains("剩余 1"))
+        #expect(merchantLabel.contains("牛津"))
+        #expect(merchantLabel.contains("商人啤酒"))
+    }
+
+    @Test func sellQueryOmitsMerchantWhenItsRequiredBeerIsAlreadyUsed() throws {
         let catalog = try verifiedCatalog()
         var state = try setupState(catalog: catalog)
         let actor = try #require(state.activePlayerID)
@@ -297,7 +458,10 @@ struct BuildAndNetworkRulesTests {
                 hasBeer: false
             )
         }
+        state.publicSupply.beer += 1
         state.placedLinks = [
+            .init(routeID: "birmingham-worcester", ownerID: actor, era: .canal),
+            .init(routeID: "gloucester-worcester", ownerID: actor, era: .canal),
             .init(routeID: "birmingham-oxford", ownerID: actor, era: .canal),
         ]
         state.boardIndustryPlacements = [
@@ -329,11 +493,12 @@ struct BuildAndNetworkRulesTests {
             state: state,
             catalog: catalog
         )
-        let oxford = try #require(response.nextChoices.first {
-            $0.value == .merchant(id: "oxford-1")
+        #expect(response.nextChoices.contains {
+            $0.value == .merchant(id: "gloucester-2")
         })
-
-        #expect(oxford.label == "牛津 · 任意制成品 · 啤酒已用尽 · 收入 +2（不可用）")
+        #expect(response.nextChoices.contains {
+            $0.value == .merchant(id: "oxford-1")
+        } == false)
     }
 
     @Test func legalBuildQueryOnlyOffersIndustriesWithAValidTargetForTheSelectedLocationCard() throws {
@@ -396,11 +561,24 @@ struct BuildAndNetworkRulesTests {
         })
     }
 
-    @Test func railAndDevelopQueriesRequireAnExplicitAuthoritativeCountBeforeTargets() throws {
+    @Test func railAndDevelopQueriesOnlyOfferCountsThatCanReachAnAuthoritativePayload() throws {
         let catalog = try verifiedCatalog()
         var state = try setupState(catalog: catalog)
         state.era = .rail
+        state.actionsRemaining = 2
         let actor = try #require(state.activePlayerID)
+        let playerIndex = try #require(state.players.firstIndex { $0.id == actor })
+        for index in state.players.indices {
+            if let bottom = state.players[index].privateBottomDiscard {
+                state.standardDrawDeck.append(bottom)
+                state.players[index].privateBottomDiscard = nil
+            }
+        }
+        state.players[playerIndex].cash = 6
+        state.players[playerIndex].linksRemaining = 13
+        state.placedLinks = [
+            .init(routeID: "birmingham-oxford", ownerID: actor, era: .rail),
+        ]
         let card = try #require(state.players.first(where: { $0.id == actor })?.hand.first)
 
         let rail = try GameCore.LegalActionQueryEngine.respond(
@@ -408,14 +586,15 @@ struct BuildAndNetworkRulesTests {
                       draft: .init(action: .network, cardID: card.id, selections: [])),
             actorID: actor, state: state, catalog: catalog
         )
-        #expect(rail.nextChoices.map(\.value) == [.networkLinkCount(1), .networkLinkCount(2)])
+        #expect(rail.nextChoices.map(\.value) == [.networkLinkCount(1)])
 
+        state.players[playerIndex].cash = 2
         let develop = try GameCore.LegalActionQueryEngine.respond(
             to: .init(requestID: "develop-count", baseVersion: state.authoritativeVersion,
                       draft: .init(action: .develop, cardID: card.id, selections: [])),
             actorID: actor, state: state, catalog: catalog
         )
-        #expect(develop.nextChoices.map(\.value) == [.developTileCount(1), .developTileCount(2)])
+        #expect(develop.nextChoices.map(\.value) == [.developTileCount(1)])
     }
 
     @Test func twoTileDevelopQueryAlternatesValidatedHeadsAndIronThenDryRunsConfirmation() throws {
@@ -522,6 +701,146 @@ struct BuildAndNetworkRulesTests {
         }
         #expect(intent.sales.map(\.industryPlacementID) == ["sale-a", "sale-b"])
         #expect((complete.confirmation?.incomeDelta ?? 0) > 0)
+        #expect(state.boardIndustryPlacements.filter(\.isFlipped).isEmpty)
+    }
+
+    @Test func sellQueryCanReachTheFinalDispositionAfterThirtyTwoSelections() throws {
+        let catalog = try verifiedCatalog()
+        var state = try setupState(catalog: catalog)
+        state.era = .rail
+        let actor = try #require(state.activePlayerID)
+        let playerIndex = try #require(state.players.firstIndex(where: { $0.id == actor }))
+        state.players[playerIndex].cash = 100
+        state.merchants = knownQueryMerchants()
+        state.placedLinks = [
+            "gloucester-worcester",
+            "birmingham-worcester",
+            "kidderminster-worcester",
+            "birmingham-tamworth",
+            "nuneaton-tamworth",
+        ].map { .init(routeID: $0, ownerID: actor, era: .rail) }
+        state.players[playerIndex].linksRemaining = 9
+
+        let cottonStackIndex = try #require(state.players[playerIndex].industryStacks.firstIndex {
+            $0.industryDefinitionID == "cotton-mill"
+        })
+        state.players[playerIndex].industryStacks[cottonStackIndex].tiles.removeFirst(3)
+        let cottonTiles = Array(
+            state.players[playerIndex].industryStacks[cottonStackIndex].tiles.prefix(8)
+        )
+        #expect(cottonTiles.count == 8)
+        state.players[playerIndex].industryStacks[cottonStackIndex].tiles.removeFirst(8)
+        let cottonSlots: [(String, Int)] = [
+            ("birmingham", 0),
+            ("tamworth", 0),
+            ("tamworth", 1),
+            ("nuneaton", 1),
+            ("kidderminster", 0),
+            ("kidderminster", 1),
+            ("worcester", 0),
+            ("worcester", 1),
+        ]
+        let cottonPlacements = zip(cottonSlots, cottonTiles).enumerated().map {
+            index, pair in
+            GameCore.BoardIndustryPlacement(
+                placementID: "long-sell-cotton-\(index)",
+                locationID: pair.0.0,
+                slotIndex: pair.0.1,
+                ownerID: actor,
+                tile: pair.1,
+                marketDeliveryResolved: true
+            )
+        }
+
+        let breweryStackIndex = try #require(state.players[playerIndex].industryStacks.firstIndex {
+            $0.industryDefinitionID == "brewery"
+        })
+        state.players[playerIndex].industryStacks[breweryStackIndex].tiles.removeFirst(2)
+        let breweryTiles = Array(
+            state.players[playerIndex].industryStacks[breweryStackIndex].tiles.prefix(4)
+        )
+        #expect(breweryTiles.count == 4)
+        state.players[playerIndex].industryStacks[breweryStackIndex].tiles.removeFirst(4)
+        let brewerySlots: [(String, Int, Int)] = [
+            ("cannock-farm", 0, 2),
+            ("burton-on-trent", 1, 2),
+            ("walsall", 1, 2),
+            ("kidderminster-worcester-farm", 0, 1),
+        ]
+        let breweryPlacements = zip(brewerySlots, breweryTiles).enumerated().map {
+            index, pair in
+            GameCore.BoardIndustryPlacement(
+                placementID: "long-sell-beer-\(index)",
+                locationID: pair.0.0,
+                slotIndex: pair.0.1,
+                ownerID: actor,
+                tile: pair.1,
+                resourceCount: pair.0.2,
+                marketDeliveryResolved: true
+            )
+        }
+        state.publicSupply.beer -= 7
+        state.boardIndustryPlacements = cottonPlacements + breweryPlacements
+        repairCardFixture(&state, catalog: catalog)
+        state.actionNumber = 1
+        state.actionsRemaining = 1
+        let card = try #require(state.players[playerIndex].hand.first)
+        let bonusTile = try #require(state.players[playerIndex].industryStacks.first(where: {
+            $0.industryDefinitionID == "iron-works"
+        })?.tiles.first)
+        let brewerySources = breweryPlacements.flatMap { placement in
+            Array(repeating: GameCore.ResourceSource.industry(
+                placementID: placement.placementID
+            ), count: placement.resourceCount)
+        }
+        #expect(brewerySources.count == 7)
+
+        var selections: [GameCore.LegalChoiceValue] = []
+        for index in cottonPlacements.indices {
+            selections.append(.industryPlacement(id: cottonPlacements[index].placementID))
+            selections.append(.merchant(id: "gloucester-2"))
+            if index == 0 {
+                selections.append(.resourceSource(.merchantBeer(slotID: "gloucester-2")))
+                selections.append(.industryTile(id: bonusTile.id))
+            } else {
+                selections.append(.resourceSource(brewerySources[index - 1]))
+            }
+            if index < cottonPlacements.index(before: cottonPlacements.endIndex) {
+                selections.append(.sellDisposition(continueSelling: true))
+            }
+        }
+        #expect(selections.count == 32)
+
+        let disposition = try GameCore.LegalActionQueryEngine.respond(
+            to: .init(
+                requestID: "sell-thirty-three-boundary",
+                baseVersion: state.authoritativeVersion,
+                draft: .init(action: .sell, cardID: card.id, selections: selections)
+            ),
+            actorID: actor,
+            state: state,
+            catalog: catalog
+        )
+        #expect(disposition.nextChoices.map(\.value) == [
+            .sellDisposition(continueSelling: false),
+        ])
+
+        selections.append(.sellDisposition(continueSelling: false))
+        let complete = try GameCore.LegalActionQueryEngine.respond(
+            to: .init(
+                requestID: "sell-thirty-three-complete",
+                baseVersion: state.authoritativeVersion,
+                draft: .init(action: .sell, cardID: card.id, selections: selections)
+            ),
+            actorID: actor,
+            state: state,
+            catalog: catalog
+        )
+        guard case .sell(let intent) = complete.completePayload else {
+            Issue.record("Expected the eight-sale payload to complete")
+            return
+        }
+        #expect(intent.sales.count == 8)
         #expect(state.boardIndustryPlacements.filter(\.isFlipped).isEmpty)
     }
 
@@ -712,7 +1031,8 @@ struct BuildAndNetworkRulesTests {
             .init(id: "location-dudley-1", definitionID: "location-dudley"),
         ]
         initial.players[secondIndex].hand = [
-            .init(id: "location-birmingham-2", definitionID: "location-birmingham")
+            .init(id: "location-birmingham-2", definitionID: "location-birmingham"),
+            .init(id: "location-dudley-2", definitionID: "location-dudley"),
         ]
         initial.players[firstIndex].cash = 20
         initial.players[secondIndex].cash = 20
@@ -851,6 +1171,7 @@ struct BuildAndNetworkRulesTests {
     @Test func opponentIronOverbuildRejectsMapOrMarketResourceAndSucceedsOnlyWhenExhausted() throws {
         let catalog = try verifiedCatalog()
         var state = try setupState(catalog: catalog)
+        state.era = .rail
         let actor = try #require(state.activePlayerID)
         let opponent = try #require(state.players.first(where: { $0.id != actor })).id
         let actorIndex = try #require(state.players.firstIndex(where: { $0.id == actor }))
@@ -861,7 +1182,8 @@ struct BuildAndNetworkRulesTests {
         let opponentStack = try #require(state.players[opponentIndex].industryStacks.firstIndex(where: {
             $0.industryDefinitionID == "iron-works"
         }))
-        state.players[actorIndex].industryStacks[actorStack].tiles.removeFirst()
+        state.players[actorIndex].industryStacks[actorStack].tiles.removeFirst(2)
+        state.players[opponentIndex].industryStacks[opponentStack].tiles.removeFirst()
         let oldTile = state.players[opponentIndex].industryStacks[opponentStack].tiles.removeFirst()
         let card = GameCore.CardInstance(id: "location-dudley-1", definitionID: "location-dudley")
         state.players[actorIndex].hand = [card]
@@ -869,7 +1191,7 @@ struct BuildAndNetworkRulesTests {
         state.boardIndustryPlacements = [
             .init(
                 locationID: "dudley", slotIndex: 0, ownerID: opponent,
-                tile: .init(id: "overbuild-coal", industryDefinitionID: "coal-mine", level: 1),
+                tile: .init(id: "overbuild-coal", industryDefinitionID: "coal-mine", level: 2),
                 resourceCount: 1
             ),
             .init(locationID: "dudley", slotIndex: 1, ownerID: opponent, tile: oldTile),
@@ -887,7 +1209,7 @@ struct BuildAndNetworkRulesTests {
         var mapBlocked = state
         mapBlocked.boardIndustryPlacements.append(.init(
             locationID: "coalbrookdale", slotIndex: 1, ownerID: opponent,
-            tile: .init(id: "remaining-iron", industryDefinitionID: "iron-works", level: 1),
+            tile: .init(id: "remaining-iron", industryDefinitionID: "iron-works", level: 2),
             resourceCount: 1
         ))
         mapBlocked.publicSupply.iron = 17
@@ -907,7 +1229,7 @@ struct BuildAndNetworkRulesTests {
         )
         #expect(state.boardIndustryPlacements.filter { $0.locationID == "dudley" && $0.slotIndex == 1 }.count == 1)
         #expect(state.boardIndustryPlacements.first(where: { $0.placementID == "dudley#1" })?.ownerID == actor)
-        #expect(state.boardIndustryPlacements.first(where: { $0.placementID == "dudley#1" })?.tile.level == 2)
+        #expect(state.boardIndustryPlacements.first(where: { $0.placementID == "dudley#1" })?.tile.level == 3)
     }
 
     @Test func wildBuildReturnsToPoolAndCanalOwnOneAndWrongEraFailClosed() throws {
@@ -1010,6 +1332,7 @@ struct BuildAndNetworkRulesTests {
             .init(id: "location-birmingham-1", definitionID: "location-birmingham"),
         ]
         repairCardFixture(&state, catalog: catalog)
+        state.actionNumber = 1
         _ = try GameCore.BuildRules.validate(
             .init(cardID: "industry-coal-mine-2-plus-1", locationID: "dudley", industryDefinitionID: "coal-mine", slotIndex: 0, resourceSources: []),
             actorID: actor, state: state, catalog: catalog
@@ -1055,6 +1378,7 @@ struct BuildAndNetworkRulesTests {
             .init(id: "location-birmingham-1", definitionID: "location-birmingham"),
         ]
         repairCardFixture(&state, catalog: catalog)
+        state.actionNumber = 1
         let resetTokens = Dictionary(uniqueKeysWithValues: state.players.map {
             ($0.id, GameCore.ReconnectToken(rawValue: "token-\($0.id.rawValue)"))
         })
@@ -1095,6 +1419,108 @@ struct BuildAndNetworkRulesTests {
         }
     }
 
+    @Test func southFarmWildIndustryBuildRequiresThePlayersSharedRouteAndIsQueryable() throws {
+        let catalog = try verifiedCatalog()
+        var state = try setupState(catalog: catalog)
+        let actor = try #require(state.activePlayerID)
+        let opponent = try #require(state.players.first(where: { $0.id != actor })?.id)
+        let playerIndex = try #require(state.players.firstIndex(where: { $0.id == actor }))
+        let wild = GameCore.CardInstance(
+            id: "wild-industry-south-farm", definitionID: "wild-industry"
+        )
+        state.players[playerIndex].hand = [wild]
+        state.players[playerIndex].cash = 20
+        repairCardFixture(&state, catalog: catalog)
+        state.actionNumber = 1
+        state.actionsRemaining = 1
+        let canonicalCard = try #require(
+            state.players[playerIndex].hand.first { $0.definitionID == wild.definitionID }
+        )
+        let tile = try #require(state.players[playerIndex].industryStacks.first(where: {
+            $0.industryDefinitionID == "brewery"
+        })?.tiles.first)
+        let intent = GameCore.BuildIntent(
+            cardID: canonicalCard.id,
+            locationID: "kidderminster-worcester-farm",
+            industryDefinitionID: "brewery",
+            slotIndex: 0,
+            resourceSources: [.marketSlot(resource: .iron, index: 2)]
+        )
+
+        _ = try GameCore.BuildRules.validate(
+            intent, actorID: actor, state: state, catalog: catalog
+        )
+
+        state.placedLinks = [
+            .init(routeID: "birmingham-dudley", ownerID: actor, era: .canal),
+        ]
+        #expect(throws: GameCore.BuildRuleError.outsideNetwork) {
+            try GameCore.BuildRules.validate(
+                intent, actorID: actor, state: state, catalog: catalog
+            )
+        }
+
+        state.placedLinks.append(.init(
+            routeID: "kidderminster-worcester", ownerID: opponent, era: .canal
+        ))
+        #expect(throws: GameCore.BuildRuleError.outsideNetwork) {
+            try GameCore.BuildRules.validate(
+                intent, actorID: actor, state: state, catalog: catalog
+            )
+        }
+
+        state.placedLinks.removeLast()
+        state.placedLinks.append(.init(
+            routeID: "kidderminster-worcester", ownerID: actor, era: .canal
+        ))
+        _ = try GameCore.BuildRules.validate(
+            intent, actorID: actor, state: state, catalog: catalog
+        )
+
+        let targets = try GameCore.LegalActionQueryEngine.respond(
+            to: .init(
+                requestID: "south-farm-wild-targets",
+                baseVersion: state.authoritativeVersion,
+                draft: .init(
+                    action: .build,
+                    cardID: canonicalCard.id,
+                    selections: [.industryTile(id: tile.id)]
+                )
+            ),
+            actorID: actor,
+            state: state,
+            catalog: catalog
+        ).nextChoices.map(\.value)
+        #expect(targets.contains(.buildTarget(
+            locationID: "kidderminster-worcester-farm", slotIndex: 0
+        )))
+        #expect(targets.contains(.buildTarget(
+            locationID: "cannock-farm", slotIndex: 0
+        )) == false)
+
+        let completed = try GameCore.LegalActionQueryEngine.respond(
+            to: .init(
+                requestID: "south-farm-wild-complete",
+                baseVersion: state.authoritativeVersion,
+                draft: .init(
+                    action: .build,
+                    cardID: canonicalCard.id,
+                    selections: [
+                        .industryTile(id: tile.id),
+                        .buildTarget(
+                            locationID: "kidderminster-worcester-farm", slotIndex: 0
+                        ),
+                        .resourceSource(.marketSlot(resource: .iron, index: 2)),
+                    ]
+                )
+            ),
+            actorID: actor,
+            state: state,
+            catalog: catalog
+        )
+        #expect(completed.completePayload == .build(intent))
+    }
+
     @Test func ownOverbuildReturnsResourcesAndUsesNextHigherTile() throws {
         let catalog = try verifiedCatalog()
         var state = try setupState(catalog: catalog)
@@ -1109,6 +1535,11 @@ struct BuildAndNetworkRulesTests {
             .init(locationID: "dudley", slotIndex: 0, ownerID: actor, tile: levelOne, resourceCount: 1),
         ]
         state.publicSupply.coal -= 1
+        let coalInventoryBefore = state.publicSupply.coal
+            + state.coalMarket.slots.filter(\.hasCube).count
+            + state.boardIndustryPlacements.filter {
+                $0.tile.industryDefinitionID == "coal-mine"
+            }.reduce(0) { $0 + $1.resourceCount }
         let target = try GameCore.BuildRules.validate(
             .init(cardID: card.id, locationID: "dudley", industryDefinitionID: "coal-mine", slotIndex: 0, resourceSources: []),
             actorID: actor, state: state, catalog: catalog
@@ -1121,6 +1552,15 @@ struct BuildAndNetworkRulesTests {
         #expect(state.boardIndustryPlacements.count == 1)
         #expect(state.boardIndustryPlacements[0].tile.level == 2)
         #expect(state.boardIndustryPlacements[0].tile.id != levelOne.id)
+        #expect(state.boardIndustryPlacements[0].resourceCount == 3)
+        #expect(
+            state.publicSupply.coal
+                + state.coalMarket.slots.filter(\.hasCube).count
+                + state.boardIndustryPlacements.filter {
+                    $0.tile.industryDefinitionID == "coal-mine"
+                }.reduce(0) { $0 + $1.resourceCount }
+                == coalInventoryBefore
+        )
     }
 
     @Test func doubleRailConsumesCoalInOrderLetsFirstLinkUnlockSecondAndUsesOwnBeerAnywhere() throws {
@@ -1132,7 +1572,10 @@ struct BuildAndNetworkRulesTests {
         let opponent = try #require(state.players.first { $0.id != actor }).id
         let playerIndex = try #require(state.players.firstIndex { $0.id == actor })
         let card = GameCore.CardInstance(id: "wild-industry-1", definitionID: "wild-industry")
-        state.players[playerIndex].hand = [card]
+        state.players[playerIndex].hand = [
+            card,
+            .init(id: "location-dudley-double-rail", definitionID: "location-dudley"),
+        ]
         state.players[playerIndex].cash = 30
         state.placedLinks = [
             .init(routeID: "birmingham-oxford", ownerID: opponent, era: .rail),
@@ -1227,6 +1670,182 @@ struct BuildAndNetworkRulesTests {
         #expect(unchanged == before)
     }
 
+    @Test func railCoalMustBeNearestToTheWholeLinkRatherThanOneEndpoint() throws {
+        let catalog = try verifiedCatalog()
+        var state = try setupState(catalog: catalog)
+        state.era = .rail
+        state.actionsRemaining = 2
+        let actor = try #require(state.activePlayerID)
+        let opponent = try #require(state.players.first(where: { $0.id != actor })?.id)
+        let actorIndex = try #require(state.players.firstIndex(where: { $0.id == actor }))
+        let opponentIndex = try #require(state.players.firstIndex(where: { $0.id == opponent }))
+        let card = GameCore.CardInstance(
+            id: "location-birmingham-whole-link-coal", definitionID: "location-birmingham"
+        )
+        state.players[actorIndex].hand = [
+            card,
+            .init(id: "location-dudley-whole-link-coal", definitionID: "location-dudley"),
+        ]
+        state.players[actorIndex].cash = 30
+        state.players[actorIndex].linksRemaining = 13
+        state.placedLinks = [
+            .init(routeID: "tamworth-walsall", ownerID: actor, era: .rail),
+        ]
+
+        let actorCoalStack = try #require(state.players[actorIndex].industryStacks.firstIndex {
+            $0.industryDefinitionID == "coal-mine"
+        })
+        _ = state.players[actorIndex].industryStacks[actorCoalStack].tiles.removeFirst()
+        let cannockTile = state.players[actorIndex].industryStacks[actorCoalStack].tiles.removeFirst()
+        let opponentCoalStack = try #require(state.players[opponentIndex].industryStacks.firstIndex {
+            $0.industryDefinitionID == "coal-mine"
+        })
+        _ = state.players[opponentIndex].industryStacks[opponentCoalStack].tiles.removeFirst()
+        let tamworthTile = state.players[opponentIndex].industryStacks[opponentCoalStack].tiles.removeFirst()
+        state.boardIndustryPlacements = [
+            .init(
+                placementID: "nearest-whole-link-cannock", locationID: "cannock", slotIndex: 0,
+                ownerID: actor, tile: cannockTile, resourceCount: 1, marketDeliveryResolved: true
+            ),
+            .init(
+                placementID: "farther-whole-link-tamworth", locationID: "tamworth", slotIndex: 0,
+                ownerID: opponent, tile: tamworthTile, resourceCount: 1, marketDeliveryResolved: true
+            ),
+        ]
+        state.publicSupply.coal -= 2
+        repairCardFixture(&state, catalog: catalog)
+        let canonicalCard = try #require(state.players[actorIndex].hand.first {
+            $0.definitionID == card.definitionID
+        })
+        #expect(GameCore.GameStateAuthorityValidator.isValid(state, catalog: catalog))
+
+        let nearer = GameCore.ResourceSource.industry(
+            placementID: "nearest-whole-link-cannock"
+        )
+        let farther = GameCore.ResourceSource.industry(
+            placementID: "farther-whole-link-tamworth"
+        )
+        #expect(throws: GameCore.NetworkRuleError.illegalCoal) {
+            try GameCore.NetworkRules.validate(
+                .init(
+                    cardID: canonicalCard.id, routeIDs: ["cannock-walsall"],
+                    coalSources: [farther], beerSource: nil
+                ),
+                actorID: actor, state: state, catalog: catalog
+            )
+        }
+        _ = try GameCore.NetworkRules.validate(
+            .init(
+                cardID: canonicalCard.id, routeIDs: ["cannock-walsall"],
+                coalSources: [nearer], beerSource: nil
+            ),
+            actorID: actor, state: state, catalog: catalog
+        )
+
+        let query = try GameCore.LegalActionQueryEngine.respond(
+            to: .init(
+                requestID: "whole-link-nearest-coal",
+                baseVersion: state.authoritativeVersion,
+                draft: .init(
+                    action: .network, cardID: canonicalCard.id,
+                    selections: [
+                        .networkLinkCount(1),
+                        .route(id: "cannock-walsall"),
+                    ]
+                )
+            ),
+            actorID: actor, state: state, catalog: catalog
+        )
+        #expect(query.nextChoices.map(\.value).contains(.resourceSource(nearer)))
+        #expect(query.nextChoices.map(\.value).contains(.resourceSource(farther)) == false)
+    }
+
+    @Test func doubleRailResolvesLinksAndCoalInOfficialOrder() throws {
+        let catalog = try verifiedCatalog()
+        var state = try setupState(catalog: catalog)
+        state.era = .rail
+        state.actionsRemaining = 2
+        let actor = try #require(state.activePlayerID)
+        let actorIndex = try #require(state.players.firstIndex(where: { $0.id == actor }))
+        let card = GameCore.CardInstance(
+            id: "location-birmingham-sequential-coal", definitionID: "location-birmingham"
+        )
+        state.players[actorIndex].hand = [
+            card,
+            .init(id: "location-dudley-sequential-coal", definitionID: "location-dudley"),
+        ]
+        state.players[actorIndex].cash = 30
+        state.players[actorIndex].linksRemaining = 12
+        state.placedLinks = [
+            .init(routeID: "birmingham-walsall", ownerID: actor, era: .rail),
+            .init(routeID: "birmingham-oxford", ownerID: actor, era: .rail),
+        ]
+
+        let coalStack = try #require(state.players[actorIndex].industryStacks.firstIndex {
+            $0.industryDefinitionID == "coal-mine"
+        })
+        _ = state.players[actorIndex].industryStacks[coalStack].tiles.removeFirst()
+        let coalTile = state.players[actorIndex].industryStacks[coalStack].tiles.removeFirst()
+        let breweryStack = try #require(state.players[actorIndex].industryStacks.firstIndex {
+            $0.industryDefinitionID == "brewery"
+        })
+        state.players[actorIndex].industryStacks[breweryStack].tiles.removeFirst(2)
+        let breweryTile = state.players[actorIndex].industryStacks[breweryStack].tiles.removeFirst()
+        state.boardIndustryPlacements = [
+            .init(
+                placementID: "sequential-burton-coal", locationID: "burton-on-trent", slotIndex: 0,
+                ownerID: actor, tile: coalTile, resourceCount: 1, marketDeliveryResolved: true
+            ),
+            .init(
+                placementID: "sequential-walsall-beer", locationID: "walsall", slotIndex: 1,
+                ownerID: actor, tile: breweryTile, resourceCount: 1, marketDeliveryResolved: true
+            ),
+        ]
+        state.publicSupply.coal -= 1
+        state.publicSupply.beer -= 1
+        repairCardFixture(&state, catalog: catalog)
+        let canonicalCard = try #require(state.players[actorIndex].hand.first {
+            $0.definitionID == card.definitionID
+        })
+        #expect(GameCore.GameStateAuthorityValidator.isValid(state, catalog: catalog))
+        let intent = GameCore.NetworkIntent(
+            cardID: canonicalCard.id,
+            routeIDs: ["tamworth-walsall", "burton-on-trent-tamworth"],
+            coalSources: [
+                .marketSlot(resource: .coal, index: 1),
+                .industry(placementID: "sequential-burton-coal"),
+            ],
+            beerSource: .industry(placementID: "sequential-walsall-beer")
+        )
+        let before = state
+        let target = try GameCore.NetworkRules.validate(
+            intent, actorID: actor, state: state, catalog: catalog
+        )
+
+        let event = try GameCore.GameRulesEngine.resolveNetwork(
+            target, roomID: .init(rawValue: "sequential-double-rail"),
+            state: &state, catalog: catalog
+        )
+
+        #expect(state.placedLinks.suffix(2).map(\.routeID) == intent.routeIDs)
+        #expect(state.coalMarket.slots[1].hasCube == false)
+        #expect(state.boardIndustryPlacements.first {
+            $0.placementID == "sequential-burton-coal"
+        }?.resourceCount == 0)
+        #expect(state.boardIndustryPlacements.first {
+            $0.placementID == "sequential-walsall-beer"
+        }?.resourceCount == 0)
+        #expect(state.players[actorIndex].cash == 14)
+        #expect(state.players[actorIndex].spent == 16)
+        #expect(state.players[actorIndex].linksRemaining == 10)
+        var replayed = before
+        try GameCore.GameRulesEngine.replay(
+            event, expectedRoomID: .init(rawValue: "sequential-double-rail"),
+            to: &replayed, catalog: catalog
+        )
+        #expect(replayed == state)
+    }
+
     @Test func opponentBeerConnectsOnlyAfterSecondRailAndWrongOrderOrSecondRouteRejectAtomically() throws {
         let catalog = try verifiedCatalog()
         var state = try setupState(catalog: catalog)
@@ -1237,7 +1856,10 @@ struct BuildAndNetworkRulesTests {
         let actorIndex = try #require(state.players.firstIndex(where: { $0.id == actor }))
         let opponentIndex = try #require(state.players.firstIndex(where: { $0.id == opponent }))
         let card = GameCore.CardInstance(id: "location-birmingham-1", definitionID: "location-birmingham")
-        state.players[actorIndex].hand = [card]
+        state.players[actorIndex].hand = [
+            card,
+            .init(id: "location-dudley-opponent-beer", definitionID: "location-dudley"),
+        ]
         state.players[actorIndex].cash = 30
         state.placedLinks = [
             .init(routeID: "birmingham-oxford", ownerID: opponent, era: .rail),
@@ -1313,6 +1935,39 @@ struct BuildAndNetworkRulesTests {
         #expect(state.players[opponentIndex].incomePosition > original.players[opponentIndex].incomePosition)
     }
 
+    @Test func singleRailRejectsWhenCashCoversTheBaseFeeButNotMarketCoal() throws {
+        let catalog = try verifiedCatalog()
+        var state = try setupState(catalog: catalog)
+        state.era = .rail
+        state.actionsRemaining = 2
+        let actor = try #require(state.activePlayerID)
+        let playerIndex = try #require(state.players.firstIndex { $0.id == actor })
+        let card = GameCore.CardInstance(
+            id: "location-birmingham-market-coal", definitionID: "location-birmingham"
+        )
+        state.players[playerIndex].hand = [
+            card,
+            .init(id: "location-dudley-single-rail", definitionID: "location-dudley"),
+        ]
+        state.players[playerIndex].cash = 5
+        repairCardFixture(&state, catalog: catalog)
+        let canonicalCard = try #require(
+            state.players[playerIndex].hand.first { $0.definitionID == card.definitionID }
+        )
+        let intent = GameCore.NetworkIntent(
+            cardID: canonicalCard.id,
+            routeIDs: ["birmingham-oxford"],
+            coalSources: [.marketSlot(resource: .coal, index: 1)],
+            beerSource: nil
+        )
+
+        #expect(throws: GameCore.NetworkRuleError.insufficientCash) {
+            try GameCore.NetworkRules.validate(
+                intent, actorID: actor, state: state, catalog: catalog
+            )
+        }
+    }
+
     @Test func singleRailCostsFiveConsumesOneCoalAndRejectsCashLinksAndOccupiedRoute() throws {
         let catalog = try verifiedCatalog()
         var state = try setupState(catalog: catalog)
@@ -1321,7 +1976,10 @@ struct BuildAndNetworkRulesTests {
         let actor = try #require(state.activePlayerID)
         let playerIndex = try #require(state.players.firstIndex(where: { $0.id == actor }))
         let card = GameCore.CardInstance(id: "location-birmingham-1", definitionID: "location-birmingham")
-        state.players[playerIndex].hand = [card]
+        state.players[playerIndex].hand = [
+            card,
+            .init(id: "location-dudley-single-rail", definitionID: "location-dudley"),
+        ]
         state.players[playerIndex].cash = 20
         repairCardFixture(&state, catalog: catalog)
         let choice = try #require(catalog.catalog.board.routes.lazy.compactMap { route -> (String, GameCore.ResourceSource)? in
@@ -1423,6 +2081,49 @@ struct BuildAndNetworkRulesTests {
         #expect(state == before)
     }
 
+    @Test func buildRequiresCashForTheBaseCostAndPurchasedResourcesTogether() throws {
+        let catalog = try verifiedCatalog()
+        var state = try setupState(catalog: catalog)
+        let actor = try #require(state.activePlayerID)
+        let opponent = try #require(state.players.first(where: { $0.id != actor })?.id)
+        let playerIndex = try #require(state.players.firstIndex(where: { $0.id == actor }))
+        let card = GameCore.CardInstance(
+            id: "location-dudley-prefund", definitionID: "location-dudley"
+        )
+        state.players[playerIndex].hand = [card]
+        state.players[playerIndex].cash = 5
+        state.placedLinks = [
+            .init(routeID: "birmingham-dudley", ownerID: opponent, era: .canal),
+            .init(routeID: "birmingham-oxford", ownerID: opponent, era: .canal),
+        ]
+        repairCardFixture(&state, catalog: catalog)
+        let canonicalCard = try #require(
+            state.players[playerIndex].hand.first { $0.definitionID == card.definitionID }
+        )
+        let intent = GameCore.BuildIntent(
+            cardID: canonicalCard.id,
+            locationID: "dudley",
+            industryDefinitionID: "iron-works",
+            slotIndex: 1,
+            resourceSources: [.marketSlot(resource: .coal, index: 1)]
+        )
+
+        #expect(throws: GameCore.BuildRuleError.insufficientCash) {
+            try GameCore.BuildRules.validate(
+                intent, actorID: actor, state: state, catalog: catalog
+            )
+        }
+
+        state.players[playerIndex].cash = 6
+        let target = try GameCore.BuildRules.validate(
+            intent, actorID: actor, state: state, catalog: catalog
+        )
+        #expect(target.buildCost == 5)
+        #expect(target.resourceRequests.map(\.source) == [
+            .marketSlot(resource: .coal, index: 1),
+        ])
+    }
+
     @Test func coalBuildActionUsesSubstituteProductionDeliversFlipsAndEmitsSettledPlacementInOrder() throws {
         let catalog = try verifiedCatalog()
         var state = try setupState(catalog: catalog)
@@ -1455,6 +2156,21 @@ struct BuildAndNetworkRulesTests {
         repairCardFixture(&state, catalog: catalog)
         let beforeIncome = state.players[actorIndex].incomePosition
         let beforeCash = state.players[actorIndex].cash
+
+        var cannotPrefundBuild = state
+        cannotPrefundBuild.players[actorIndex].cash = 4
+        #expect(throws: GameCore.BuildRuleError.insufficientCash) {
+            try GameCore.BuildRules.validate(
+                .init(
+                    cardID: card.id, locationID: "dudley",
+                    industryDefinitionID: "coal-mine", slotIndex: 0,
+                    resourceSources: []
+                ),
+                actorID: actor,
+                state: cannotPrefundBuild,
+                catalog: catalog
+            )
+        }
 
         let target = try GameCore.BuildRules.validate(
             .init(
@@ -1512,7 +2228,10 @@ struct BuildAndNetworkRulesTests {
         state.boardIndustryPlacements = ironSlots.enumerated().map { index, slot in
             .init(
                 locationID: slot.0, slotIndex: slot.1, ownerID: opponent,
-                tile: .init(id: "substitute-iron-\(index)", industryDefinitionID: "iron-works", level: 1),
+                tile: .init(
+                    id: "substitute-iron-\(index)",
+                    industryDefinitionID: "iron-works", level: index + 1
+                ),
                 resourceCount: 4
             )
         } + [
@@ -1619,6 +2338,7 @@ struct BuildAndNetworkRulesTests {
             resourceCount: 1
         ))
         state.publicSupply.coal -= 1
+        repairIndustryFixture(&state, catalog: catalog)
         #expect(GameCore.GameRulesEngine.legalResourceSources(
             resource: .coal, consumerLocationID: "birmingham", context: .standard,
             state: state, catalog: catalog
@@ -1709,6 +2429,63 @@ struct BuildAndNetworkRulesTests {
         }
     }
 
+    @Test func authorityRejectsIndustryLevelUnavailableInCurrentEra() throws {
+        let catalog = try verifiedCatalog()
+        var state = try setupState(catalog: catalog)
+        let actor = try #require(state.activePlayerID)
+        let playerIndex = try #require(state.players.firstIndex { $0.id == actor })
+        let potteryIndex = try #require(state.players[playerIndex].industryStacks.firstIndex {
+            $0.industryDefinitionID == "pottery"
+        })
+        let railOnlyPottery = state.players[playerIndex]
+            .industryStacks[potteryIndex].tiles.removeLast()
+        #expect(railOnlyPottery.level == 5)
+        state.boardIndustryPlacements = [
+            .init(
+                placementID: "canal-illegal-pottery-five",
+                locationID: "belper", slotIndex: 2,
+                ownerID: actor, tile: railOnlyPottery
+            ),
+        ]
+
+        #expect(GameCore.GameStateAuthorityValidator.isValid(
+            state, catalog: catalog
+        ) == false)
+    }
+
+    @Test func authorityRejectsMoreThanOneOwnIndustryPerCanalLocation() throws {
+        let catalog = try verifiedCatalog()
+        var state = try setupState(catalog: catalog)
+        let actor = try #require(state.activePlayerID)
+        let playerIndex = try #require(state.players.firstIndex { $0.id == actor })
+        let manufacturerIndex = try #require(state.players[playerIndex].industryStacks.firstIndex {
+            $0.industryDefinitionID == "manufacturer"
+        })
+        let potteryIndex = try #require(state.players[playerIndex].industryStacks.firstIndex {
+            $0.industryDefinitionID == "pottery"
+        })
+        let manufacturer = state.players[playerIndex]
+            .industryStacks[manufacturerIndex].tiles.removeFirst()
+        let pottery = state.players[playerIndex]
+            .industryStacks[potteryIndex].tiles.removeFirst()
+        state.boardIndustryPlacements = [
+            .init(
+                placementID: "stafford-first-own-canal-industry",
+                locationID: "stafford", slotIndex: 0,
+                ownerID: actor, tile: manufacturer
+            ),
+            .init(
+                placementID: "stafford-second-own-canal-industry",
+                locationID: "stafford", slotIndex: 1,
+                ownerID: actor, tile: pottery
+            ),
+        ]
+
+        #expect(GameCore.GameStateAuthorityValidator.isValid(
+            state, catalog: catalog
+        ) == false)
+    }
+
     @Test func hostAcceptsCodableBuildIntentAndEmitsCodableActionEvent() throws {
         let catalog = try verifiedCatalog()
         var state = try setupState(catalog: catalog)
@@ -1760,6 +2537,7 @@ struct BuildAndNetworkRulesTests {
             .init(id: "industry-brewery-1", definitionID: "industry-brewery")
         ]
         repairCardFixture(&state, catalog: catalog)
+        state.actionNumber = 1
         let roomID = GameCore.RoomID(rawValue: "malicious-build")
         let tokens = Dictionary(uniqueKeysWithValues: state.players.map {
             ($0.id, GameCore.ReconnectToken(rawValue: "token-\($0.id.rawValue)"))
@@ -1846,6 +2624,7 @@ struct BuildAndNetworkRulesTests {
         )
         state.players[playerIndex].hand = [card]
         let stackIndex = try #require(state.players[playerIndex].industryStacks.firstIndex { $0.industryDefinitionID == "manufacturer" })
+        state.players[playerIndex].industryStacks[stackIndex].tiles.removeFirst()
         let old = state.players[playerIndex].industryStacks[stackIndex].tiles.removeFirst()
         state.boardIndustryPlacements = [
             .init(locationID: "birmingham", slotIndex: 1, ownerID: actor, tile: old),

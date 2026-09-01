@@ -6,7 +6,67 @@ extension GameCore {
     }
 
     nonisolated enum LegalActionQueryEngine {
+        // The official catalog can produce a Sell draft longer than 32 choices
+        // when several industries are sold in one action. The encoded-size guard
+        // remains the primary payload bound; this count cap limits search work
+        // without excluding any legal path in the versioned catalog.
+        private static let maximumSelectionCount = 128
+
         static func respond(
+            to query: LegalActionQuery,
+            actorID: PlayerID,
+            state: GameState,
+            catalog: VerifiedGameDataCatalog
+        ) throws -> LegalActionResponse {
+            var response = try respondUnfiltered(
+                to: query, actorID: actorID, state: state, catalog: catalog
+            )
+            guard response.completePayload == nil, response.nextChoices.isEmpty == false else {
+                return response
+            }
+            response.nextChoices = try response.nextChoices.filter { choice in
+                var nextDraft = query.draft
+                nextDraft.selections.append(choice.value)
+                return try hasCompletablePath(
+                    draft: nextDraft, actorID: actorID, state: state, catalog: catalog
+                )
+            }
+            return response
+        }
+
+        static func hasCompletablePath(
+            draft: LegalActionDraft,
+            actorID: PlayerID,
+            state: GameState,
+            catalog: VerifiedGameDataCatalog
+        ) throws -> Bool {
+            try ExactCompletionSearch.containsCompletion(
+                root: draft,
+                key: { try $0.canonicalDigest() },
+                expand: { current in
+                    let response = try respondUnfiltered(
+                        to: .init(
+                            requestID: "completion-search",
+                            baseVersion: state.authoritativeVersion,
+                            draft: current
+                        ),
+                        actorID: actorID,
+                        state: state,
+                        catalog: catalog
+                    )
+                    if response.completePayload != nil { return .complete }
+                    guard response.nextChoices.isEmpty == false else { return .deadEnd }
+                    return .branches(response.nextChoices.map { choice in
+                        var next = current
+                        next.selections.append(choice.value)
+                        return next
+                    })
+                },
+                isDeadEndError: { $0 is LegalActionQueryError }
+            )
+        }
+
+        private static func respondUnfiltered(
             to query: LegalActionQuery,
             actorID: PlayerID,
             state: GameState,
@@ -64,7 +124,7 @@ extension GameCore {
 
         private static func validateStructure(_ query: LegalActionQuery) throws {
             guard (1...128).contains(query.requestID.utf8.count),
-                  query.draft.selections.count <= 32,
+                  query.draft.selections.count <= maximumSelectionCount,
                   query.draft.cardID.map({ (1...256).contains($0.utf8.count) }) ?? true,
                   query.draft.selections.allSatisfy(selectionIsBounded),
                   try JSONEncoder.canonical.encode(query).count <= 16_384
@@ -116,7 +176,8 @@ extension GameCore {
                 else { throw LegalActionQueryError.invalidPrefix }
                 return partial + value
             }
-            if total >= pending.shortfall {
+            if total >= pending.shortfall
+                || Set(placementIDs) == Set(pending.eligiblePlacementIDs) {
                 return try complete(
                     .forcedSale(.init(placementIDs: placementIDs)),
                     actorID: actorID, state: state, catalog: catalog
@@ -131,7 +192,6 @@ extension GameCore {
                 return choice("forced-sale:\(id)", "\(industryLabel(placement.tile.industryDefinitionID)) L\(placement.tile.level) · £\(value)",
                               .industryPlacement(id: id))
             }
-            guard !choices.isEmpty else { throw LegalActionQueryError.invalidPrefix }
             return (choices, nil)
         }
 
@@ -198,7 +258,6 @@ extension GameCore {
             else { throw LegalActionQueryError.invalidPrefix }
             let requirements = Array(repeating: ResourceKind.coal, count: level.coalCost)
                 + Array(repeating: .iron, count: level.ironCost)
-                + Array(repeating: .beer, count: level.beerCost)
             guard sources.count <= requirements.count else { throw LegalActionQueryError.invalidPrefix }
             var candidate = state
             for (resource, source) in zip(requirements, sources) {
@@ -215,7 +274,9 @@ extension GameCore {
                 return (GameRulesEngine.legalResourceSources(
                     resource: next, consumerLocationID: targets[0].locationID,
                     context: .standard, state: candidate, catalog: catalog
-                ).map { sourceChoice(next, $0) }, nil)
+                ).map {
+                    sourceChoice(next, $0, actorID: actorID, state: candidate, catalog: catalog)
+                }, nil)
             }
             let intent = BuildIntent(
                 cardID: cardID, locationID: targets[0].locationID,
@@ -289,7 +350,14 @@ extension GameCore {
                     candidate.placedLinks.append(.init(routeID: routeID, ownerID: actorID, era: .canal))
                     continue
                 }
-                guard let route = catalog.catalog.board.routes.first(where: { $0.id == routeID }),
+                guard let route = catalog.catalog.board.routes.first(where: { $0.id == routeID })
+                else { throw LegalActionQueryError.invalidPrefix }
+                candidate.placedLinks.append(.init(
+                    routeID: routeID, ownerID: actorID, era: .rail
+                ))
+                guard ResourceRules.legalCoalSources(
+                    forNetworkRoute: route, state: candidate, catalog: catalog
+                ).contains(coalSources[index]),
                       let location = route.adjacentLocationIDs.first(where: {
                           GameRulesEngine.legalResourceSources(
                             resource: .coal, consumerLocationID: $0, context: .network,
@@ -303,7 +371,6 @@ extension GameCore {
                 guard (try? ResourceRules.consumeValidatedRequests(
                     [request], actorID: actorID, state: &candidate, catalog: catalog
                 )) != nil else { throw LegalActionQueryError.invalidPrefix }
-                candidate.placedLinks.append(.init(routeID: routeID, ownerID: actorID, era: .rail))
             }
 
             if state.era == .rail, coalSources.count < routes.count,
@@ -312,13 +379,16 @@ extension GameCore {
                 guard TopologyRules.legalNetworkRoutes(
                     playerID: actorID, state: candidate, board: catalog.catalog.board
                 ).contains(route.id) else { throw LegalActionQueryError.invalidPrefix }
-                let choices = route.adjacentLocationIDs.flatMap {
-                    GameRulesEngine.legalResourceSources(
-                        resource: .coal, consumerLocationID: $0, context: .network,
-                        state: candidate, catalog: catalog
-                    )
-                }
-                return (uniqueSources(.coal, choices), nil)
+                var linkedCandidate = candidate
+                linkedCandidate.placedLinks.append(.init(
+                    routeID: route.id, ownerID: actorID, era: .rail
+                ))
+                let choices = ResourceRules.legalCoalSources(
+                    forNetworkRoute: route, state: linkedCandidate, catalog: catalog
+                )
+                return (uniqueSources(
+                    .coal, choices, actorID: actorID, state: linkedCandidate, catalog: catalog
+                ), nil)
             }
             guard coalSources.count == routes.count || state.era == .canal else {
                 throw LegalActionQueryError.invalidPrefix
@@ -342,7 +412,9 @@ extension GameCore {
                         state: candidate, catalog: catalog
                     )
                 }.filter { if case .merchantBeer = $0 { false } else { true } }
-                return (uniqueSources(.beer, choices), nil)
+                return (uniqueSources(
+                    .beer, choices, actorID: actorID, state: candidate, catalog: catalog
+                ), nil)
             }
             guard beerSources.count == 1 else { throw LegalActionQueryError.invalidPrefix }
             return try complete(.network(.init(
@@ -410,7 +482,9 @@ extension GameCore {
                 return (GameRulesEngine.legalResourceSources(
                     resource: .iron, consumerLocationID: "", context: .standard,
                     state: candidate, catalog: catalog
-                ).map { sourceChoice(.iron, $0) }, nil)
+                ).map {
+                    sourceChoice(.iron, $0, actorID: actorID, state: candidate, catalog: catalog)
+                }, nil)
             }
             if tileIDs.count < desiredCount {
                 guard let current = candidate.players.first(where: { $0.id == actorID }) else {
@@ -476,7 +550,12 @@ extension GameCore {
                             resource: .beer, consumerLocationID: placement.locationID,
                             context: .selling(merchantSlotID: merchantID),
                             state: resourceCandidate, catalog: catalog
-                        ).map { sourceChoice(.beer, $0) }, nil)
+                        ).map {
+                            sourceChoice(
+                                .beer, $0, actorID: actorID,
+                                state: resourceCandidate, catalog: catalog
+                            )
+                        }, nil)
                     }
                     guard case .resourceSource(let source) = draft.selections[cursor] else {
                         throw LegalActionQueryError.invalidPrefix
@@ -688,7 +767,10 @@ extension GameCore {
                     )
                 }
             } catch { return nil }
-            guard let after = candidate.players.first(where: { $0.id == actorID }) else { return nil }
+            guard let after = candidate.players.first(where: { $0.id == actorID }),
+                  let beforeIncome = catalog.catalog.incomeTrack.income(at: before.incomePosition),
+                  let afterIncome = catalog.catalog.incomeTrack.income(at: after.incomePosition)
+            else { return nil }
             let effects: [ResourceEffect] = switch event.payload {
             case .built(_, _, let value), .networkBuilt(_, _, let value),
                  .developed(_, _, let value), .sold(_, _, let value): value
@@ -696,7 +778,7 @@ extension GameCore {
             }
             return .init(
                 cashDelta: after.cash - before.cash,
-                incomeDelta: after.incomePosition - before.incomePosition,
+                incomeDelta: afterIncome - beforeIncome,
                 victoryPointDelta: after.victoryPoints - before.victoryPoints,
                 resourceEffects: effects
             )
@@ -706,8 +788,18 @@ extension GameCore {
             .init(id: id, label: label, value: value)
         }
 
-        private static func sourceChoice(_ resource: ResourceKind, _ source: ResourceSource) -> LegalChoice {
-            choice("source:\(resource.rawValue):\(stableSourceID(source))", stableSourceLabel(source), .resourceSource(source))
+        private static func sourceChoice(
+            _ resource: ResourceKind,
+            _ source: ResourceSource,
+            actorID: PlayerID,
+            state: GameState,
+            catalog: VerifiedGameDataCatalog
+        ) -> LegalChoice {
+            choice(
+                "source:\(resource.rawValue):\(stableSourceID(source))",
+                sourceLabel(source, actorID: actorID, state: state, catalog: catalog),
+                .resourceSource(source)
+            )
         }
 
         private static func stableSourceID(_ source: ResourceSource) -> String {
@@ -719,12 +811,28 @@ extension GameCore {
             }
         }
 
-        private static func stableSourceLabel(_ source: ResourceSource) -> String {
+        private static func sourceLabel(
+            _ source: ResourceSource,
+            actorID: PlayerID,
+            state: GameState,
+            catalog: VerifiedGameDataCatalog
+        ) -> String {
             switch source {
-            case .industry: "地图产业资源"
-            case .marketSlot(let resource, let index): "\(resourceLabel(resource))市场第 \(index + 1) 格"
-            case .unlimitedMarket(let resource, let price): "\(resourceLabel(resource))市场 £\(price)"
-            case .merchantBeer: "商人啤酒"
+            case .industry(let placementID):
+                guard let placement = state.boardIndustryPlacements.first(where: {
+                    $0.placementID == placementID
+                }) else { return "地图产业资源" }
+                let ownership = placement.ownerID == actorID ? "你的" : "对手的"
+                return "\(locationLabel(placement.locationID)) · \(ownership)\(industryLabel(placement.tile.industryDefinitionID)) · 剩余 \(placement.resourceCount)"
+            case .marketSlot(let resource, let index):
+                return "\(resourceLabel(resource))市场第 \(index + 1) 格"
+            case .unlimitedMarket(let resource, let price):
+                return "\(resourceLabel(resource))市场 £\(price)"
+            case .merchantBeer(let slotID):
+                guard let slot = catalog.catalog.board.merchantSlots.first(where: {
+                    $0.id == slotID
+                }) else { return "商人啤酒" }
+                return "\(locationLabel(slot.locationID)) · 商人啤酒"
             }
         }
 
@@ -789,9 +897,17 @@ extension GameCore {
             RealMatchViewModel.cardTitle(definitionID)
         }
 
-        private static func uniqueSources(_ resource: ResourceKind, _ sources: [ResourceSource]) -> [LegalChoice] {
+        private static func uniqueSources(
+            _ resource: ResourceKind,
+            _ sources: [ResourceSource],
+            actorID: PlayerID,
+            state: GameState,
+            catalog: VerifiedGameDataCatalog
+        ) -> [LegalChoice] {
             var seen: Set<ResourceSource> = []
-            return sources.filter { seen.insert($0).inserted }.map { sourceChoice(resource, $0) }
+            return sources.filter { seen.insert($0).inserted }.map {
+                sourceChoice(resource, $0, actorID: actorID, state: state, catalog: catalog)
+            }
         }
     }
 }

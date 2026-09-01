@@ -532,7 +532,7 @@ extension GameCore {
                 }
             ) && iron == ResourceMarket(
                 resource: .iron,
-                slots: [1, 1, 1, 2, 2, 2, 3, 3, 4, 4].enumerated().map { index, price in
+                slots: ResourceMarket.officialIronPrices.enumerated().map { index, price in
                     MarketSlot(price: price, hasCube: index >= 2)
                 }
             )
@@ -578,10 +578,9 @@ extension GameCore {
         }
 
         private func ironMarket() -> ResourceMarket {
-            let prices = [1, 1, 1, 2, 2, 2, 3, 3, 4, 4]
             return ResourceMarket(
                 resource: .iron,
-                slots: prices.enumerated().map { index, price in
+                slots: ResourceMarket.officialIronPrices.enumerated().map { index, price in
                     MarketSlot(price: price, hasCube: index >= 2)
                 }
             )

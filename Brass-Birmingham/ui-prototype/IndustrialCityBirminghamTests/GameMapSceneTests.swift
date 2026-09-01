@@ -6,11 +6,33 @@ import Testing
 
 @MainActor
 struct GameMapSceneTests {
+    @Test func accessibilityActivationConsumesPairedPhysicalTapInEitherCallbackOrder() {
+        var physicalFirst = MapTapRoutingState()
+        physicalFirst.recordPhysicalTap(.background)
+        physicalFirst.recordAccessibilityActivation()
+        #expect(physicalFirst.resolve() == nil)
+
+        var accessibilityFirst = MapTapRoutingState()
+        accessibilityFirst.recordAccessibilityActivation()
+        accessibilityFirst.recordPhysicalTap(.target("birmingham"))
+        #expect(accessibilityFirst.resolve() == nil)
+    }
+
+    @Test func unpairedPhysicalTapPreservesTargetAndBackgroundRouting() {
+        var target = MapTapRoutingState()
+        target.recordPhysicalTap(.target("birmingham"))
+        #expect(target.resolve() == .target("birmingham"))
+
+        var background = MapTapRoutingState()
+        background.recordPhysicalTap(.background)
+        #expect(background.resolve() == .background)
+    }
+
     @Test func configureCreatesEveryLocationNode() {
         let state = DemoFixture.match(playerCount: 4)
         let scene = GameMapScene()
 
-        scene.configure(state: state, highlightedIDs: [])
+        scene.configure(state: state, highlightedIDs: ["placed-coal"])
 
         for location in state.locations {
             let node = scene.childNode(withName: "//location:\(location.id)")
@@ -103,7 +125,7 @@ struct GameMapSceneTests {
         )]
         state.routes[0].placedLink = .init(ownerID: "player-crimson", ownerColor: .crimson, era: .rail)
         let scene = GameMapScene()
-        scene.configure(state: state, highlightedIDs: [])
+        scene.configure(state: state, highlightedIDs: ["placed-coal"])
 
         let industry = try #require(
             scene.childNode(withName: "//location:\(locationID)/industry:placed-coal")
@@ -118,6 +140,8 @@ struct GameMapSceneTests {
         #expect(detailLabel.text == "L1·2")
         #expect(industry.userData?["industryKind"] as? String == IndustryKind.coal.rawValue)
         #expect(industry.userData?["industryName"] as? String == "煤矿")
+        #expect(industry.userData?["isHighlighted"] as? Bool == true)
+        #expect(industry.childNode(withName: "industry-legal-glow") != nil)
         let route = try #require(scene.childNode(withName: "//route:\(state.routes[0].id)"))
         #expect(route.userData?["ownerID"] as? String == "player-crimson")
         #expect(route.userData?["era"] as? String == "rail")
@@ -230,7 +254,8 @@ struct GameMapSceneTests {
     @Test(arguments: [
         ("location:birmingham", "birmingham"),
         ("route:birmingham-coventry", "birmingham-coventry"),
-        ("merchant:oxford-1", "oxford-1")
+        ("merchant:oxford-1", "oxford-1"),
+        ("industry:beer-a", "beer-a")
     ])
     func targetParserAcceptsKnownKinds(name: String, expectedID: String) {
         #expect(GameMapScene.targetID(fromNodeName: name) == expectedID)
@@ -757,10 +782,9 @@ struct GameMapSceneTests {
     }
 
     @Test(arguments: [
-        ([IndustryKind](), "空白贸易商"),
-        ([.cotton], "棉纺厂"),
-        ([.manufacturer], "制造厂"),
-        ([.pottery], "陶瓷厂"),
+        ([IndustryKind.cotton], "棉纺厂"),
+        ([IndustryKind.manufacturer], "制造厂"),
+        ([IndustryKind.pottery], "陶瓷厂"),
     ])
     func merchantAccessibilityNamesEveryAcceptanceShape(
         acceptedIndustries: [IndustryKind], expectedName: String
@@ -773,6 +797,18 @@ struct GameMapSceneTests {
         #expect(
             MapMerchantAccessibility.label(locationName: "市场", merchant: merchant)
                 == "市场，\(expectedName)，贸易商啤酒已用尽，奖励不可用"
+        )
+    }
+
+    @Test func blankMerchantAccessibilityDoesNotClaimSpentBeer() {
+        let merchant = MapMerchantPlacement(
+            slotID: "market-blank", acceptedIndustries: [], hasBeer: false,
+            bonusKind: .money, bonusAmount: 5
+        )
+
+        #expect(
+            MapMerchantAccessibility.label(locationName: "市场", merchant: merchant)
+                == "市场，空白贸易商，无贸易商啤酒，奖励不可用"
         )
     }
 
@@ -803,6 +839,52 @@ struct GameMapSceneTests {
         #expect(
             targets.first { $0.id == "merchant-legal" }?.label
                 == "\(state.locations[0].name)，棉纺厂，贸易商啤酒可用，开发 +1"
+        )
+    }
+
+    @Test func accessibleTargetsIncludeEveryHighlightedIndustryWithDistinctChineseLabels() throws {
+        var state = DemoFixture.match(playerCount: 4)
+        let location = try #require(state.locations.first)
+        state.locations[0] = MapLocation(
+            id: location.id,
+            name: "伯明翰",
+            x: location.x,
+            y: location.y,
+            industryPlacements: [
+                .init(
+                    placementID: "industry-coal-a", ownerID: "player-amber", tileID: "coal-2-a",
+                    kind: .coal, level: 2, resourceCount: 1, isFlipped: false,
+                    ownerColor: .amber
+                ),
+                .init(
+                    placementID: "industry-coal-b", ownerID: "player-amber", tileID: "coal-2-b",
+                    kind: .coal, level: 2, resourceCount: 0, isFlipped: true,
+                    ownerColor: .amber
+                ),
+                .init(
+                    placementID: "industry-iron-hidden", ownerID: "player-crimson",
+                    tileID: "iron-1", kind: .iron, level: 1, resourceCount: 4,
+                    isFlipped: false, ownerColor: .crimson
+                ),
+            ],
+            merchantPlacements: location.merchantPlacements
+        )
+
+        let targets = GameMapAccessibility.targets(
+            state: state,
+            highlightedIDs: ["industry-coal-a", "industry-coal-b"]
+        )
+
+        #expect(targets.map(\.id) == ["industry-coal-a", "industry-coal-b"])
+        let first = try #require(targets.first { $0.id == "industry-coal-a" })
+        let second = try #require(targets.first { $0.id == "industry-coal-b" })
+        #expect(
+            first.label
+                == "伯明翰，第1个产业，煤矿，等级2，剩余资源1，所有者 Owen"
+        )
+        #expect(
+            second.label
+                == "伯明翰，第2个产业，煤矿，等级2，已翻面，所有者 Owen"
         )
     }
 

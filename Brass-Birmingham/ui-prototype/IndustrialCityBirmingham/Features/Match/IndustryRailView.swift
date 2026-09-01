@@ -154,7 +154,7 @@ struct IndustryRailView: View {
                     resource("煤", value: industry.coalCost, icon: "seal.fill")
                     resource("铁", value: industry.ironCost, icon: "cube.fill")
                     Spacer()
-                    Label(industry.isAvailable ? "可用" : "已用", systemImage: industry.isAvailable ? "checkmark.circle.fill" : "xmark.circle.fill")
+                    Label(industry.isAvailable ? "可用" : "不可用", systemImage: industry.isAvailable ? "checkmark.circle.fill" : "xmark.circle.fill")
                         .font(.caption2)
                 }
             }

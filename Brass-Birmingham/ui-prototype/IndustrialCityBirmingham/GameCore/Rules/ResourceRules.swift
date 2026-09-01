@@ -283,6 +283,48 @@ extension GameCore {
             }
         }
 
+        /// Returns coal sources for a rail link after that link has been placed.
+        /// Coal distance is measured from the whole link, not independently per endpoint.
+        static func legalCoalSources(
+            forNetworkRoute route: BoardDefinition.Route,
+            state: GameState,
+            catalog verifiedCatalog: VerifiedGameDataCatalog
+        ) -> [ResourceSource] {
+            let catalog = verifiedCatalog.catalog
+            guard state.era == .rail,
+                  route.eras.contains(.rail),
+                  route.playerCounts.contains(state.playerCount),
+                  state.placedLinks.contains(where: { $0.routeID == route.id }),
+                  GameStateAuthorityValidator.isValid(state, catalog: catalog)
+            else { return [] }
+            let activeLocations = Set(catalog.board.locations.lazy
+                .filter { $0.playerCounts.contains(state.playerCount) }
+                .map(\.id))
+            let adjacentLocations = route.adjacentLocationIDs.filter(activeLocations.contains)
+            guard adjacentLocations.isEmpty == false else { return [] }
+
+            let candidates = resourceIndustries(.coal, state: state).compactMap {
+                placement -> (BoardIndustryPlacement, Int)? in
+                let distances = adjacentLocations.compactMap {
+                    TopologyRules.routeDistance(
+                        from: $0, to: placement.locationID,
+                        state: state, board: catalog.board
+                    )
+                }
+                guard let minimum = distances.min() else { return nil }
+                return (placement, minimum)
+            }
+            if let minimum = candidates.map(\.1).min() {
+                return candidates.filter { $0.1 == minimum }
+                    .map { .industry(placementID: $0.0.placementID) }
+                    .sorted(by: sourceOrder)
+            }
+            guard adjacentLocations.contains(where: {
+                connectedToMerchantLocation($0, state: state, board: catalog.board)
+            }) else { return [] }
+            return marketSource(for: .coal, market: state.coalMarket, unlimitedPrice: 8)
+        }
+
         static func prepare(
             _ plan: ResourcePlan,
             expectedRoomID: RoomID,
@@ -736,7 +778,7 @@ extension GameCore {
                 return .init(
                     consumerLocationID: locationID,
                     requestContext: .standard,
-                    requirements: requirements(coal: level.coalCost, iron: level.ironCost, beer: level.beerCost)
+                    requirements: requirements(coal: level.coalCost, iron: level.ironCost, beer: 0)
                 )
 
             case let .network(routeIDs, consumerLocationID):

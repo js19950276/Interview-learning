@@ -4,11 +4,13 @@ nonisolated enum RealMatchViewModel {
     static func make(
         snapshot: GameCore.ViewSnapshot,
         hostPlayerID: GameCore.PlayerID,
-        catalog: GameCore.VerifiedGameDataCatalog? = nil
+        catalog: GameCore.VerifiedGameDataCatalog? = nil,
+        connectedPlayerIDs: Set<GameCore.PlayerID>? = nil
     ) throws -> DemoMatchState {
         guard let match = snapshot.match else { throw Error.missingProjection }
         let board = try catalog?.catalog.board ?? bundledBoard()
         let merchantDefinitions = try catalog?.catalog.merchants ?? bundledMerchants()
+        let incomeTrack = try catalog?.catalog.incomeTrack ?? bundledIncomeTrack()
         _ = try BoardPresentationCatalog.standard.validate(board: board)
         let merchantsByLocation = try projectedMerchantsByLocation(
             match.merchants,
@@ -23,7 +25,7 @@ nonisolated enum RealMatchViewModel {
             actionNumber: snapshot.actionNumber,
             deckRemaining: match.deckCount,
             money: local?.cash ?? 0,
-            income: local?.incomePosition ?? 0,
+            income: local.flatMap { incomeTrack.income(at: $0.incomePosition) } ?? 0,
             victoryPoints: local?.victoryPoints ?? 0,
             players: match.players.enumerated().map { index, player in
                 PlayerSummary(
@@ -32,10 +34,10 @@ nonisolated enum RealMatchViewModel {
                     color: color(player.color),
                     order: index + 1,
                     spent: player.spent,
-                    isCurrent: snapshot.activePlayerID == player.id,
+                    isCurrent: match.finalStandings == nil && snapshot.activePlayerID == player.id,
                     isHost: hostPlayerID == player.id,
                     isReady: true,
-                    isConnected: true
+                    isConnected: connectedPlayerIDs?.contains(player.id) ?? true
                 )
             },
             industries: (local?.industryStacks ?? []).compactMap { stack in
@@ -47,7 +49,8 @@ nonisolated enum RealMatchViewModel {
                 return IndustrySummary(
                     id: tile.id, kind: kind, level: tile.level,
                     cost: level.buildCost, coalCost: level.coalCost,
-                    ironCost: level.ironCost, isAvailable: true
+                    ironCost: level.ironCost,
+                    isAvailable: match.era == .canal ? level.canalEra : level.railEra
                 )
             },
             coalMarket: market(match.coalMarket),
@@ -94,7 +97,8 @@ nonisolated enum RealMatchViewModel {
                     )
                 }
                 return presented
-            }
+            },
+            finalStandings: match.finalStandings?.map { group in group.map(\.rawValue) }
         )
     }
 
@@ -111,6 +115,16 @@ nonisolated enum RealMatchViewModel {
         }
         return try JSONDecoder().decode(
             [GameCore.MerchantDefinition].self,
+            from: Data(contentsOf: url)
+        )
+    }
+
+    private static func bundledIncomeTrack() throws -> GameCore.IncomeTrack {
+        guard let url = Bundle.main.url(forResource: "income-track", withExtension: "json") else {
+            throw Error.missingIncomeTrack
+        }
+        return try JSONDecoder().decode(
+            GameCore.IncomeTrack.self,
             from: Data(contentsOf: url)
         )
     }
@@ -266,6 +280,7 @@ nonisolated enum RealMatchViewModel {
         case missingProjection
         case missingBoard
         case missingMerchants
+        case missingIncomeTrack
         case unknownMerchantSlot(String)
         case unpresentedMerchantLocation(String)
         case unknownMerchantDefinition(String)

@@ -13,11 +13,43 @@ nonisolated struct GameMapAccessibilityTarget: Identifiable, Equatable, Sendable
     let label: String
 }
 
+nonisolated enum GameMapTapRoute: Equatable, Sendable {
+    case target(String)
+    case background
+}
+
+nonisolated struct MapTapRoutingState: Equatable, Sendable {
+    private var physicalTap: GameMapTapRoute?
+    private var receivedAccessibilityActivation = false
+
+    mutating func recordPhysicalTap(_ route: GameMapTapRoute) {
+        physicalTap = route
+    }
+
+    mutating func recordAccessibilityActivation() {
+        receivedAccessibilityActivation = true
+    }
+
+    mutating func resolve() -> GameMapTapRoute? {
+        defer {
+            physicalTap = nil
+            receivedAccessibilityActivation = false
+        }
+        guard receivedAccessibilityActivation == false else { return nil }
+        return physicalTap
+    }
+}
+
 nonisolated enum MapMerchantAccessibility {
     static func label(locationName: String, merchant: MapMerchantPlacement) -> String {
-        let beerAndReward = merchant.hasBeer
-            ? "贸易商啤酒可用，\(rewardLabel(for: merchant))"
-            : "贸易商啤酒已用尽，奖励不可用"
+        let beerAndReward: String
+        if merchant.acceptedIndustries.isEmpty {
+            beerAndReward = "无贸易商啤酒，奖励不可用"
+        } else if merchant.hasBeer {
+            beerAndReward = "贸易商啤酒可用，\(rewardLabel(for: merchant))"
+        } else {
+            beerAndReward = "贸易商啤酒已用尽，奖励不可用"
+        }
         return [locationName, acceptanceLabel(for: merchant), beerAndReward]
             .joined(separator: "，")
     }
@@ -52,6 +84,47 @@ nonisolated enum MapMerchantAccessibility {
         case .income: "收入 +\(merchant.bonusAmount)"
         case .money: "金钱 +\(merchant.bonusAmount)"
         case .victoryPoints: "胜利点 +\(merchant.bonusAmount)"
+        }
+    }
+}
+
+nonisolated enum MapIndustryAccessibility {
+    static func label(
+        locationName: String,
+        ordinal: Int,
+        placement: MapIndustryPlacement,
+        ownerName: String
+    ) -> String {
+        [
+            locationName,
+            "第\(ordinal)个产业",
+            industryLabel(placement.kind),
+            "等级\(placement.level)",
+            statusLabel(placement),
+            "所有者 \(ownerName)",
+        ].joined(separator: "，")
+    }
+
+    private static func industryLabel(_ industry: IndustryKind) -> String {
+        switch industry {
+        case .cotton: "棉纺厂"
+        case .manufacturer: "制造厂"
+        case .pottery: "陶瓷厂"
+        case .coal: "煤矿"
+        case .iron: "炼铁厂"
+        case .brewery: "啤酒厂"
+        }
+    }
+
+    private static func statusLabel(_ placement: MapIndustryPlacement) -> String {
+        if placement.isFlipped {
+            return "已翻面"
+        }
+        switch placement.kind {
+        case .coal, .iron, .brewery:
+            return "剩余资源\(placement.resourceCount)"
+        case .cotton, .manufacturer, .pottery:
+            return "未翻面"
         }
     }
 }
@@ -94,7 +167,23 @@ nonisolated enum GameMapAccessibility {
                     )
                 }
         }
-        return locations + routes + merchants
+        let industries = state.locations.flatMap { location in
+            location.industryPlacements.enumerated().compactMap {
+                index, placement -> GameMapAccessibilityTarget? in
+                guard highlightedIDs.contains(placement.placementID) else { return nil }
+                let owner = playersByID[placement.ownerID] ?? placement.ownerID
+                return GameMapAccessibilityTarget(
+                    id: placement.placementID,
+                    label: MapIndustryAccessibility.label(
+                        locationName: location.name,
+                        ordinal: index + 1,
+                        placement: placement,
+                        ownerName: owner
+                    )
+                )
+            }
+        }
+        return locations + routes + industries + merchants
     }
 }
 
@@ -121,6 +210,8 @@ struct GameMapView: View {
     @State private var gestureScale: CGFloat = 1
     @State private var panSignpost: PrototypeSignpost.Interval?
     @State private var zoomSignpost: PrototypeSignpost.Interval?
+    @State private var tapRoutingState = MapTapRoutingState()
+    @State private var isTapResolutionScheduled = false
 
     init(
         state: DemoMatchState,
@@ -192,7 +283,9 @@ struct GameMapView: View {
                             Text("路线图例：运河专用，铁路专用，两时代通用")
                                 .accessibilityIdentifier("map.routeLegend")
                             ForEach(accessibleTargets, id: \.id) { target in
-                                Button(target.label) { onTargetTap(target.id) }
+                                Button(target.label) {
+                                    activateAccessibilityTarget(target.id)
+                                }
                                     .accessibilityIdentifier("map.target.\(target.id)")
                             }
                         }
@@ -281,11 +374,41 @@ struct GameMapView: View {
     private var tapGesture: some Gesture {
         SpatialTapGesture()
             .onEnded { value in
-                scene.onTargetTap = onTargetTap
-                if !scene.activateTarget(atViewPoint: value.location) {
-                    onBackgroundTap()
-                }
+                let route = targetID(atViewPoint: value.location)
+                    .map(GameMapTapRoute.target) ?? .background
+                tapRoutingState.recordPhysicalTap(route)
+                scheduleTapResolution()
             }
+    }
+
+    private func targetID(atViewPoint point: CGPoint) -> String? {
+        guard scene.view != nil else { return nil }
+        return scene.targetID(atScenePoint: scene.convertPoint(fromView: point))
+    }
+
+    private func activateAccessibilityTarget(_ id: String) {
+        tapRoutingState.recordAccessibilityActivation()
+        scheduleTapResolution()
+        onTargetTap(id)
+    }
+
+    private func scheduleTapResolution() {
+        guard isTapResolutionScheduled == false else { return }
+        isTapResolutionScheduled = true
+        Task { @MainActor in
+            await Task.yield()
+            await Task.yield()
+            let route = tapRoutingState.resolve()
+            isTapResolutionScheduled = false
+            switch route {
+            case .target(let id):
+                onTargetTap(id)
+            case .background:
+                onBackgroundTap()
+            case nil:
+                break
+            }
+        }
     }
 
     private func synchronizeScene(viewportSize: CGSize) {

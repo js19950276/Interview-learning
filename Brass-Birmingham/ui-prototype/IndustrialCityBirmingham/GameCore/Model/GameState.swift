@@ -2,6 +2,13 @@ import CryptoKit
 import Foundation
 
 extension GameCore {
+    /// The release currently implements only the official standard game.
+    /// Unknown encoded values must fail decoding instead of silently running
+    /// under a different ruleset.
+    nonisolated enum GameVariant: String, Codable, Equatable, Sendable {
+        case standard
+    }
+
     nonisolated enum Era: String, Codable, Equatable, Sendable {
         case canal
         case rail
@@ -106,6 +113,8 @@ extension GameCore {
     }
 
     nonisolated struct ResourceMarket: Codable, Equatable, Sendable {
+        static let officialIronPrices = [1, 1, 2, 2, 3, 3, 4, 4, 5, 5]
+
         var resource: ResourceKind
         var slots: [MarketSlot]
     }
@@ -195,6 +204,9 @@ extension GameCore {
 
     nonisolated struct GameState: Codable, Equatable, Sendable {
         var rulesetVersion: String
+        /// `nil` is accepted only for backward-compatible decoding of archives
+        /// written before the variant discriminator existed.
+        var gameVariant: GameVariant? = .standard
         var seed: UInt64
         var playerCount: Int
         var era: Era
@@ -224,6 +236,10 @@ extension GameCore {
         var authorityCompleteness: AuthorityCompleteness? = nil
         /// Bounded authoritative replay protection. `nil` denotes a legacy/incomplete state.
         var appliedResourceActionIDs: [String]? = nil
+        /// Public, durable final ranking. Each inner array is a tied rank group.
+        var finalStandings: [[PlayerID]]? = nil
+
+        var resolvedGameVariant: GameVariant { gameVariant ?? .standard }
 
         func canonicalBytes() throws -> Data {
             let encoder = JSONEncoder()
@@ -358,17 +374,19 @@ extension GameCore {
 
 extension GameCore.GameState {
     private nonisolated enum CodingKeys: String, CodingKey {
-        case rulesetVersion, seed, playerCount, era, roundNumber, actionsRemaining
+        case rulesetVersion, gameVariant, seed, playerCount, era, roundNumber, actionsRemaining
         case turnsCompletedInRound, actionNumber, canalRoundCapacity, railRoundCapacity
         case players, playerOrder, activePlayerID, standardDrawDeck, wildLocationPool
         case wildIndustryPool, publicDiscard, boardIndustryPlacements, placedLinks
         case coalMarket, ironMarket, publicSupply, merchants, authoritativeVersion
         case turnPhase, roundIncomeCursor, authorityCompleteness, appliedResourceActionIDs
+        case finalStandings
     }
 
     nonisolated init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         rulesetVersion = try values.decode(String.self, forKey: .rulesetVersion)
+        gameVariant = try values.decodeIfPresent(GameCore.GameVariant.self, forKey: .gameVariant)
         seed = try values.decode(UInt64.self, forKey: .seed)
         playerCount = try values.decode(Int.self, forKey: .playerCount)
         era = try values.decode(GameCore.Era.self, forKey: .era)
@@ -403,6 +421,9 @@ extension GameCore.GameState {
         )
         appliedResourceActionIDs = try values.decodeIfPresent(
             [String].self, forKey: .appliedResourceActionIDs
+        )
+        finalStandings = try values.decodeIfPresent(
+            [[GameCore.PlayerID]].self, forKey: .finalStandings
         )
     }
 }

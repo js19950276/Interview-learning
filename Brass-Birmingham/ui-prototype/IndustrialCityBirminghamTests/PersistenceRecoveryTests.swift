@@ -289,7 +289,262 @@ struct PersistenceRecoveryTests {
         ))
         try await store.submitForTesting(payload)
         try await eventuallyMainActor { store.version.rawValue == 1 }
-        #expect(store.errorMessage == nil)
+        #expect(store.syncStatus == .recovering)
+        #expect(store.errorMessage == "当前行动玩家已断线，正在等待其恢复连接。")
+    }
+
+    @Test func protocolV2NearbyFlowPersistsInitialAndActionSnapshotsWithRealStore() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let tokenStore = RoomTokenStore(adapter: InMemorySecureItemAdapter())
+        let key = FixedSnapshotKeyProvider(key: Data(repeating: 0x79, count: 32))
+        let factory = SessionPersistenceFactory(
+            baseDirectory: directory,
+            tokenStore: tokenStore,
+            keyProvider: key
+        )
+        let catalog = try verifiedCatalog()
+        let roomID = GameCore.RoomID(rawValue: "REAL-V2-SAVE")
+        let hostID = GameCore.PlayerID(rawValue: "host")
+        let guestID = GameCore.PlayerID(rawValue: "guest-a")
+        let hub = LoopbackTransportHub()
+        let host = try await factory.makeCoordinator(
+            configuration: .init(
+                protocolVersion: 2,
+                rulesetVersion: catalog.catalog.rulesetVersion,
+                roomID: roomID,
+                playerID: hostID,
+                reconnectToken: .init(rawValue: "host-token"),
+                hostPlayerID: hostID
+            ),
+            role: .host,
+            transport: hub.makeTransport(peerID: hostID),
+            rulesMode: .verified(catalog)
+        )
+        let guest = try await factory.makeCoordinator(
+            configuration: .init(
+                protocolVersion: 2,
+                rulesetVersion: catalog.catalog.rulesetVersion,
+                roomID: roomID,
+                playerID: guestID,
+                reconnectToken: .init(rawValue: "guest-token"),
+                hostPlayerID: hostID
+            ),
+            role: .guest,
+            transport: hub.makeTransport(peerID: guestID),
+            rulesMode: .verified(catalog)
+        )
+
+        try await host.createRoom()
+        try await guest.joinRoom()
+        try await host.setReady(true)
+        try await guest.setReady(true)
+        try await eventually { await host.readyPlayerIDs.count == 2 }
+        try await host.startGame()
+        try await eventually { await guest.snapshot != nil }
+
+        let guestStore = SnapshotStore(
+            directory: factory.directory(roomID: roomID, playerID: guestID),
+            keyProvider: key,
+            verifiedCatalog: catalog
+        )
+        try await eventually {
+            let saveFailed = await guest.persistenceError != nil
+            return FileManager.default.fileExists(atPath: guestStore.committedFileURL.path) || saveFailed
+        }
+        #expect(await guest.persistenceError == nil)
+        #expect(FileManager.default.fileExists(atPath: guestStore.committedFileURL.path))
+
+        let actorID = try #require(await host.snapshot?.activePlayerID)
+        let actingCoordinator = actorID == hostID ? host : guest
+        let actorSnapshot = try #require(await actingCoordinator.snapshot)
+        let cardID = try #require(actorSnapshot.players.first(where: { $0.id == actorID })?.hand?.first)
+        try await actingCoordinator.pass(discardCardID: cardID)
+        try await eventually { await host.snapshot?.authoritativeVersion == .init(rawValue: 1) }
+
+        #expect(await host.persistenceError == nil)
+        #expect(await guest.persistenceError == nil)
+        let hostStore = SnapshotStore(
+            directory: factory.directory(roomID: roomID, playerID: hostID),
+            keyProvider: key,
+            verifiedCatalog: catalog
+        )
+        #expect(FileManager.default.fileExists(atPath: hostStore.committedFileURL.path))
+        #expect(try await hostStore.load(expected: .init(
+            protocolVersion: 2,
+            rulesetVersion: catalog.catalog.rulesetVersion,
+            roomID: roomID,
+            recipientID: hostID,
+            role: .host
+        )).authoritativeVersion == .init(rawValue: 1))
+    }
+
+    @Test func railPreparedHandCountsKeepHostSnapshotChecksumStableAfterDecoding() throws {
+        let fixture = makeRailPreparedChecksumArchive()
+        let playerIDs = fixture.playerIDs
+        let railDetails = fixture.railDetails
+        let detailsObject = try #require(
+            JSONSerialization.jsonObject(with: JSONEncoder.canonical.encode(railDetails)) as? [String: Any]
+        )
+        let encodedHandCounts = try #require(detailsObject["handCounts"] as? [Any])
+        let encodedPlayerIDs = try stride(from: 0, to: encodedHandCounts.count, by: 2).map { index in
+            try #require(encodedHandCounts[index] as? String)
+        }
+        #expect(encodedPlayerIDs == playerIDs.map(\.rawValue).sorted())
+        let storedEnvelope = try SnapshotEnvelope(archive: fixture.archive)
+
+        let decodedEnvelope = try JSONDecoder().decode(
+            SnapshotEnvelope.self,
+            from: JSONEncoder.canonical.encode(storedEnvelope)
+        )
+
+        #expect(decodedEnvelope.checksum == (try SnapshotEnvelope.checksum(for: decodedEnvelope.archive)))
+    }
+
+    @Test func legacySchema4ArchiveLoadsAndMigratesToStableCurrentSchema() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let key = Data(repeating: 0x7A, count: 32)
+        let fixture = makeRailPreparedChecksumArchive()
+        let legacy = try makeLegacySchema4EnvelopeData(archive: fixture.archive)
+        #expect(legacy.checksum != (try SnapshotEnvelope.checksum(for: fixture.archive)))
+
+        let store = SnapshotStore(
+            directory: directory,
+            keyProvider: FixedSnapshotKeyProvider(key: key)
+        )
+        try FileManager.default.createDirectory(
+            at: store.committedFileURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try SnapshotCrypto.seal(legacy.data, keyData: key).write(to: store.committedFileURL)
+
+        let loaded = try await store.load(expected: .init(
+            protocolVersion: 1,
+            rulesetVersion: "rules-v1",
+            roomID: fixture.archive.roomID,
+            recipientID: GameCore.PlayerID(rawValue: "host"),
+            role: .host
+        ))
+        #expect(loaded == fixture.archive)
+
+        let migratedData = try SnapshotCrypto.open(
+            Data(contentsOf: store.committedFileURL),
+            keyData: key
+        )
+        let migrated = try JSONDecoder().decode(SnapshotEnvelope.self, from: migratedData)
+        #expect(migrated.schemaVersion == SnapshotEnvelope.currentSchemaVersion)
+        #expect(migrated.schemaVersion == 5)
+        #expect(migrated.checksum == (try SnapshotEnvelope.checksum(for: migrated.archive)))
+    }
+
+    @Test func legacySchema4ArchiveAllowsTheNextSaveAndReplacesItWithSchema5() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let key = Data(repeating: 0x7B, count: 32)
+        let fixture = makeRailPreparedChecksumArchive()
+        let legacy = try makeLegacySchema4EnvelopeData(archive: fixture.archive)
+        let store = SnapshotStore(
+            directory: directory,
+            keyProvider: FixedSnapshotKeyProvider(key: key)
+        )
+        try SnapshotCrypto.seal(legacy.data, keyData: key).write(to: store.committedFileURL)
+        let next = SessionArchive(
+            protocolVersion: fixture.archive.protocolVersion,
+            rulesetVersion: fixture.archive.rulesetVersion,
+            roomID: fixture.archive.roomID,
+            recipientID: fixture.archive.recipientID,
+            role: fixture.archive.role,
+            authoritativeVersion: fixture.archive.authoritativeVersion,
+            commitSequence: fixture.archive.commitSequence + 1,
+            payload: fixture.archive.payload,
+            gameVariant: fixture.archive.gameVariant
+        )
+
+        try await store.save(next)
+
+        let savedData = try SnapshotCrypto.open(
+            Data(contentsOf: store.committedFileURL),
+            keyData: key
+        )
+        let saved = try JSONDecoder().decode(SnapshotEnvelope.self, from: savedData)
+        #expect(saved.schemaVersion == 5)
+        #expect(saved.archive == next)
+        #expect(saved.checksum == (try SnapshotEnvelope.checksum(for: saved.archive)))
+    }
+
+    @Test func legacySchema4ArchiveStillRejectsAForgedChecksum() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let key = Data(repeating: 0x7C, count: 32)
+        let fixture = makeRailPreparedChecksumArchive()
+        let legacy = try makeLegacySchema4EnvelopeData(archive: fixture.archive)
+        var object = try #require(
+            JSONSerialization.jsonObject(with: legacy.data) as? [String: Any]
+        )
+        object["checksum"] = "forged"
+        let forged = try JSONSerialization.data(
+            withJSONObject: object,
+            options: [.sortedKeys, .withoutEscapingSlashes]
+        )
+        let store = SnapshotStore(
+            directory: directory,
+            keyProvider: FixedSnapshotKeyProvider(key: key)
+        )
+        try SnapshotCrypto.seal(forged, keyData: key).write(to: store.committedFileURL)
+
+        await #expect(throws: SnapshotStoreError.checksumMismatch) {
+            try await store.load(expected: .init(
+                protocolVersion: 1,
+                rulesetVersion: "rules-v1",
+                roomID: fixture.archive.roomID,
+                recipientID: GameCore.PlayerID(rawValue: "host"),
+                role: .host
+            ))
+        }
+    }
+
+    @Test func verifiedCompleteSchema4ArchiveLoadsAndMigratesToSchema5() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let key = Data(repeating: 0x7D, count: 32)
+        let catalog = try verifiedCatalog()
+        let tokenStore = RoomTokenStore(adapter: InMemorySecureItemAdapter())
+        let hostID = GameCore.PlayerID(rawValue: "host")
+        let roomID = GameCore.RoomID(rawValue: "VERIFIED-SCHEMA4")
+        let archive = try await makeCompleteHostArchive(
+            roomID: roomID,
+            hostID: hostID,
+            catalog: catalog,
+            tokenStore: tokenStore
+        )
+        let legacy = try makeLegacySchema4EnvelopeData(archive: archive)
+        let store = SnapshotStore(
+            directory: directory,
+            keyProvider: FixedSnapshotKeyProvider(key: key),
+            verifiedCatalog: catalog
+        )
+        try SnapshotCrypto.seal(legacy.data, keyData: key).write(to: store.committedFileURL)
+
+        let loaded = try await store.load(
+            expected: .init(
+                protocolVersion: 2,
+                rulesetVersion: catalog.catalog.rulesetVersion,
+                roomID: roomID,
+                recipientID: hostID,
+                role: .host
+            ),
+            requiresCurrentSchema: true
+        )
+        #expect(loaded == archive)
+
+        let migratedData = try SnapshotCrypto.open(
+            Data(contentsOf: store.committedFileURL),
+            keyData: key
+        )
+        let migrated = try JSONDecoder().decode(SnapshotEnvelope.self, from: migratedData)
+        #expect(migrated.schemaVersion == 5)
+        #expect(migrated.checksum == (try SnapshotEnvelope.checksum(for: migrated.archive)))
     }
 
     @Test func verifiedCatalogRejectsMalformedCompleteAuthorityStateOnSaveRestoreAndListing() async throws {
@@ -442,7 +697,7 @@ struct PersistenceRecoveryTests {
             industryID: "coal-mine", locationID: "dudley", slotIndex: 0, resourceCount: 2
         )
         try moveTileToBoard(
-            industryID: "iron-works", locationID: "dudley", slotIndex: 1, resourceCount: 4
+            industryID: "iron-works", locationID: "coalbrookdale", slotIndex: 1, resourceCount: 4
         )
         let coalTotal = state.publicSupply.coal
             + state.coalMarket.slots.filter(\.hasCube).count
@@ -1282,9 +1537,11 @@ struct PersistenceRecoveryTests {
         })
         let coal = gameState.players[debtorIndex].industryStacks[coalIndex].tiles.removeFirst()
         let iron = gameState.players[debtorIndex].industryStacks[ironIndex].tiles.removeFirst()
+        gameState.players[debtorIndex].cash = 0
+        gameState.players[debtorIndex].incomePosition = 0
         gameState.boardIndustryPlacements = [
             .init(locationID: "dudley", slotIndex: 0, ownerID: debtorID, tile: coal),
-            .init(locationID: "dudley", slotIndex: 1, ownerID: debtorID, tile: iron),
+            .init(locationID: "coalbrookdale", slotIndex: 1, ownerID: debtorID, tile: iron),
         ]
         let eligible = gameState.boardIndustryPlacements.map(\.placementID).sorted()
         gameState.activePlayerID = debtorID
@@ -1295,6 +1552,7 @@ struct PersistenceRecoveryTests {
         ))
         gameState.actionNumber = 4
         gameState.authoritativeVersion = .init(rawValue: 4)
+        repairCardFixture(&gameState, catalog: catalog)
         #expect(GameCore.GameStateAuthorityValidator.isValid(gameState, catalog: catalog))
 
         let tokenStore = RoomTokenStore(adapter: InMemorySecureItemAdapter())
@@ -1593,6 +1851,54 @@ struct PersistenceRecoveryTests {
         try await eventually { await pair.guest.lastIntentRejection?.reasonCode == .persistenceUnavailable }
         #expect(await pair.host.snapshot == initialHost)
         #expect(await pair.guest.lastIntentRejection?.reasonCode == .persistenceUnavailable)
+    }
+
+    @Test func failedPrecommitRetryCommitsTheOriginalCandidateWithoutReplayingTheIntent() async throws {
+        let hostID = GameCore.PlayerID(rawValue: "host")
+        let pair = makePersistentCoordinatorPair()
+        try await pair.host.createRoom(); try await pair.guest.joinRoom()
+        try await pair.host.setReady(true); try await pair.guest.setReady(true)
+        try await eventually { await pair.host.readyPlayerIDs.count == 2 }
+        try await pair.host.startGame(); try await eventually { await pair.guest.snapshot != nil }
+        let initialHost = try #require(await pair.host.snapshot)
+        let initialGuest = try #require(await pair.guest.snapshot)
+        let initialHostPlayer = try #require(initialHost.players.first(where: { $0.id == hostID }))
+        let card = try #require(initialHostPlayer.hand?.first)
+        await pair.persistence.failSave(number: 1)
+
+        await #expect(throws: SessionCoordinator.Error.persistenceUnavailable) {
+            try await pair.host.pass(discardCardID: card)
+        }
+
+        #expect(await pair.host.snapshot == initialHost)
+        #expect(await pair.guest.snapshot == initialGuest)
+        #expect(await pair.persistence.savedArchives.isEmpty)
+        let failedCandidate = try #require(await pair.persistence.attemptedArchives.first)
+        #expect(failedCandidate.authoritativeVersion == .init(rawValue: 1))
+        #expect(failedCandidate.commitSequence == 1)
+
+        try await pair.host.retryPersistence()
+
+        let hostAfterRetry = try #require(await pair.host.snapshot)
+        try #require(hostAfterRetry.authoritativeVersion == .init(rawValue: 1))
+        try await eventually { await pair.guest.snapshot?.authoritativeVersion == .init(rawValue: 1) }
+        let guestAfterRetry = try #require(await pair.guest.snapshot)
+        let retryAttempts = await pair.persistence.attemptedArchives
+        #expect(retryAttempts.count == 3)
+        #expect(retryAttempts[0] == retryAttempts[1])
+        #expect(await pair.persistence.savedArchives.map(\.commitSequence) == [1, 2])
+        #expect(await pair.persistence.savedArchives.allSatisfy {
+            $0.authoritativeVersion == .init(rawValue: 1)
+        })
+        #expect(hostAfterRetry.actionNumber == 1)
+        #expect(guestAfterRetry.actionNumber == 1)
+        #expect(hostAfterRetry.discardPile.filter { $0 == card }.count == 1)
+        #expect(guestAfterRetry.discardPile.filter { $0 == card }.count == 1)
+        let finalHostPlayer = try #require(hostAfterRetry.players.first(where: { $0.id == hostID }))
+        #expect(finalHostPlayer.handCount == initialHostPlayer.handCount - 1)
+        #expect(finalHostPlayer.hand?.contains(card) == false)
+        #expect(guestAfterRetry.players.first(where: { $0.id == hostID })?.handCount == initialHostPlayer.handCount - 1)
+        #expect(await pair.host.persistenceError == nil)
     }
 
     @Test func progressSaveFailureKeepsDurableAuthorityAndRecoveryEvidenceForRelaunch() async throws {
@@ -2581,6 +2887,73 @@ struct PersistenceRecoveryTests {
         }
     }
 
+    @Test func nearbyRuntimeFactoryReusesDurableSecureItemsAcrossInstances() async throws {
+        let roomID = GameCore.RoomID(rawValue: "RUNTIME-\(UUID().uuidString)")
+        let hostID = GameCore.PlayerID(rawValue: "host")
+        let guestID = GameCore.PlayerID(rawValue: "guest-runtime")
+        let firstFactory = SessionPersistenceFactory.nearbyRuntime
+        let hostDirectory = firstFactory.directory(roomID: roomID, playerID: hostID)
+        let guestDirectory = firstFactory.directory(roomID: roomID, playerID: guestID)
+        defer {
+            try? FileManager.default.removeItem(at: hostDirectory)
+            try? FileManager.default.removeItem(at: guestDirectory)
+        }
+        func deleteRuntimeTokens() async {
+            try? await firstFactory.tokenStore.delete(roomID: roomID, playerID: hostID)
+            try? await firstFactory.tokenStore.delete(roomID: roomID, playerID: guestID)
+        }
+
+        do {
+            let hub = LoopbackTransportHub()
+            let firstHost = try await firstFactory.makeCoordinator(
+                configuration: .init(
+                    protocolVersion: 1, rulesetVersion: "rules-v1", roomID: roomID, playerID: hostID,
+                    reconnectToken: .init(rawValue: "host-token"), hostPlayerID: hostID
+                ),
+                role: .host,
+                transport: hub.makeTransport(peerID: hostID),
+                rulesMode: .fixtureOnlyLegacy
+            )
+            let guest = SessionCoordinator(
+                configuration: .init(
+                    protocolVersion: 1, rulesetVersion: "rules-v1", roomID: roomID, playerID: guestID,
+                    reconnectToken: .init(rawValue: "guest-token"), hostPlayerID: hostID
+                ),
+                transport: hub.makeTransport(peerID: guestID),
+                rulesMode: .fixtureOnlyLegacy
+            )
+
+            try await firstHost.createRoom()
+            try await guest.joinRoom()
+            try await firstHost.setReady(true)
+            try await guest.setReady(true)
+            try await eventually { await firstHost.readyPlayerIDs.count == 2 }
+            try await firstHost.startGame()
+            let firstSnapshot = try #require(await firstHost.snapshot)
+            let hostCard = try #require(firstSnapshot.players.first(where: { $0.id == hostID })?.hand?.first)
+            try await firstHost.pass(discardCardID: hostCard)
+            try await eventually { await firstHost.snapshot?.authoritativeVersion == .init(rawValue: 1) }
+
+            let secondFactory = SessionPersistenceFactory.nearbyRuntime
+            let restoredHost = try await secondFactory.makeCoordinator(
+                configuration: .init(
+                    protocolVersion: 1, rulesetVersion: "rules-v1", roomID: roomID, playerID: hostID,
+                    reconnectToken: .init(rawValue: "ignored-new-token"), hostPlayerID: hostID
+                ),
+                role: .host,
+                transport: LoopbackTransportHub().makeTransport(peerID: hostID),
+                rulesMode: .fixtureOnlyLegacy
+            )
+
+            #expect(await restoredHost.snapshot?.authoritativeVersion == .init(rawValue: 1))
+            #expect(try await secondFactory.tokenStore.load(roomID: roomID, playerID: hostID)?.reconnectToken.rawValue == "host-token")
+        } catch {
+            await deleteRuntimeTokens()
+            throw error
+        }
+        await deleteRuntimeTokens()
+    }
+
     @Test func productionFactoryClearsOnlyEncryptedRecoveryMaterialAfterThreeInvalidLoads() async throws {
         let directory = try makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -2662,6 +3035,150 @@ struct PersistenceRecoveryTests {
         try await host.createRoom(); try await guest.joinRoom()
         try await eventually { await guest.snapshot?.authoritativeVersion == .init(rawValue: 4) }
         #expect(await recorder.recoveryPayloadKinds == [.clientEvent, .clientEvent])
+    }
+
+    private func makeRailPreparedChecksumArchive() -> (
+        archive: SessionArchive,
+        playerIDs: [GameCore.PlayerID],
+        railDetails: GameCore.GameTransitionEvent.RailPreparedDetails
+    ) {
+        let roomID = GameCore.RoomID(rawValue: "RAIL-CHECKSUM")
+        let hostID = GameCore.PlayerID(rawValue: "host")
+        let playerIDs = [hostID] + (0..<12).map {
+            GameCore.PlayerID(rawValue: String(format: "guest-%02d", $0))
+        }
+        let railDetails = GameCore.GameTransitionEvent.RailPreparedDetails(
+            removedPlacementIDs: ["canal-only"],
+            handCounts: Dictionary(uniqueKeysWithValues: playerIDs.reversed().map { ($0, 8) })
+        )
+        let state = GameCore.AuthoritativeGameState(
+            roomID: roomID,
+            players: playerIDs.map {
+                .init(
+                    id: $0,
+                    reconnectToken: .init(rawValue: "token-\($0.rawValue)"),
+                    hand: ["card-\($0.rawValue)"]
+                )
+            },
+            activePlayerID: hostID,
+            turn: 1,
+            actionNumber: 1,
+            authoritativeVersion: .init(rawValue: 1),
+            discardPile: []
+        )
+        let visiblePlayers = playerIDs.map {
+            GameCore.VisiblePlayer(
+                id: $0,
+                handCount: 1,
+                hand: $0 == hostID ? ["card-host"] : nil
+            )
+        }
+        let snapshot = GameCore.ViewSnapshot(
+            roomID: roomID,
+            recipient: hostID,
+            players: visiblePlayers,
+            activePlayerID: hostID,
+            turn: 1,
+            actionNumber: 1,
+            authoritativeVersion: .init(rawValue: 1),
+            discardPile: [],
+            checksum: try! GameCore.snapshotChecksum(
+                roomID: roomID,
+                recipient: hostID,
+                players: visiblePlayers,
+                activePlayerID: hostID,
+                turn: 1,
+                actionNumber: 1,
+                authoritativeVersion: .init(rawValue: 1),
+                discardPile: []
+            )
+        )
+        let event = GameCore.AuthoritativeGameEvent(
+            roomID: roomID,
+            actor: hostID,
+            previousVersion: .init(rawValue: 0),
+            version: .init(rawValue: 1),
+            actionNumber: 1,
+            payload: .passed(discardedCardID: "card-host"),
+            transitions: [.railPrepared(railDetails)]
+        )
+        let envelope = SessionProtocol.SessionEnvelope(
+            protocolVersion: 1,
+            rulesetVersion: "rules-v1",
+            roomID: roomID,
+            messageID: .init(rawValue: "rail-prepared"),
+            senderID: hostID,
+            recipientID: hostID,
+            authoritativeVersion: .init(rawValue: 1),
+            payload: .clientEvent(.init(event: event, snapshot: snapshot))
+        )
+        return (
+            archive: .host(
+                protocolVersion: 1,
+                rulesetVersion: "rules-v1",
+                recipientID: hostID,
+                state: state,
+                gameState: .legacyCompatible(state, rulesetVersion: "rules-v1"),
+                eventWindows: [hostID: [envelope]],
+                tokenReferences: playerIDs.map { .init(roomID: roomID, playerID: $0) },
+                peersNeedingRecovery: Set(playerIDs.dropFirst()),
+                commitSequence: 1
+            ),
+            playerIDs: playerIDs,
+            railDetails: railDetails
+        )
+    }
+
+    private func makeLegacySchema4EnvelopeData(
+        archive: SessionArchive
+    ) throws -> (data: Data, checksum: String) {
+        let currentEnvelope = try SnapshotEnvelope(archive: archive)
+        let encoded = try JSONEncoder.canonical.encode(currentEnvelope)
+        var root = try #require(
+            JSONSerialization.jsonObject(with: encoded) as? [String: Any]
+        )
+
+        func legacyOrderedValue(_ value: Any, fieldName: String? = nil) -> Any {
+            if let dictionary = value as? [String: Any] {
+                return dictionary.reduce(into: [String: Any]()) { result, entry in
+                    result[entry.key] = legacyOrderedValue(entry.value, fieldName: entry.key)
+                }
+            }
+            if let array = value as? [Any] {
+                let values = array.map { legacyOrderedValue($0) }
+                switch fieldName {
+                case "eventWindows", "handCounts":
+                    let pairs = stride(from: 0, to: values.count, by: 2).map {
+                        Array(values[$0..<min($0 + 2, values.count)])
+                    }
+                    return pairs.reversed().flatMap { $0 }
+                case "peersNeedingRecovery":
+                    return Array(values.reversed())
+                default:
+                    return values
+                }
+            }
+            return value
+        }
+
+        let archiveObject = legacyOrderedValue(try #require(root["archive"]))
+        let archiveData = try JSONSerialization.data(
+            withJSONObject: archiveObject,
+            options: [.sortedKeys, .withoutEscapingSlashes]
+        )
+        let checksum = SHA256.hash(data: archiveData)
+            .map { String(format: "%02x", $0) }
+            .joined()
+        root["archive"] = archiveObject
+        root["checksum"] = checksum
+        root["schemaVersion"] = 4
+        return (
+            try JSONSerialization.data(
+                withJSONObject: root,
+                options: [.sortedKeys, .withoutEscapingSlashes]
+            ),
+            checksum
+        )
     }
 
     private func makeGuestArchive(sequence: UInt64) -> SessionArchive {
@@ -3008,11 +3525,13 @@ private final class RecordingRecoveryMaterialCleaner: RecoveryMaterialCleaning, 
 
 private actor RecordingSessionArchivePersistence: SessionArchivePersisting {
     private(set) var savedArchives: [SessionArchive] = []
+    private(set) var attemptedArchives: [SessionArchive] = []
     private var shouldFail = false
     private var saveDelay: Duration?
     private(set) var saveAttemptCount = 0
     private var failingSaveNumbers: Set<Int> = []
     func save(_ archive: SessionArchive) async throws {
+        attemptedArchives.append(archive)
         saveAttemptCount += 1
         let attempt = saveAttemptCount
         if let saveDelay { try await Task.sleep(for: saveDelay) }

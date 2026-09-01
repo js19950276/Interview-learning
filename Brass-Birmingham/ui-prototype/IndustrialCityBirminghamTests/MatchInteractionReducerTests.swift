@@ -106,11 +106,16 @@ struct MatchInteractionReducerTests {
                 label: "棉纺厂",
                 value: .industryTile(id: "cotton-1")
             ),
+            .init(
+                id: "source:beer:industry:beer-a",
+                label: "德比 · 自己的啤酒厂",
+                value: .resourceSource(.industry(placementID: "beer-a"))
+            ),
         ]
 
         #expect(
             AuthoritativeMapTargetResolver.highlightedIDs(from: choices)
-                == ["birmingham", "birmingham-oxford", "oxford-1"]
+                == ["birmingham", "birmingham-oxford", "oxford-1", "beer-a"]
         )
         #expect(
             AuthoritativeMapTargetResolver.choice(for: "oxford-1", in: choices)?.value
@@ -118,6 +123,10 @@ struct MatchInteractionReducerTests {
         )
         #expect(AuthoritativeMapTargetResolver.choice(for: "sale-a", in: choices) == nil)
         #expect(AuthoritativeMapTargetResolver.choice(for: "cotton-1", in: choices) == nil)
+        #expect(
+            AuthoritativeMapTargetResolver.choice(for: "beer-a", in: choices)?.value
+                == .resourceSource(.industry(placementID: "beer-a"))
+        )
     }
 
     @Test func tabletHandFitsEightReadableCardsInNarrowAvailableWidth() {
@@ -177,11 +186,19 @@ struct MatchInteractionReducerTests {
         let scoutChoices: [GameCore.LegalChoice] = [
             .init(id: "card:walsall", label: "Walsall", value: .card(id: "card-walsall"))
         ]
+        let beerChoices: [GameCore.LegalChoice] = [
+            .init(
+                id: "source:beer:industry:beer-a",
+                label: "德比 · 自己的啤酒厂",
+                value: .resourceSource(.industry(placementID: "beer-a"))
+            )
+        ]
 
         #expect(ActionContextBar.instruction(for: .build, selectionLabels: [], choices: buildChoices) == "选择城市")
         #expect(ActionContextBar.instruction(for: .network, selectionLabels: ["伯明翰-沃尔索尔"], choices: routeChoices) == "已选 1 项，继续选择路线")
         #expect(ActionContextBar.instruction(for: .develop, selectionLabels: [], choices: developChoices) == "选择产业")
         #expect(ActionContextBar.instruction(for: .sell, selectionLabels: [], choices: merchantChoices) == "选择贸易商")
+        #expect(ActionContextBar.instruction(for: .sell, selectionLabels: ["牛津"], choices: beerChoices) == "已选 1 项，选择啤酒来源")
         #expect(ActionContextBar.instruction(for: .loan, selectionLabels: [], choices: []) == "确认贷款")
         #expect(ActionContextBar.instruction(for: .scout, selectionLabels: ["Walsall"], choices: scoutChoices) == "已选 1 项，选择额外手牌")
         #expect(ActionContextBar.instruction(for: .pass, selectionLabels: [], choices: []) == "确认跳过")

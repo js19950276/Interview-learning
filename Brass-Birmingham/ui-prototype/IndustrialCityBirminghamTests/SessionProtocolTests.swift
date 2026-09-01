@@ -489,6 +489,58 @@ struct SessionProtocolTests {
         try SessionProtocol.EnvelopeValidator().validate(clientEvent: redacted, in: envelope)
     }
 
+    @Test func unsupportedGameVariantFailsClosedAtEveryDecodedAndLaunchBoundary() throws {
+        let engine = makeEngine()
+        let gameState = GameCore.GameState.legacyCompatible(engine.state, rulesetVersion: "bb-1")
+        let snapshot = try engine.snapshot(for: bobID)
+        let envelope = makeEnvelope(recipientID: bobID, payload: .viewSnapshot(snapshot))
+        let archive = SessionArchive.guest(
+            protocolVersion: 1,
+            rulesetVersion: "bb-1",
+            hostPlayerID: aliceID,
+            snapshot: snapshot,
+            eventWindow: [],
+            tokenReference: .init(roomID: roomID, playerID: bobID),
+            commitSequence: 1
+        )
+
+        #expect(throws: DecodingError.self) {
+            _ = try JSONDecoder().decode(
+                GameCore.GameState.self,
+                from: addingUnsupportedVariant(to: JSONEncoder.canonical.encode(gameState))
+            )
+        }
+        #expect(throws: DecodingError.self) {
+            _ = try JSONDecoder().decode(
+                GameCore.ViewSnapshot.self,
+                from: addingUnsupportedVariant(to: JSONEncoder.canonical.encode(snapshot))
+            )
+        }
+        #expect(throws: DecodingError.self) {
+            _ = try JSONDecoder().decode(
+                SessionProtocol.SessionEnvelope.self,
+                from: addingUnsupportedVariant(to: JSONEncoder.canonical.encode(envelope))
+            )
+        }
+        #expect(throws: DecodingError.self) {
+            _ = try JSONDecoder().decode(
+                SessionArchive.self,
+                from: addingUnsupportedVariant(to: JSONEncoder.canonical.encode(archive))
+            )
+        }
+
+        #expect(AppEnvironment(arguments: ["app", "-game-variant", "standard"])
+            == AppEnvironment(arguments: ["app"]))
+        #expect(AppEnvironment(arguments: ["app", "-game-variant", "introductory"])
+            != AppEnvironment(arguments: ["app"]))
+    }
+
+    private func addingUnsupportedVariant(to data: Data) throws -> Data {
+        var object = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        object["gameVariant"] = "introductory"
+        return try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
+    }
+
     private func makeEnvelope(
         authoritativeVersion: GameCore.AuthoritativeVersion = .init(rawValue: 4),
         recipientID: GameCore.PlayerID? = nil,
@@ -544,7 +596,8 @@ struct SessionProtocolTests {
             .start, .intent(passIntent()),
             .clientEvent(.init(event: event, snapshot: snapshot)),
             .catchUp(fromVersion: .init(rawValue: 2)), .viewSnapshot(snapshot),
-            .pause(.actorDisconnected), .rejection(rejection),
+            .presence(connectedPlayerIDs: [aliceID, bobID]),
+            .pause(.actorDisconnected), .resume, .rejection(rejection),
             .versionIncompatible,
         ]
     }

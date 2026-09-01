@@ -8,6 +8,7 @@ extension GameCore {
 
     nonisolated struct ConfirmationDelta: Codable, Equatable, Sendable {
         var cashDelta: Int
+        /// Change in the displayed income value, not the internal income-track position.
         var incomeDelta: Int
         var victoryPointDelta: Int
         var resourceEffects: [ResourceEffect] = []
@@ -95,6 +96,7 @@ extension GameCore {
         var publicSupply: PublicSupply
         var merchants: [MerchantPlacement]
         var forcedSaleDebtorID: PlayerID?
+        var finalStandings: [[PlayerID]]? = nil
         var publicChecksum: String
         var ownHand: [CardInstance]
         var availableActions: [ActionKind]
@@ -106,12 +108,22 @@ extension GameCore {
             recipient: PlayerID,
             actionOptions: [ActionOption]
         ) throws -> MatchProjection {
+            let playersByID = Dictionary(uniqueKeysWithValues: state.players.map { ($0.id, $0) })
+            guard state.playerOrder.count == state.players.count,
+                  Set(state.playerOrder) == Set(playersByID.keys)
+            else { throw ProjectionError.invalidPlayerOrder }
+            let orderedPlayers = try state.playerOrder.map { playerID in
+                guard let player = playersByID[playerID] else {
+                    throw ProjectionError.invalidPlayerOrder
+                }
+                return player
+            }
             var projection = MatchProjection(
                 era: state.era,
                 roundNumber: state.roundNumber,
                 deckCount: state.standardDrawDeck.count,
                 actionsRemaining: state.actionsRemaining,
-                players: state.players.map { player in
+                players: orderedPlayers.map { player in
                     MatchPlayerProjection(
                         id: player.id,
                         color: player.color,
@@ -134,6 +146,7 @@ extension GameCore {
                     if case .forcedSale(let pending) = state.turnPhase { return pending.playerID }
                     return nil
                 }(),
+                finalStandings: state.finalStandings,
                 publicChecksum: "",
                 ownHand: state.players.first(where: { $0.id == recipient })?.hand ?? [],
                 availableActions: Array(Set(actionOptions.map(\.action))).sorted { $0.rawValue < $1.rawValue },
@@ -165,6 +178,7 @@ extension GameCore {
                 var publicSupply: PublicSupply
                 var merchants: [MerchantPlacement]
                 var forcedSaleDebtorID: PlayerID?
+                var finalStandings: [[PlayerID]]?
             }
             let material = PublicMaterial(
                 era: era, roundNumber: roundNumber, deckCount: deckCount,
@@ -177,7 +191,8 @@ extension GameCore {
                 boardIndustryPlacements: boardIndustryPlacements, placedLinks: placedLinks,
                 coalMarket: coalMarket, ironMarket: ironMarket,
                 publicSupply: publicSupply, merchants: merchants,
-                forcedSaleDebtorID: forcedSaleDebtorID
+                forcedSaleDebtorID: forcedSaleDebtorID,
+                finalStandings: finalStandings
             )
             return try CanonicalChecksum.sha256(material)
         }
@@ -196,11 +211,51 @@ extension GameCore {
                   }),
                   Set(availableActions) == Set(availableActionsByCardID.values.flatMap { $0 })
             else { return false }
+            guard validProjectedStandings() else { return false }
             let handIDs = Set(visibleHand)
             return trivialOptions.allSatisfy { option in
                 Set(option.cardIDs).isSubset(of: handIDs)
                     && (option.action == .pass || option.action == .loan)
             }
+        }
+
+        private func validProjectedStandings() -> Bool {
+            guard let finalStandings else { return true }
+            guard finalStandings.isEmpty == false,
+                  finalStandings.allSatisfy({ $0.isEmpty == false })
+            else { return false }
+            let ranked = finalStandings.flatMap { $0 }
+            let playerIDs = players.map(\.id)
+            guard ranked.count == playerIDs.count,
+                  Set(ranked).count == ranked.count,
+                  Set(ranked) == Set(playerIDs)
+            else { return false }
+
+            let playersByID = Dictionary(uniqueKeysWithValues: players.map { ($0.id, $0) })
+            for group in finalStandings {
+                guard let firstID = group.first, let first = playersByID[firstID] else { return false }
+                guard group.allSatisfy({ id in
+                    guard let player = playersByID[id] else { return false }
+                    return player.victoryPoints == first.victoryPoints
+                        && player.incomePosition == first.incomePosition
+                        && player.cash == first.cash
+                }) else { return false }
+            }
+            for index in 1..<finalStandings.count {
+                guard let priorID = finalStandings[index - 1].first,
+                      let currentID = finalStandings[index].first,
+                      let prior = playersByID[priorID],
+                      let current = playersByID[currentID]
+                else { return false }
+                let priorKey = (prior.victoryPoints, prior.incomePosition, prior.cash)
+                let currentKey = (current.victoryPoints, current.incomePosition, current.cash)
+                guard priorKey.0 > currentKey.0
+                        || (priorKey.0 == currentKey.0 && priorKey.1 > currentKey.1)
+                        || (priorKey.0 == currentKey.0 && priorKey.1 == currentKey.1
+                            && priorKey.2 > currentKey.2)
+                else { return false }
+            }
+            return true
         }
     }
 }

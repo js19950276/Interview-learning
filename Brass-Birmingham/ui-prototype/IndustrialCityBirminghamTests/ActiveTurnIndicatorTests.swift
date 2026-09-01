@@ -47,6 +47,31 @@ struct ActiveTurnIndicatorTests {
         ) == nil)
     }
 
+    @Test func gameEndPresentationReplacesTurnCopyAndPreservesTiedWinners() throws {
+        let value = try #require(GameEndPresentation.make(
+            standings: [["host", "guest"]],
+            players: players,
+            localPlayerID: "guest"
+        ))
+
+        #expect(value.title == "你并列获胜")
+        #expect(value.rows.map(\.rank) == [1])
+        #expect(value.rows[0].playerNames == ["host", "guest"])
+        #expect(value.accessibilityLabel.contains("第 1 名"))
+        #expect(value.accessibilityLabel.contains("host、guest"))
+    }
+
+    @Test func gameEndPresentationUsesCompetitionRanksForNonWinner() throws {
+        let value = try #require(GameEndPresentation.make(
+            standings: [["host"], ["guest", "third"], ["fourth"]],
+            players: players,
+            localPlayerID: "guest"
+        ))
+
+        #expect(value.title == "对局结束")
+        #expect(value.rows.map(\.rank) == [1, 2, 4])
+    }
+
     @Test func noticeTrackerIgnoresDuplicateSnapshotsAndRepeatsAfterRecovery() {
         var tracker = ActiveTurnNoticeTracker()
 

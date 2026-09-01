@@ -138,6 +138,75 @@ struct DevelopSellSimpleActionTests {
         #expect(state == flippedState)
     }
 
+    @Test func sellRecordsMerchantRewardBeforeFlippingIndustryAndAdvancingItsIncome() throws {
+        let catalog = try verifiedCatalog()
+        var state = try setupState(catalog: catalog, playerCount: 4)
+        let actor = try #require(state.activePlayerID)
+        let playerIndex = try #require(state.players.firstIndex { $0.id == actor })
+        state.players[playerIndex].hand = [
+            .init(id: "sell-order-card", definitionID: "location-birmingham")
+        ]
+        state.players[playerIndex].incomePosition = 10
+        state.merchants = merchantsFor4Players(
+            acceptingAt: "oxford-1",
+            industryID: "manufacturer"
+        )
+        state.placedLinks = [
+            .init(routeID: "birmingham-oxford", ownerID: actor, era: .canal),
+        ]
+        state.players[playerIndex].linksRemaining = 13
+        state.boardIndustryPlacements = [
+            .init(
+                placementID: "sell-order-industry",
+                locationID: "birmingham",
+                slotIndex: 1,
+                ownerID: actor,
+                tile: .init(
+                    id: "sell-order-manufacturer",
+                    industryDefinitionID: "manufacturer",
+                    level: 1
+                )
+            ),
+        ]
+        repairCardFixture(&state, catalog: catalog)
+        let cardID = try #require(state.players[playerIndex].hand.first?.id)
+        let target = try GameCore.SellRules.validate(
+            .init(
+                cardID: cardID,
+                sales: [.init(
+                    industryPlacementID: "sell-order-industry",
+                    merchantSlotID: "oxford-1",
+                    beerSources: [.merchantBeer(slotID: "oxford-1")]
+                )]
+            ),
+            actorID: actor,
+            state: state,
+            catalog: catalog
+        )
+
+        let event = try GameCore.GameRulesEngine.resolveSell(
+            target,
+            roomID: roomID,
+            state: &state,
+            catalog: catalog
+        )
+        guard case .sold(_, _, let effects) = event.payload else {
+            Issue.record("Expected sold event")
+            return
+        }
+
+        #expect(effects == [
+            .resourceRemoved(
+                resource: .beer,
+                source: .merchantBeer(slotID: "oxford-1"),
+                consumerLocationID: "birmingham"
+            ),
+            .incomeAdvanced(playerID: actor, from: 10, to: 12),
+            .industryFlipped(placementID: "sell-order-industry"),
+            .incomeAdvanced(playerID: actor, from: 12, to: 17),
+        ])
+    }
+
     @Test func sellRejectsBlankWrongTypeDisconnectedFlippedAndSecondInvalidSaleWithoutMutation() throws {
         let catalog = try verifiedCatalog()
         var state = try setupState(catalog: catalog)
@@ -490,6 +559,68 @@ struct DevelopSellSimpleActionTests {
         }
     }
 
+    @Test func loanOverflowIsExcludedFromAvailabilityAndLegalQuery() throws {
+        let catalog = try verifiedCatalog()
+        var state = try setupState(catalog: catalog)
+        let actor = try #require(state.activePlayerID)
+        let playerIndex = try #require(state.players.firstIndex { $0.id == actor })
+        state.players[playerIndex].cash = Int.max
+        state.players[playerIndex].hand = [
+            .init(id: "loan-overflow-card", definitionID: "location-birmingham")
+        ]
+        repairCardFixture(&state, catalog: catalog)
+        let cardID = try #require(state.players[playerIndex].hand.first?.id)
+
+        let availability = try GameCore.SnapshotActionAvailability.make(
+            state: state,
+            recipient: actor,
+            catalog: catalog
+        )
+        #expect(availability.kinds.contains(.loan) == false)
+        #expect(availability.byCardID[cardID]?.contains(.loan) == false)
+        #expect(availability.trivialOptions.contains(where: { $0.action == .loan }) == false)
+        #expect(throws: GameCore.LegalActionQueryError.invalidPrefix) {
+            try GameCore.LegalActionQueryEngine.respond(
+                to: .init(
+                    requestID: "loan-overflow-query",
+                    baseVersion: state.authoritativeVersion,
+                    draft: .init(action: .loan, cardID: cardID, selections: [])
+                ),
+                actorID: actor,
+                state: state,
+                catalog: catalog
+            )
+        }
+    }
+
+    @Test func loanQueryConfirmationUsesDisplayedIncomeLevelsRatherThanTrackPositions() throws {
+        let catalog = try verifiedCatalog()
+        var state = try setupState(catalog: catalog)
+        let actor = try #require(state.activePlayerID)
+        let playerIndex = try #require(state.players.firstIndex { $0.id == actor })
+        state.players[playerIndex].incomePosition = 20 // displayed income 5
+        state.players[playerIndex].hand = [
+            .init(id: "loan-confirmation-card", definitionID: "location-birmingham")
+        ]
+        repairCardFixture(&state, catalog: catalog)
+        let cardID = try #require(state.players[playerIndex].hand.first?.id)
+
+        let response = try GameCore.LegalActionQueryEngine.respond(
+            to: .init(
+                requestID: "loan-displayed-income",
+                baseVersion: state.authoritativeVersion,
+                draft: .init(action: .loan, cardID: cardID, selections: [])
+            ),
+            actorID: actor,
+            state: state,
+            catalog: catalog
+        )
+
+        #expect(response.completePayload == .loan(.init(cardID: cardID)))
+        #expect(response.confirmation?.cashDelta == 30)
+        #expect(response.confirmation?.incomeDelta == -3)
+    }
+
     @Test func scoutDiscardsThreeDistinctNormalCardsTakesBothWildsAndRejectsWhenWildHeld() throws {
         let catalog = try verifiedCatalog()
         var state = try setupState(catalog: catalog)
@@ -537,6 +668,7 @@ struct DevelopSellSimpleActionTests {
             ($0.id, GameCore.ReconnectToken(rawValue: "token-\($0.id.rawValue)"))
         })
         repairCardFixture(&state, catalog: catalog)
+        state.actionNumber = 1
         var host = try state.makeHostEngine(roomID: roomID, reconnectTokens: tokens, protocolVersion: 1)
         let intent = GameCore.PlayerIntent(
             protocolVersion: 1, rulesetVersion: state.rulesetVersion, roomID: roomID,
@@ -643,6 +775,7 @@ struct DevelopSellSimpleActionTests {
         state.wildLocationPool.removeLast()
         state.players[playerIndex].hand = [wild]
         repairCardFixture(&state, catalog: catalog)
+        state.actionNumber = 1
         let before = state
 
         let target = try GameCore.SimpleActionRules.validatePass(
@@ -678,6 +811,8 @@ struct DevelopSellSimpleActionTests {
             ($0.id, GameCore.ReconnectToken(rawValue: "token-\($0.id.rawValue)"))
         })
         repairCardFixture(&state, catalog: catalog)
+        let scoutCardIDs = Array(state.players[playerIndex].hand.prefix(3).map(\.id))
+        state.actionNumber = 1
         var host = try state.makeHostEngine(
             roomID: roomID, reconnectTokens: tokens, protocolVersion: 1
         )
@@ -685,7 +820,7 @@ struct DevelopSellSimpleActionTests {
             protocolVersion: 1, rulesetVersion: state.rulesetVersion,
             roomID: roomID, senderID: actor, reconnectToken: tokens[actor]!,
             baseVersion: state.authoritativeVersion,
-            payload: .scout(.init(cardIDs: state.players[playerIndex].hand.map(\.id)))
+            payload: .scout(.init(cardIDs: scoutCardIDs))
         )
         guard case .accepted(let event) = host.submit(intent, catalog: catalog) else {
             Issue.record("Expected accepted scout")

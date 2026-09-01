@@ -11,6 +11,32 @@ nonisolated struct TransportShutdownGate: Sendable {
     }
 }
 
+nonisolated struct NearbyUnauthenticatedPeerGate: Sendable {
+    let capacity: Int
+    private(set) var pending: Set<GameCore.PlayerID> = []
+    private(set) var readyForAuthentication: Set<GameCore.PlayerID> = []
+
+    mutating func admit(_ peer: GameCore.PlayerID) -> Bool {
+        guard capacity > 0, pending.count < capacity else { return false }
+        return pending.insert(peer).inserted
+    }
+
+    mutating func authenticate(_ peer: GameCore.PlayerID) -> Bool {
+        readyForAuthentication.remove(peer)
+        return pending.remove(peer) != nil
+    }
+
+    mutating func markReady(_ peer: GameCore.PlayerID) -> Bool {
+        guard pending.contains(peer) else { return false }
+        return readyForAuthentication.insert(peer).inserted
+    }
+
+    mutating func terminate(_ peer: GameCore.PlayerID) {
+        pending.remove(peer)
+        readyForAuthentication.remove(peer)
+    }
+}
+
 nonisolated enum NearbyLifecycleUpdate: Equatable, Sendable {
     case ready
     case waiting(NearbyPreflightIssue)
@@ -28,10 +54,12 @@ nonisolated final class NearbyLifecycleGate: @unchecked Sendable {
     private var cancelResource: (@Sendable () -> Void)?
     private var outcome: Outcome?
     private var completions = 0
+    private var timeoutTask: Task<Void, Never>?
 
     var completionCount: Int { lock.withLock { completions } }
 
     func waitUntilReady(
+        timeout: Duration? = nil,
         start: @escaping @Sendable (@escaping @Sendable (NearbyLifecycleUpdate) -> Void) -> Void,
         cancel: @escaping @Sendable () -> Void
     ) async throws {
@@ -48,6 +76,19 @@ nonisolated final class NearbyLifecycleGate: @unchecked Sendable {
                     return
                 }
                 start { [weak self] update in self?.consume(update) }
+                if let timeout {
+                    let task = Task { [weak self] in
+                        try? await Task.sleep(for: timeout)
+                        guard !Task.isCancelled else { return }
+                        self?.finish(.failure(.connectionFailed), cancellingResource: true)
+                    }
+                    let keepTask = lock.withLock {
+                        guard outcome == nil else { return false }
+                        timeoutTask = task
+                        return true
+                    }
+                    if !keepTask { task.cancel() }
+                }
                 if Task.isCancelled { finish(.failure(.connectionFailed), cancellingResource: true) }
             }
         } onCancel: {
@@ -65,16 +106,23 @@ nonisolated final class NearbyLifecycleGate: @unchecked Sendable {
     }
 
     private func finish(_ outcome: Outcome, cancellingResource: Bool) {
-        let actions: (CheckedContinuation<Void, any Error>?, (@Sendable () -> Void)?) = lock.withLock {
-            guard self.outcome == nil else { return (nil, nil) }
+        let actions: (
+            CheckedContinuation<Void, any Error>?,
+            (@Sendable () -> Void)?,
+            Task<Void, Never>?
+        ) = lock.withLock {
+            guard self.outcome == nil else { return (nil, nil, nil) }
             self.outcome = outcome
             completions += 1
             let continuation = self.continuation
             self.continuation = nil
             let cancel = cancellingResource ? cancelResource : nil
             cancelResource = nil
-            return (continuation, cancel)
+            let timeoutTask = self.timeoutTask
+            self.timeoutTask = nil
+            return (continuation, cancel, timeoutTask)
         }
+        actions.2?.cancel()
         actions.1?()
         if let continuation = actions.0 { Self.resume(continuation, with: outcome) }
     }
@@ -99,16 +147,30 @@ actor NearbyTransport: Transport {
     private var decoders: [GameCore.PlayerID: LengthPrefixedFrameCodec.Decoder] = [:]
     private var terminationRegistry = ConnectionTerminationRegistry()
     private var shutdownGate = TransportShutdownGate()
+    private var unauthenticatedPeers: NearbyUnauthenticatedPeerGate
+    private var peerDeadlineTasks: [GameCore.PlayerID: Task<Void, Never>] = [:]
+    private let connectionReadyTimeout: Duration
+    private let authenticationTimeout: Duration
 
-    init(serviceName: String? = nil, queue: DispatchQueue = .init(label: "IndustrialCity.NearbyTransport")) {
+    init(
+        serviceName: String? = nil,
+        queue: DispatchQueue = .init(label: "IndustrialCity.NearbyTransport"),
+        connectionReadyTimeout: Duration = .seconds(8),
+        authenticationTimeout: Duration = .seconds(2),
+        maxUnauthenticatedPeers: Int = 4
+    ) {
         self.serviceName = serviceName.map(NearbyServiceName.sanitize)
         self.queue = queue
+        self.connectionReadyTimeout = connectionReadyTimeout
+        self.authenticationTimeout = authenticationTimeout
+        unauthenticatedPeers = .init(capacity: maxUnauthenticatedPeers)
         (events, continuation) = AsyncStream.makeStream(of: TransportEvent.self)
     }
 
     nonisolated static func makeParameters() -> NWParameters {
         let parameters = NWParameters.tcp
         parameters.includePeerToPeer = true
+        parameters.preferNoProxies = true
         return parameters
     }
 
@@ -132,7 +194,7 @@ actor NearbyTransport: Transport {
         self.listener = listener
         let gate = NearbyLifecycleGate()
         do {
-            try await gate.waitUntilReady(start: { [queue] update in
+            try await gate.waitUntilReady(timeout: .seconds(5), start: { [queue] update in
                 listener.stateUpdateHandler = { state in
                     switch state {
                     case .ready: update(.ready)
@@ -183,7 +245,7 @@ actor NearbyTransport: Transport {
         receive(on: connection, peer: peer)
         let gate = NearbyLifecycleGate()
         do {
-            try await gate.waitUntilReady(start: { [queue] update in
+            try await gate.waitUntilReady(timeout: .seconds(5), start: { [queue] update in
                 connection.stateUpdateHandler = { state in
                     switch state {
                     case .ready: update(.ready)
@@ -220,6 +282,11 @@ actor NearbyTransport: Transport {
         }
     }
 
+    func authenticate(_ peer: GameCore.PlayerID) {
+        guard unauthenticatedPeers.authenticate(peer) else { return }
+        peerDeadlineTasks.removeValue(forKey: peer)?.cancel()
+    }
+
     func disconnect() {
         guard shutdownGate.begin() else { return }
         listener?.newConnectionHandler = nil
@@ -229,6 +296,8 @@ actor NearbyTransport: Transport {
         browser?.cancel()
         browser = nil
         connections.values.forEach { $0.stateUpdateHandler = nil; $0.cancel() }
+        peerDeadlineTasks.values.forEach { $0.cancel() }
+        peerDeadlineTasks.removeAll()
         connections.removeAll()
         decoders.removeAll()
         continuation.finish()
@@ -236,12 +305,17 @@ actor NearbyTransport: Transport {
 
     private func accept(_ connection: NWConnection) {
         let peer = GameCore.PlayerID(rawValue: UUID().uuidString)
+        guard unauthenticatedPeers.admit(peer) else {
+            connection.cancel()
+            return
+        }
         connections[peer] = connection
         terminationRegistry.register(connection, for: peer)
         decoders[peer] = .init()
         installStateHandler(connection, peer: peer)
         receive(on: connection, peer: peer)
         connection.start(queue: queue)
+        scheduleDeadline(for: peer, connection: connection, after: connectionReadyTimeout)
     }
 
     private func installStateHandler(_ connection: NWConnection, peer: GameCore.PlayerID) {
@@ -287,11 +361,34 @@ actor NearbyTransport: Transport {
 
     private func connectionReady(peer: GameCore.PlayerID, connection: NWConnection) {
         guard terminationRegistry.contains(connection, for: peer) else { return }
+        if unauthenticatedPeers.markReady(peer) {
+            scheduleDeadline(for: peer, connection: connection, after: authenticationTimeout)
+        }
         continuation.yield(.connected(peer))
+    }
+
+    private func scheduleDeadline(
+        for peer: GameCore.PlayerID,
+        connection: NWConnection,
+        after timeout: Duration
+    ) {
+        peerDeadlineTasks.removeValue(forKey: peer)?.cancel()
+        peerDeadlineTasks[peer] = Task { [weak self] in
+            try? await Task.sleep(for: timeout)
+            guard !Task.isCancelled else { return }
+            await self?.expireUnauthenticatedPeer(peer, connection: connection)
+        }
+    }
+
+    private func expireUnauthenticatedPeer(_ peer: GameCore.PlayerID, connection: NWConnection) {
+        guard unauthenticatedPeers.pending.contains(peer) else { return }
+        terminate(peer: peer, connection: connection, error: .connectionFailed)
     }
 
     private func terminate(peer: GameCore.PlayerID, connection: NWConnection, error: TransportError?) {
         guard terminationRegistry.terminate(connection, for: peer) else { return }
+        unauthenticatedPeers.terminate(peer)
+        peerDeadlineTasks.removeValue(forKey: peer)?.cancel()
         connection.stateUpdateHandler = nil
         connections[peer] = nil
         decoders[peer] = nil

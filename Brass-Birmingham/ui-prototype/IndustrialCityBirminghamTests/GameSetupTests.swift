@@ -704,7 +704,7 @@ struct GameSetupTests {
         #expect(state.coalMarket.slots.map(\.price) == [1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7])
         #expect(state.coalMarket.slots.filter(\.hasCube).count == 13)
         #expect(state.coalMarket.slots.filter { $0.price == 1 && $0.hasCube == false }.count == 1)
-        #expect(state.ironMarket.slots.map(\.price) == [1, 1, 1, 2, 2, 2, 3, 3, 4, 4])
+        #expect(state.ironMarket.slots.map(\.price) == [1, 1, 2, 2, 3, 3, 4, 4, 5, 5])
         #expect(state.ironMarket.slots.filter(\.hasCube).count == 8)
         #expect(state.ironMarket.slots.filter { $0.price == 1 && $0.hasCube == false }.count == 2)
         #expect(state.canalRoundCapacity == roundCapacity)

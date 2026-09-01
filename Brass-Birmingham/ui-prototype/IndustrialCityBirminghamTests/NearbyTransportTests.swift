@@ -89,14 +89,18 @@ struct NearbyTransportTests {
         #expect(NearbyRoomPresentationMode.resolve(fixtureSessionAvailable: true) == .fixture)
     }
 
-    @Test func deviceIdentityProducesStableGuestSeatAndReconnectToken() {
+    @Test func deviceIdentityProducesAStableSeatButRoomScopedOpaqueReconnectTokens() {
         let deviceID = UUID(uuidString: "B305FCF8-F7CA-427E-8D47-83263A3D23F7")!
         let first = NearbySessionIdentity(deviceID: deviceID)
         let second = NearbySessionIdentity(deviceID: deviceID)
+        let cabin = GameCore.RoomID(rawValue: "BRASS-CABIN")
+        let foundry = GameCore.RoomID(rawValue: "BRASS-FOUNDRY")
 
         #expect(first == second)
         #expect(first.playerID.rawValue == "guest-b305fcf8")
-        #expect(first.reconnectToken.rawValue == "nearby-b305fcf8-f7ca-427e-8d47-83263a3d23f7")
+        #expect(first.reconnectToken(for: cabin) == second.reconnectToken(for: cabin))
+        #expect(first.reconnectToken(for: cabin) != first.reconnectToken(for: foundry))
+        #expect(!first.reconnectToken(for: cabin).rawValue.contains(deviceID.uuidString.lowercased()))
     }
 
     @Test func missingVendorIdentifierReusesTheSameIdentityWithinTheProcess() {
@@ -105,7 +109,8 @@ struct NearbyTransportTests {
 
         #expect(first == second)
         #expect(first.playerID == second.playerID)
-        #expect(first.reconnectToken == second.reconnectToken)
+        #expect(first.reconnectToken(for: .init(rawValue: "CABIN"))
+            == second.reconnectToken(for: .init(rawValue: "CABIN")))
     }
 
     @Test func nearbyUsesProductionBonjourServiceAndPeerToPeerTCPParameters() {
@@ -114,6 +119,7 @@ struct NearbyTransportTests {
 
         let parameters = NearbyTransport.makeParameters()
         #expect(parameters.includePeerToPeer)
+        #expect(parameters.preferNoProxies)
     }
 
     @Test func advertisedServiceKeepsSanitizedRoomNameStableInsteadOfAutoRenaming() {
@@ -131,6 +137,44 @@ struct NearbyTransportTests {
         #expect(first)
         #expect(!second)
         #expect(!third)
+    }
+
+    @Test func unauthenticatedPeerGateEnforcesCapacityAndReleasesAuthenticatedOrClosedPeers() {
+        var gate = NearbyUnauthenticatedPeerGate(capacity: 2)
+        let first = GameCore.PlayerID(rawValue: "first")
+        let second = GameCore.PlayerID(rawValue: "second")
+        let third = GameCore.PlayerID(rawValue: "third")
+
+        let admittedFirst = gate.admit(first)
+        let admittedSecond = gate.admit(second)
+        let rejectedAtCapacity = gate.admit(third)
+        let authenticatedFirst = gate.authenticate(first)
+        let admittedAfterAuthentication = gate.admit(third)
+
+        #expect(admittedFirst)
+        #expect(admittedSecond)
+        #expect(!rejectedAtCapacity)
+        #expect(authenticatedFirst)
+        #expect(admittedAfterAuthentication)
+        gate.terminate(second)
+        #expect(gate.pending == [third])
+    }
+
+    @Test func admittedPeerDoesNotEnterTheAuthenticationWindowUntilItsConnectionIsReady() {
+        var gate = NearbyUnauthenticatedPeerGate(capacity: 1)
+        let peer = GameCore.PlayerID(rawValue: "slow-ready-peer")
+
+        let admitted = gate.admit(peer)
+        let beforeReady = gate.readyForAuthentication
+        let enteredAuthenticationWindow = gate.markReady(peer)
+        let duplicateReady = gate.markReady(peer)
+
+        #expect(admitted)
+        #expect(beforeReady.isEmpty)
+        #expect(enteredAuthenticationWindow)
+        #expect(!duplicateReady)
+        #expect(gate.pending == [peer])
+        #expect(gate.readyForAuthentication == [peer])
     }
 
     @Test func lifecycleGateReturnsOnlyAfterTheNetworkResourceIsReady() async throws {
@@ -180,6 +224,22 @@ struct NearbyTransportTests {
         task.cancel()
         driver.emit(.failed(.connectionFailed))
         await #expect(throws: NearbyPreflightIssue.connectionFailed) { try await task.value }
+        #expect(driver.cancelCount == 1)
+        #expect(gate.completionCount == 1)
+    }
+
+    @Test func lifecycleGateCancelsAConnectionThatNeverBecomesReady() async {
+        let driver = TestNearbyLifecycleDriver()
+        let gate = NearbyLifecycleGate()
+
+        await #expect(throws: NearbyPreflightIssue.connectionFailed) {
+            try await gate.waitUntilReady(
+                timeout: .milliseconds(25),
+                start: driver.start,
+                cancel: driver.cancel
+            )
+        }
+        #expect(driver.startCount == 1)
         #expect(driver.cancelCount == 1)
         #expect(gate.completionCount == 1)
     }
@@ -307,6 +367,49 @@ struct NearbyTransportTests {
         #expect(NearbyPreflight.issue(for: error) == expected)
     }
 
+    @Test func seatPersistenceFailureHasDistinctSaveAndRetryGuidance() {
+        let issue = NearbyPreflight.issue(for: SessionCoordinator.Error.persistenceUnavailable)
+
+        #expect(issue.rawValue == "persistenceUnavailable")
+        #expect(issue.title == "无法安全保存座位")
+        #expect(issue.recoveryMessage.contains("房主"))
+        #expect(issue.recoveryMessage.contains("保存"))
+        #expect(issue.recoveryMessage.contains("重试"))
+        #expect(!issue.recoveryMessage.contains("靠近"))
+    }
+
+    @MainActor
+    @Test func guestStoreShowsSeatPersistenceRecoveryInsteadOfNetworkProximityAdvice() async {
+        let roomID = GameCore.RoomID(rawValue: "PERSIST-SEAT")
+        let hostID = GameCore.PlayerID(rawValue: "host")
+        let guestID = GameCore.PlayerID(rawValue: "guest")
+        let hub = LoopbackTransportHub()
+        let adapter = FailingSeatPersistenceSecureItemAdapter()
+        let host = makeCoordinator(
+            id: hostID, token: "host-token", hostID: hostID,
+            transport: hub.makeTransport(peerID: hostID),
+            tokenStore: RoomTokenStore(adapter: adapter), roomID: roomID
+        )
+        let guest = makeCoordinator(
+            id: guestID, token: "guest-token", hostID: hostID,
+            transport: hub.makeTransport(peerID: guestID), roomID: roomID
+        )
+        let hostStore = SessionViewStore(coordinator: host, role: .host)
+        let guestStore = SessionViewStore(coordinator: guest, role: .guest)
+
+        #expect(await hostStore.connect() == nil)
+        adapter.setFailWrites(true)
+        let issue = await guestStore.connect()
+
+        #expect(issue?.rawValue == "persistenceUnavailable")
+        #expect(guestStore.syncStatus == .failed)
+        #expect(guestStore.errorMessage?.contains("保存") == true)
+        #expect(guestStore.errorMessage?.contains("重试") == true)
+        #expect(guestStore.errorMessage?.contains("靠近") == false)
+        await guestStore.disconnect()
+        await hostStore.disconnect()
+    }
+
     @MainActor
     @Test(arguments: [
         NearbyPreflightIssue.permissionDenied,
@@ -397,20 +500,81 @@ struct NearbyTransportTests {
         #expect(await host.playerIDs == [guestID, hostID])
     }
 
+    @Test func hostAuthenticatesTheTransportPeerOnlyAfterAcceptingItsHello() async throws {
+        let hub = LoopbackTransportHub()
+        let hostID = GameCore.PlayerID(rawValue: "host")
+        let guestID = GameCore.PlayerID(rawValue: "guest")
+        let guestLink = GameCore.PlayerID(rawValue: "guest-link")
+        let recorder = AuthenticationRecorder()
+        let hostTransport = AuthenticationRecordingTransport(
+            base: hub.makeTransport(peerID: hostID), recorder: recorder
+        )
+        let host = makeCoordinator(
+            id: hostID, token: "host-token", hostID: hostID, transport: hostTransport
+        )
+        let guest = makeCoordinator(
+            id: guestID, token: "guest-token", hostID: hostID,
+            transport: hub.makeTransport(peerID: guestLink)
+        )
+
+        try await host.createRoom()
+        try await guest.joinRoom()
+        try await eventually { await recorder.authenticatedPeers == [guestLink] }
+
+        #expect(await recorder.authenticatedPeers == [guestLink])
+        await guest.disconnect()
+        await host.disconnect()
+    }
+
+    @Test func hostDoesNotAuthenticateATransportPeerWhoseHelloIsRejected() async throws {
+        let hub = LoopbackTransportHub()
+        let hostID = GameCore.PlayerID(rawValue: "host")
+        let rogueID = GameCore.PlayerID(rawValue: "rogue-link")
+        let recorder = AuthenticationRecorder()
+        let hostTransport = AuthenticationRecordingTransport(
+            base: hub.makeTransport(peerID: hostID), recorder: recorder
+        )
+        let host = makeCoordinator(
+            id: hostID, token: "host-token", hostID: hostID, transport: hostTransport
+        )
+        let rogue = hub.makeTransport(peerID: rogueID)
+
+        try await host.createRoom()
+        try await rogue.connect(to: hostID)
+        let rejectedHello = SessionProtocol.SessionEnvelope(
+            protocolVersion: 1,
+            rulesetVersion: "rules-v1",
+            roomID: .init(rawValue: "OTHER-ROOM"),
+            messageID: .init(rawValue: "rogue-hello"),
+            senderID: .init(rawValue: "rogue-seat"),
+            recipientID: hostID,
+            authoritativeVersion: .init(rawValue: 0),
+            payload: .hello(reconnectToken: .init(rawValue: "rogue-token"))
+        )
+        try await rogue.send(JSONEncoder().encode(rejectedHello), to: hostID)
+        try await Task.sleep(for: .milliseconds(50))
+
+        #expect(await recorder.authenticatedPeers.isEmpty)
+        await rogue.disconnect()
+        await host.disconnect()
+    }
+
     private func makeCoordinator(
         id: GameCore.PlayerID,
         token: String,
         hostID: GameCore.PlayerID,
-        transport: some Transport
+        transport: some Transport,
+        tokenStore: RoomTokenStore? = nil,
+        roomID: GameCore.RoomID = .init(rawValue: "CABIN")
     ) -> SessionCoordinator {
         SessionCoordinator(configuration: .init(
             protocolVersion: 1,
             rulesetVersion: "rules-v1",
-            roomID: .init(rawValue: "CABIN"),
+            roomID: roomID,
             playerID: id,
             reconnectToken: .init(rawValue: token),
             hostPlayerID: hostID
-        ), transport: transport, rulesMode: .fixtureOnlyLegacy)
+        ), transport: transport, tokenStore: tokenStore, rulesMode: .fixtureOnlyLegacy)
     }
 
     private func eventually(
@@ -501,6 +665,51 @@ private actor StreamCompletionCounter {
     func record() { count += 1 }
 }
 
+private final class FailingSeatPersistenceSecureItemAdapter: SecureItemAdapter, @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage: [String: Data] = [:]
+    private var shouldFailWrites = false
+
+    func setFailWrites(_ value: Bool) {
+        lock.withLock { shouldFailWrites = value }
+    }
+
+    func read(service: String, account: String) throws -> Data? {
+        lock.withLock { storage[key(service: service, account: account)] }
+    }
+
+    func readAll(service: String) throws -> [Data] {
+        lock.withLock {
+            let prefix = "\(service)|"
+            return storage.compactMap { item, value in item.hasPrefix(prefix) ? value : nil }
+        }
+    }
+
+    func add(_ data: Data, service: String, account: String) throws {
+        try lock.withLock {
+            guard !shouldFailWrites else { throw SecureItemAdapterError.unavailable(status: -1) }
+            let itemKey = key(service: service, account: account)
+            guard storage[itemKey] == nil else { throw SecureItemAdapterError.duplicateItem }
+            storage[itemKey] = data
+        }
+    }
+
+    func update(_ data: Data, service: String, account: String) throws {
+        try lock.withLock {
+            guard !shouldFailWrites else { throw SecureItemAdapterError.unavailable(status: -1) }
+            let itemKey = key(service: service, account: account)
+            guard storage[itemKey] != nil else { throw SecureItemAdapterError.itemNotFound }
+            storage[itemKey] = data
+        }
+    }
+
+    func delete(service: String, account: String) throws {
+        lock.withLock { storage[key(service: service, account: account)] = nil }
+    }
+
+    private func key(service: String, account: String) -> String { "\(service)|\(account)" }
+}
+
 private actor FailingNearbyTransport: Transport {
     nonisolated let events: AsyncStream<TransportEvent>
     private let issue: NearbyPreflightIssue
@@ -527,4 +736,36 @@ private actor CountingTransport: Transport {
     func connect(to peer: GameCore.PlayerID) {}
     func send(_ data: Data, to peer: GameCore.PlayerID) {}
     func disconnect() {}
+}
+
+private actor AuthenticationRecorder {
+    private(set) var authenticatedPeers: [GameCore.PlayerID] = []
+    func record(_ peer: GameCore.PlayerID) { authenticatedPeers.append(peer) }
+}
+
+private actor AuthenticationRecordingTransport: Transport {
+    nonisolated let events: AsyncStream<TransportEvent>
+    private let base: LoopbackTransport
+    private let recorder: AuthenticationRecorder
+
+    init(base: LoopbackTransport, recorder: AuthenticationRecorder) {
+        self.base = base
+        self.recorder = recorder
+        events = base.events
+    }
+
+    func startHosting(roomID: GameCore.RoomID, port: UInt16?) async throws {
+        try await base.startHosting(roomID: roomID, port: port)
+    }
+
+    func browse() async throws { try await base.browse() }
+    func connect(to peer: GameCore.PlayerID) async throws { try await base.connect(to: peer) }
+    func authenticate(_ peer: GameCore.PlayerID) async {
+        await recorder.record(peer)
+        await base.authenticate(peer)
+    }
+    func send(_ data: Data, to peer: GameCore.PlayerID) async throws {
+        try await base.send(data, to: peer)
+    }
+    func disconnect() async { await base.disconnect() }
 }

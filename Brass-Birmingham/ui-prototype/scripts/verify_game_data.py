@@ -69,9 +69,63 @@ ALLOWED_ORIGINAL_RASTERS = {
     "IndustrialCityBirmingham/Assets.xcassets/IndustrialMap.imageset/industrial-map.png":
         "fc384bdecffb59a5a72c20d3aee7c933b5ae575472b0d82b36ee8622ff9b07a6",
 }
+ALLOWED_MATCH_CHROME_RESOURCES = {
+    "IndustrialCityBirmingham/Assets.xcassets/MatchChrome/Contents.json":
+        "10e3b5dc202f1cd9fad1f688c8fc9fe9e9669bf3f8295e67d216b10fd99b6f49",
+    "IndustrialCityBirmingham/Assets.xcassets/MatchChrome/industry-brewery-medallion.imageset/Contents.json":
+        "a199aa68cc686d81979107fe244fc51bd10b7bf63df94f36a2fefd1194f810f3",
+    "IndustrialCityBirmingham/Assets.xcassets/MatchChrome/industry-brewery-medallion.imageset/asset.png":
+        "1c3825c590de4bd4f8d99e200e1c2cd508656f919bef1d6030a6d705252a8531",
+    "IndustrialCityBirmingham/Assets.xcassets/MatchChrome/industry-coal-medallion.imageset/Contents.json":
+        "a199aa68cc686d81979107fe244fc51bd10b7bf63df94f36a2fefd1194f810f3",
+    "IndustrialCityBirmingham/Assets.xcassets/MatchChrome/industry-coal-medallion.imageset/asset.png":
+        "66a585f5f23c968779a5e6759b62d60c45576c9e1908956b60675616d647505e",
+    "IndustrialCityBirmingham/Assets.xcassets/MatchChrome/industry-cotton-medallion.imageset/Contents.json":
+        "a199aa68cc686d81979107fe244fc51bd10b7bf63df94f36a2fefd1194f810f3",
+    "IndustrialCityBirmingham/Assets.xcassets/MatchChrome/industry-cotton-medallion.imageset/asset.png":
+        "f95ed96a555bf4183e0ef87f04eb4040be09c4c7019e78a73879f89cd027215b",
+    "IndustrialCityBirmingham/Assets.xcassets/MatchChrome/industry-iron-medallion.imageset/Contents.json":
+        "a199aa68cc686d81979107fe244fc51bd10b7bf63df94f36a2fefd1194f810f3",
+    "IndustrialCityBirmingham/Assets.xcassets/MatchChrome/industry-iron-medallion.imageset/asset.png":
+        "ecf94ea1167e4364a226ecfb7d229c508f66fe3e5c06d9e87de5ddf2cf7611ca",
+    "IndustrialCityBirmingham/Assets.xcassets/MatchChrome/industry-manufacturer-medallion.imageset/Contents.json":
+        "a199aa68cc686d81979107fe244fc51bd10b7bf63df94f36a2fefd1194f810f3",
+    "IndustrialCityBirmingham/Assets.xcassets/MatchChrome/industry-manufacturer-medallion.imageset/asset.png":
+        "8bdaf3410b7c3401754c8d217a21dae25f41aec2a73ac2640a436e79c0d3b0a6",
+    "IndustrialCityBirmingham/Assets.xcassets/MatchChrome/industry-pottery-medallion.imageset/Contents.json":
+        "a199aa68cc686d81979107fe244fc51bd10b7bf63df94f36a2fefd1194f810f3",
+    "IndustrialCityBirmingham/Assets.xcassets/MatchChrome/industry-pottery-medallion.imageset/asset.png":
+        "c125762c5b966c03476f7d84d348d59ad26072f07f3bb705dc3d2b28ec7a42cd",
+    "IndustrialCityBirmingham/Assets.xcassets/MatchChrome/match-brass-corner.imageset/Contents.json":
+        "a199aa68cc686d81979107fe244fc51bd10b7bf63df94f36a2fefd1194f810f3",
+    "IndustrialCityBirmingham/Assets.xcassets/MatchChrome/match-brass-corner.imageset/asset.png":
+        "80756a0590aaef48b32ac3f8f1f011af2260cf0917af5f8a922a831a8ae14abf",
+    "IndustrialCityBirmingham/Assets.xcassets/MatchChrome/match-card-texture.imageset/Contents.json":
+        "a199aa68cc686d81979107fe244fc51bd10b7bf63df94f36a2fefd1194f810f3",
+    "IndustrialCityBirmingham/Assets.xcassets/MatchChrome/match-card-texture.imageset/asset.png":
+        "945b3719ac6e096786e9a9014ad3758928e672b8a1f302c74eaa80a350bc1dc3",
+    "IndustrialCityBirmingham/Assets.xcassets/MatchChrome/match-iron-horizontal.imageset/Contents.json":
+        "a199aa68cc686d81979107fe244fc51bd10b7bf63df94f36a2fefd1194f810f3",
+    "IndustrialCityBirmingham/Assets.xcassets/MatchChrome/match-iron-horizontal.imageset/asset.png":
+        "aa47a5af4eb3151ed898aa8f81e04d4b4dfc7afdbea6f02db769873eb088b7ad",
+    "IndustrialCityBirmingham/Assets.xcassets/MatchChrome/match-iron-vertical.imageset/Contents.json":
+        "a199aa68cc686d81979107fe244fc51bd10b7bf63df94f36a2fefd1194f810f3",
+    "IndustrialCityBirmingham/Assets.xcassets/MatchChrome/match-iron-vertical.imageset/asset.png":
+        "5675e3964cb4d6511c161db0e8854f5e82fe7770f4899e933859882aae34dfbe",
+    "IndustrialCityBirmingham/Assets.xcassets/MatchChrome/match-parchment-label.imageset/Contents.json":
+        "a199aa68cc686d81979107fe244fc51bd10b7bf63df94f36a2fefd1194f810f3",
+    "IndustrialCityBirmingham/Assets.xcassets/MatchChrome/match-parchment-label.imageset/asset.png":
+        "0923c23e59d7f33e9f8cbf1e510fc9da18f8c3c9319243a427938cbadbadcfd4",
+    "IndustrialCityBirmingham/Assets.xcassets/MatchChrome/match-wood-fill.imageset/Contents.json":
+        "a199aa68cc686d81979107fe244fc51bd10b7bf63df94f36a2fefd1194f810f3",
+    "IndustrialCityBirmingham/Assets.xcassets/MatchChrome/match-wood-fill.imageset/asset.png":
+        "e5b197c44094d02dadd33147e346627d64721d1dd77d167f98c2c9210ff7094d",
+}
 ALLOWED_FIXED_BUNDLED_RESOURCES = {
     "IndustrialCityBirmingham/Assets.xcassets/AppIcon.appiconset/Contents.json":
-        "d776cfae1b33325f70befa1b0fc5e5420c660655603409e8588d94fd8fc6e112",
+        "b3a5afd5c382f750a652b3310fa6f2311ab1090cb7b854991efbddc97420f5de",
+    "IndustrialCityBirmingham/Assets.xcassets/AppIcon.appiconset/app-icon.png":
+        "a947768619b2d3316fa3d99e8d94b1413659c6217ebe21dc39fcb54c5e893908",
     "IndustrialCityBirmingham/Assets.xcassets/AccentColor.colorset/Contents.json":
         "9af65086fa30b49252fae1a1225731691de794f7775af74d71befeb507d12b7c",
     "IndustrialCityBirmingham/Assets.xcassets/IndustrialMap.imageset/Contents.json":
@@ -81,6 +135,7 @@ ALLOWED_FIXED_BUNDLED_RESOURCES = {
     "IndustrialCityBirmingham/GameData/v2018.11/provenance.md":
         "fc6e7fa3769724095551d7e1ceeb0a0e59a08fa7c613ad1b1288ab40cf97ef1b",
     **ALLOWED_ORIGINAL_RASTERS,
+    **ALLOWED_MATCH_CHROME_RESOURCES,
 }
 
 

@@ -87,7 +87,8 @@ enum MapNodeFactory {
         for location: MapLocation,
         in size: CGSize,
         isHighlighted: Bool,
-        highlightedMerchantIDs: Set<String> = []
+        highlightedMerchantIDs: Set<String> = [],
+        highlightedIndustryIDs: Set<String> = []
     ) -> SKShapeNode {
         let marker = SKShapeNode(circleOfRadius: isHighlighted ? 18 : 15)
         marker.name = "location:\(location.id)"
@@ -140,6 +141,7 @@ enum MapNodeFactory {
             highlighted: isHighlighted
         ))
         for (index, placement) in location.industryPlacements.enumerated() {
+            let industryIsHighlighted = highlightedIndustryIDs.contains(placement.placementID)
             let industry = SKShapeNode(rectOf: CGSize(width: 28, height: 30), cornerRadius: 6)
             industry.name = "industry:\(placement.placementID)"
             let centeredIndex = CGFloat(index) - CGFloat(location.industryPlacements.count - 1) / 2
@@ -148,8 +150,10 @@ enum MapNodeFactory {
             industry.fillColor = placement.isFlipped
                 ? forgedIron.withAlphaComponent(0.82)
                 : darkWood.withAlphaComponent(0.96)
-            industry.strokeColor = brass.withAlphaComponent(placement.isFlipped ? 0.42 : 0.78)
-            industry.lineWidth = placement.isFlipped ? 1 : 2
+            industry.strokeColor = industryIsHighlighted
+                ? legalGreen
+                : brass.withAlphaComponent(placement.isFlipped ? 0.42 : 0.78)
+            industry.lineWidth = industryIsHighlighted ? 4 : (placement.isFlipped ? 1 : 2)
             industry.userData = [
                 "ownerID": placement.ownerID,
                 "tileID": placement.tileID,
@@ -158,7 +162,23 @@ enum MapNodeFactory {
                 "isFlipped": placement.isFlipped,
                 "industryKind": placement.kind.rawValue,
                 "industryName": industryName(placement.kind),
+                "isHighlighted": industryIsHighlighted,
+                "visualState": industryIsHighlighted ? "legal" : "normal",
             ]
+            if industryIsHighlighted {
+                let glow = SKShapeNode(
+                    rectOf: CGSize(width: 34, height: 36),
+                    cornerRadius: 8
+                )
+                glow.name = "industry-legal-glow"
+                glow.fillColor = .clear
+                glow.strokeColor = legalGreen
+                glow.lineWidth = 4
+                glow.glowWidth = 8
+                glow.zPosition = -3
+                glow.isUserInteractionEnabled = false
+                industry.addChild(glow)
+            }
             let texture = SKTexture(imageNamed: IndustrialMatchAsset.industryMedallion(placement.kind).name)
             texture.filteringMode = .linear
             let medallion = SKSpriteNode(texture: texture, size: CGSize(width: 17, height: 17))

@@ -3,6 +3,8 @@ set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 repo_root="$(cd "$script_dir/.." && pwd -P)"
+release_derived_data="${FRIENDS_RELEASE_DERIVED_DATA:-}"
+release_derived_data_cleanup_required=0
 
 blocked_missing_gate() {
   local gate_name="$1"
@@ -15,6 +17,65 @@ run_data_gate() {
   local gate="$repo_root/scripts/verify_game_data.sh"
   [[ -f "$gate" ]] || blocked_missing_gate "data gate" "$gate"
   bash "$gate"
+}
+
+cleanup_release_derived_data() {
+  if [[ "$release_derived_data_cleanup_required" == "1" && -n "$release_derived_data" ]]; then
+    rm -rf "$release_derived_data"
+  fi
+}
+
+ensure_release_derived_data() {
+  if [[ -z "$release_derived_data" ]]; then
+    release_derived_data="$(mktemp -d /tmp/industrial-city-release-derived.XXXXXX)"
+    release_derived_data_cleanup_required=1
+    trap cleanup_release_derived_data EXIT
+  fi
+}
+
+run_release_build() {
+  ensure_release_derived_data
+  xcodebuild build \
+    -project "$repo_root/IndustrialCityBirmingham.xcodeproj" \
+    -scheme IndustrialCityBirmingham \
+    -configuration Release \
+    -destination 'generic/platform=iOS Simulator' \
+    -derivedDataPath "$release_derived_data" \
+    CODE_SIGNING_ALLOWED=NO
+}
+
+release_app_binary() {
+  find "$release_derived_data/Build/Products/Release-iphonesimulator" \
+    -path '*/IndustrialCityBirmingham.app/IndustrialCityBirmingham' \
+    -type f \
+    -print \
+    -quit
+}
+
+release_swiftmodule_directory() {
+  find "$release_derived_data/Build/Products/Release-iphonesimulator" \
+    -path '*/IndustrialCityBirmingham.swiftmodule' \
+    -type d \
+    -print \
+    -quit
+}
+
+run_release_fixture_boundary() {
+  local gate="$repo_root/scripts/verify_release_fixture_boundary.sh"
+  [[ -f "$gate" ]] || blocked_missing_gate "release fixture boundary" "$gate"
+  ensure_release_derived_data
+  local app_binary swiftmodule_directory
+  app_binary="$(release_app_binary)"
+  swiftmodule_directory="$(release_swiftmodule_directory)"
+  [[ -n "$app_binary" ]] || {
+    printf 'BLOCKED: Release app binary was not found under %s.\n' "$release_derived_data" >&2
+    return 1
+  }
+  [[ -n "$swiftmodule_directory" ]] || {
+    printf 'BLOCKED: Release swiftmodule directory was not found under %s.\n' "$release_derived_data" >&2
+    return 1
+  }
+  bash "$gate" "$app_binary" "$swiftmodule_directory" "$repo_root/IndustrialCityBirmingham"
 }
 
 run_unit_tests() {
@@ -32,11 +93,20 @@ run_two_simulator_test() {
   bash "$gate"
 }
 
-run_ui_tests() {
+run_ui_iphone_tests() {
   xcodebuild test \
     -project "$repo_root/IndustrialCityBirmingham.xcodeproj" \
     -scheme IndustrialCityBirmingham \
     -destination 'platform=iOS Simulator,name=IndustrialCity-iPhone,OS=26.5' \
+    -parallel-testing-enabled NO \
+    -only-testing:IndustrialCityBirminghamUITests
+}
+
+run_ui_ipad_tests() {
+  xcodebuild test \
+    -project "$repo_root/IndustrialCityBirmingham.xcodeproj" \
+    -scheme IndustrialCityBirmingham \
+    -destination 'platform=iOS Simulator,name=IndustrialCity-iPad,OS=26.5' \
     -parallel-testing-enabled NO \
     -only-testing:IndustrialCityBirminghamUITests
 }
@@ -421,9 +491,12 @@ verify_physical_device_metrics() {
 print_gate_order() {
   printf '%s\n' \
     data-gate \
+    release-build \
+    release-fixture-boundary \
     unit-tests \
     two-simulator-test \
-    ui-tests \
+    ui-iphone-tests \
+    ui-ipad-tests \
     snapshots \
     diff-check \
     accessibility-journey \
@@ -439,9 +512,12 @@ main() {
 
   cd "$repo_root"
   run_data_gate
+  run_release_build
+  run_release_fixture_boundary
   run_unit_tests
   run_two_simulator_test
-  run_ui_tests
+  run_ui_iphone_tests
+  run_ui_ipad_tests
   run_snapshot_verification
   run_diff_check
   run_accessibility_journey

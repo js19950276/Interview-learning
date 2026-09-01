@@ -40,8 +40,13 @@ struct RealSessionRootView: View {
                 Label(store.roomID.rawValue, systemImage: "number")
                     .accessibilityIdentifier("real.room")
                 ForEach(store.players, id: \.self) { player in
-                    Label("\(player.rawValue) · \(store.readyPlayerIDs.contains(player) ? "已准备" : "未准备")",
-                          systemImage: player == store.hostPlayerID ? "crown.fill" : "person.fill")
+                    Label(
+                        "\(player.rawValue) · \(store.readyPlayerIDs.contains(player) ? "已准备" : "未准备")"
+                            + " · \(store.connectedPlayerIDs.contains(player) ? "在线" : "离线")",
+                        systemImage: store.connectedPlayerIDs.contains(player)
+                            ? (player == store.hostPlayerID ? "crown.fill" : "person.fill")
+                            : "person.slash"
+                    )
                 }
                 Button(store.isReady ? "取消准备" : "准备") {
                     Task { await store.setReady(!store.isReady) }

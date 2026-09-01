@@ -71,6 +71,7 @@ extension GameCore {
 
             var candidate = state
             var requests: [ResourceRequest] = []
+            var marketCost = 0
             for (index, routeID) in intent.routeIDs.enumerated() {
                 guard let route = verifiedCatalog.catalog.board.routes.first(where: { $0.id == routeID })
                 else { throw NetworkRuleError.unavailableRoute }
@@ -86,12 +87,21 @@ extension GameCore {
 
                 if state.era == .rail {
                     let source = intent.coalSources[index]
-                    guard let consumer = route.adjacentLocationIDs.first(where: { locationID in
+                    guard ResourceRules.legalCoalSources(
+                        forNetworkRoute: route, state: candidate, catalog: verifiedCatalog
+                    ).contains(source),
+                    let consumer = route.adjacentLocationIDs.first(where: { locationID in
                         GameRulesEngine.legalResourceSources(
                             resource: .coal, consumerLocationID: locationID, context: .network,
                             state: candidate, catalog: verifiedCatalog
                         ).contains(source)
                     }) else { throw NetworkRuleError.illegalCoal }
+                    guard let sourceCost = sourceCashCost(of: source, in: candidate) else {
+                        throw NetworkRuleError.illegalCoal
+                    }
+                    let (nextMarketCost, overflow) = marketCost.addingReportingOverflow(sourceCost)
+                    guard overflow == false else { throw NetworkRuleError.insufficientCash }
+                    marketCost = nextMarketCost
                     requests.append(.init(resource: .coal, consumerLocationID: consumer, context: .network, source: source))
                     simulateConsumption(resource: .coal, source: source, state: &candidate)
                 }
@@ -107,10 +117,29 @@ extension GameCore {
                       }) else { throw NetworkRuleError.illegalBeer }
                 requests.append(.init(resource: .beer, consumerLocationID: consumer, context: .network, source: beer))
             }
+            let (totalCashCost, overflow) = cashCost.addingReportingOverflow(marketCost)
+            guard overflow == false, player.cash >= totalCashCost else {
+                throw NetworkRuleError.insufficientCash
+            }
             return ValidatedNetworkTarget(
                 actorID: actorID, intent: intent, card: card,
                 cashCost: cashCost, resourceRequests: requests
             )
+        }
+
+        private static func sourceCashCost(of source: ResourceSource, in state: GameState) -> Int? {
+            switch source {
+            case .industry, .merchantBeer:
+                return 0
+            case .marketSlot(let resource, let index):
+                let market = resource == .coal ? state.coalMarket : state.ironMarket
+                guard market.slots.indices.contains(index), market.slots[index].hasCube,
+                      market.slots[index].price >= 0
+                else { return nil }
+                return market.slots[index].price
+            case .unlimitedMarket(_, let price):
+                return price >= 0 ? price : nil
+            }
         }
 
         private static func simulateConsumption(

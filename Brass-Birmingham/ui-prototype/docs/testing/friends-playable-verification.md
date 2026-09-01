@@ -37,17 +37,21 @@ bash scripts/verify_friends_playable.sh
 固定执行顺序为：
 
 1. `data-gate`；
-2. `unit-tests`；
-3. `two-simulator-test`；
-4. `ui-tests`；
-5. `snapshots`；
-6. `diff-check`；
-7. `accessibility-journey`（自动 UI route 后检查真实人工 VoiceOver marker）；
-8. `physical-device-matrix`；
-9. `physical-device-metrics`。
+2. `release-build`；
+3. `release-fixture-boundary`；
+4. `unit-tests`；
+5. `two-simulator-test`；
+6. `ui-iphone-tests`；
+7. `ui-ipad-tests`；
+8. `snapshots`；
+9. `diff-check`；
+10. `accessibility-journey`（自动 UI route 后检查真实人工 VoiceOver marker）；
+11. `physical-device-matrix`；
+12. `physical-device-metrics`。
 
-原有 data/unit/two-simulator/UI/snapshots/diff 的相对顺序保持不变。脚本启用
-`set -euo pipefail`，任一门禁失败即停止，只有九项都通过才可能打印最终成功行。
+Release 构建与 fixture 边界检查复用同一份临时 DerivedData，UI 则分别执行完整的 iPhone 与
+iPad 测试 target。脚本启用 `set -euo pipefail`，任一门禁失败即停止，只有十二项都通过才可能
+打印最终成功行。
 
 只检查结构或运行无设备自测：
 

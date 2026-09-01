@@ -36,9 +36,12 @@ test -f "$friends_verify_script"
 
 cat >"$fixture_dir/friends-expected.txt" <<'EOF'
 data-gate
+release-build
+release-fixture-boundary
 unit-tests
 two-simulator-test
-ui-tests
+ui-iphone-tests
+ui-ipad-tests
 snapshots
 diff-check
 accessibility-journey
@@ -54,9 +57,12 @@ source "$friends_verify_script"
 
 : >"$sequence_file"
 run_data_gate() { echo data-gate >>"$sequence_file"; }
+run_release_build() { echo release-build >>"$sequence_file"; }
+run_release_fixture_boundary() { echo release-fixture-boundary >>"$sequence_file"; }
 run_unit_tests() { echo unit-tests >>"$sequence_file"; }
 run_two_simulator_test() { echo two-simulator-test >>"$sequence_file"; }
-run_ui_tests() { echo ui-tests >>"$sequence_file"; }
+run_ui_iphone_tests() { echo ui-iphone-tests >>"$sequence_file"; }
+run_ui_ipad_tests() { echo ui-ipad-tests >>"$sequence_file"; }
 run_snapshot_verification() { echo snapshots >>"$sequence_file"; }
 run_diff_check() { echo diff-check >>"$sequence_file"; }
 run_accessibility_journey() { echo accessibility-journey >>"$sequence_file"; }

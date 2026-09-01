@@ -35,7 +35,9 @@ nonisolated enum SessionProtocol {
         case clientEvent(GameCore.ClientEvent)
         case catchUp(fromVersion: GameCore.AuthoritativeVersion)
         case viewSnapshot(GameCore.ViewSnapshot)
+        case presence(connectedPlayerIDs: [GameCore.PlayerID])
         case pause(PauseReason)
+        case resume
         case rejection(GameCore.RejectedIntent)
         case versionIncompatible
     }
@@ -43,6 +45,8 @@ nonisolated enum SessionProtocol {
     struct SessionEnvelope: Codable, Equatable, Sendable {
         var protocolVersion: Int
         var rulesetVersion: String
+        /// Missing means a legacy standard-game message.
+        var gameVariant: GameCore.GameVariant?
         var roomID: GameCore.RoomID
         var messageID: MessageID
         var senderID: GameCore.PlayerID
@@ -58,10 +62,12 @@ nonisolated enum SessionProtocol {
             senderID: GameCore.PlayerID,
             recipientID: GameCore.PlayerID?,
             authoritativeVersion: GameCore.AuthoritativeVersion,
-            payload: Payload
+            payload: Payload,
+            gameVariant: GameCore.GameVariant? = .standard
         ) {
             self.protocolVersion = protocolVersion
             self.rulesetVersion = rulesetVersion
+            self.gameVariant = gameVariant
             self.roomID = roomID
             self.messageID = messageID
             self.senderID = senderID
@@ -74,6 +80,7 @@ nonisolated enum SessionProtocol {
     struct SessionContext: Equatable, Sendable {
         let protocolVersion: Int
         let rulesetVersion: String
+        let gameVariant: GameCore.GameVariant
         let roomID: GameCore.RoomID
         let localPlayerID: GameCore.PlayerID
         let authenticatedRemotePlayerID: GameCore.PlayerID
@@ -93,10 +100,12 @@ nonisolated enum SessionProtocol {
             roomPlayerIDs: Set<GameCore.PlayerID>,
             authoritativeVersion: GameCore.AuthoritativeVersion,
             actionNumber: Int,
-            reconnectTokens: [GameCore.PlayerID: GameCore.ReconnectToken]
+            reconnectTokens: [GameCore.PlayerID: GameCore.ReconnectToken],
+            gameVariant: GameCore.GameVariant = .standard
         ) {
             self.protocolVersion = protocolVersion
             self.rulesetVersion = rulesetVersion
+            self.gameVariant = gameVariant
             self.roomID = roomID
             self.localPlayerID = localPlayerID
             self.authenticatedRemotePlayerID = authenticatedRemotePlayerID
@@ -111,6 +120,7 @@ nonisolated enum SessionProtocol {
     enum SessionProtocolError: String, Codable, Equatable, Error, Sendable {
         case protocolVersionMismatch
         case rulesetVersionMismatch
+        case gameVariantMismatch
         case roomMismatch
         case unknownSender
         case recipientMismatch
@@ -145,6 +155,9 @@ nonisolated enum SessionProtocol {
             }
             guard envelope.rulesetVersion == context.rulesetVersion else {
                 throw SessionProtocolError.rulesetVersionMismatch
+            }
+            guard (envelope.gameVariant ?? .standard) == context.gameVariant else {
+                throw SessionProtocolError.gameVariantMismatch
             }
             guard envelope.roomID == context.roomID else {
                 throw SessionProtocolError.roomMismatch
@@ -237,7 +250,7 @@ nonisolated enum SessionProtocol {
                 }
             case let .viewSnapshot(snapshot):
                 try validate(snapshot: snapshot, in: envelope, expectedRoster: context.roomPlayerIDs)
-            case .lobbyState:
+            case .lobbyState, .presence, .pause, .resume:
                 guard envelope.senderID == context.hostPlayerID else {
                     throw SessionProtocolError.unauthorizedHostMessage
                 }
@@ -277,11 +290,18 @@ nonisolated enum SessionProtocol {
             for transition in clientEvent.event.transitions {
                 switch transition {
                 case .forcedSaleRequired(let pending):
+                    let eligiblePlacementIDs = pending.eligiblePlacementIDs.sorted()
                     guard recipientID == pending.playerID,
-                          clientEvent.snapshot.forcedSale == .init(
-                            shortfall: pending.shortfall,
-                            eligiblePlacementIDs: pending.eligiblePlacementIDs.sorted()
-                          ) else { throw SessionProtocolError.snapshotPrivacyViolation }
+                          let projection = clientEvent.snapshot.forcedSale,
+                          projection.shortfall == pending.shortfall,
+                          projection.eligiblePlacementIDs == eligiblePlacementIDs,
+                          projection.options.isEmpty || (
+                              projection.options.map(\.placementID) == eligiblePlacementIDs
+                                  && projection.options.allSatisfy {
+                                      $0.liquidationValue >= 0
+                                  }
+                          )
+                    else { throw SessionProtocolError.snapshotPrivacyViolation }
                 case .forcedSaleRequiredMarker(let debtorID):
                     guard recipientID != debtorID,
                           clientEvent.snapshot.forcedSale == nil
@@ -312,6 +332,9 @@ nonisolated enum SessionProtocol {
             guard snapshot.authoritativeVersion == envelope.authoritativeVersion else {
                 throw SessionProtocolError.payloadVersionMismatch
             }
+            guard (snapshot.gameVariant ?? .standard) == (envelope.gameVariant ?? .standard) else {
+                throw SessionProtocolError.gameVariantMismatch
+            }
             let playerIDs = snapshot.players.map(\.id)
             guard Set(playerIDs).count == playerIDs.count else {
                 throw SessionProtocolError.duplicatePlayerID
@@ -334,7 +357,8 @@ nonisolated enum SessionProtocol {
                             roomID: envelope.roomID,
                             recipient: recipientID,
                             roster: expectedRoster,
-                            authoritativeVersion: envelope.authoritativeVersion
+                            authoritativeVersion: envelope.authoritativeVersion,
+                            gameVariant: envelope.gameVariant ?? .standard
                         )
                     )
                 } catch GameCore.RecipientSnapshotValidationError.checksumMismatch {
@@ -346,6 +370,7 @@ nonisolated enum SessionProtocol {
             guard snapshot.checksum == (try GameCore.snapshotChecksum(
                 roomID: snapshot.roomID,
                 recipient: snapshot.recipient,
+                gameVariant: snapshot.gameVariant,
                 players: snapshot.players,
                 activePlayerID: snapshot.activePlayerID,
                 turn: snapshot.turn,

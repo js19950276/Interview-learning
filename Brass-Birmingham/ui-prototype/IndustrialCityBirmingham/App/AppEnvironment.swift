@@ -3,6 +3,7 @@ import Foundation
 nonisolated struct AppEnvironment: Equatable, Sendable {
     enum Mode: Equatable, Sendable {
         case production
+        case unsupportedGameVariant(String)
 #if DEBUG
         case fixture
         case localHarness(LocalHarness)
@@ -29,6 +30,7 @@ nonisolated struct AppEnvironment: Equatable, Sendable {
     let nearbyCatalogSource: NearbyCatalogSource
 
     init(arguments: [String]) {
+        let requestedVariant = Self.value(after: "-game-variant", in: arguments)
 #if DEBUG
         nearbyCatalogSource = .debugFixture
         localUIFixturePresentationEraOverride = arguments.contains("-rail-fixture") ? .rail : nil
@@ -37,6 +39,13 @@ nonisolated struct AppEnvironment: Equatable, Sendable {
             || arguments.contains("-fixture")
             || arguments.contains("-demo-ui")
             || arguments.contains("-rail-fixture")
+        if let requestedVariant,
+           GameCore.GameVariant(rawValue: requestedVariant) == nil {
+            localHarness = nil
+            mode = .unsupportedGameVariant(requestedVariant)
+            runsLocalScriptHarness = false
+            return
+        }
         guard let roleText = Self.value(after: "-local-role", in: arguments),
               let role = SessionRole(rawValue: roleText),
               let room = Self.value(after: "-local-room", in: arguments), !room.isEmpty else {
@@ -57,6 +66,14 @@ nonisolated struct AppEnvironment: Equatable, Sendable {
         mode = .localHarness(harness)
         runsLocalScriptHarness = arguments.contains("-local-script-harness")
 #else
+        if let requestedVariant,
+           GameCore.GameVariant(rawValue: requestedVariant) == nil {
+            mode = .unsupportedGameVariant(requestedVariant)
+            runsLocalScriptHarness = false
+            usesFixtureSession = false
+            nearbyCatalogSource = .packagedRules
+            return
+        }
         mode = .production
         runsLocalScriptHarness = false
         usesFixtureSession = false

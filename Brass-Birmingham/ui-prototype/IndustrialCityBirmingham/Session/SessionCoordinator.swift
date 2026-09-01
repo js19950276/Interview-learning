@@ -43,6 +43,7 @@ actor SessionCoordinator {
         let hostPlayerID: GameCore.PlayerID
         let playerIDs: [GameCore.PlayerID]
         let readyPlayerIDs: [GameCore.PlayerID]
+        let connectedPlayerIDs: Set<GameCore.PlayerID>
         let snapshot: GameCore.ViewSnapshot?
         let forcedSale: GameCore.ForcedSaleProjection?
         let peersNeedingRecovery: Set<GameCore.PlayerID>
@@ -59,6 +60,7 @@ actor SessionCoordinator {
     struct Configuration: Sendable {
         let protocolVersion: Int
         let rulesetVersion: String
+        let gameVariant: GameCore.GameVariant
         let roomID: GameCore.RoomID
         let playerID: GameCore.PlayerID
         let reconnectToken: GameCore.ReconnectToken
@@ -72,10 +74,12 @@ actor SessionCoordinator {
             playerID: GameCore.PlayerID,
             reconnectToken: GameCore.ReconnectToken,
             hostPlayerID: GameCore.PlayerID,
-            setupSeed: UInt64 = 1
+            setupSeed: UInt64 = 1,
+            gameVariant: GameCore.GameVariant = .standard
         ) {
             self.protocolVersion = protocolVersion
             self.rulesetVersion = rulesetVersion
+            self.gameVariant = gameVariant
             self.roomID = roomID
             self.playerID = playerID
             self.reconnectToken = reconnectToken
@@ -122,6 +126,26 @@ actor SessionCoordinator {
         var scopeCount: Int { idsByScope.count }
     }
 
+    private struct ResolvedHostSubmission: Sendable {
+        let event: GameCore.AuthoritativeGameEvent
+        let engine: GameCore.HostEngine
+        let projections: [GameCore.PlayerID: GameCore.ClientEvent]
+        let eventWindows: [GameCore.PlayerID: [SessionProtocol.SessionEnvelope]]
+        let outgoing: [GameCore.PlayerID: SessionProtocol.SessionEnvelope]
+        let remoteRecipients: Set<GameCore.PlayerID>
+        let peersNeedingRecovery: Set<GameCore.PlayerID>
+    }
+
+    private struct PendingHostPrecommit: Sendable {
+        let archive: SessionArchive
+        let resolution: ResolvedHostSubmission
+    }
+
+    private struct PendingSeatAssignment: Equatable, Sendable {
+        let token: GameCore.ReconnectToken
+        let peer: GameCore.PlayerID
+    }
+
     private enum JoinOutcome { case pending, accepted, rejected(Error) }
     private enum StartPhase { case notStarted, starting, started }
     private let configuration: Configuration
@@ -135,6 +159,7 @@ actor SessionCoordinator {
     private var processingTask: Task<Void, Never>?
     private var peerByPlayer: [GameCore.PlayerID: GameCore.PlayerID] = [:]
     private var tokens: [GameCore.PlayerID: GameCore.ReconnectToken] = [:]
+    private var pendingSeatAssignments: [GameCore.PlayerID: PendingSeatAssignment] = [:]
     private var ready: Set<GameCore.PlayerID> = []
     private var replayCache = ReplayCache()
     private var invalidRecoveryReplayCache = InvalidRecoveryReplayCache()
@@ -144,6 +169,7 @@ actor SessionCoordinator {
     private var startPhase: StartPhase = .notStarted
     private var stateContinuations: [UUID: AsyncStream<State>.Continuation] = [:]
     private(set) var snapshot: GameCore.ViewSnapshot?
+    private(set) var connectedPlayerIDs: Set<GameCore.PlayerID> = []
     private(set) var processedMessageCount = 0
     private(set) var peersNeedingRecovery: Set<GameCore.PlayerID> = []
     private(set) var lastDeliveryError: TransportError?
@@ -156,6 +182,7 @@ actor SessionCoordinator {
     private(set) var lastClientEvent: GameCore.ClientEvent?
     private var recoveryTargetVersion: GameCore.AuthoritativeVersion?
     private var persistenceCommitSequence: UInt64 = 0
+    private var pendingHostPrecommit: PendingHostPrecommit?
     private var authorityCompleteness = AuthorityCompleteness.complete
     private var isResolving = false
     private var resolveWaiters: [CheckedContinuation<Void, Never>] = []
@@ -166,6 +193,10 @@ actor SessionCoordinator {
     var stateSubscriberCount: Int { stateContinuations.count }
     var isProcessing: Bool { processingTask != nil }
     var forcedSale: GameCore.ForcedSaleProjection? { snapshot?.forcedSale }
+    private var hasCompatibleRulesetConfiguration: Bool {
+        guard let verifiedCatalog else { return true }
+        return configuration.rulesetVersion == verifiedCatalog.catalog.rulesetVersion
+    }
 
     init(
         configuration: Configuration,
@@ -212,6 +243,10 @@ actor SessionCoordinator {
             verifiedCatalog = nil
             presentationCatalog = nil
         }
+        if case .verified(let catalog) = rulesMode,
+           configuration.rulesetVersion != catalog.catalog.rulesetVersion {
+            throw Error.dataUnavailable
+        }
         tokens = Dictionary(uniqueKeysWithValues: restored.state.players.map {
             ($0.id, $0.reconnectToken)
         })
@@ -231,6 +266,7 @@ actor SessionCoordinator {
             )
         }
         peerByPlayer[configuration.playerID] = configuration.playerID
+        connectedPlayerIDs = [configuration.playerID]
         eventWindows = restored.eventWindows.mapValues { Array($0.suffix(128)) }
         peersNeedingRecovery = restored.peersNeedingRecovery
         persistenceCommitSequence = restored.commitSequence
@@ -268,6 +304,7 @@ actor SessionCoordinator {
             presentationCatalog = nil
         }
         snapshot = restoredGuest.snapshot
+        connectedPlayerIDs = [configuration.playerID]
         eventWindows[configuration.playerID] = Array(restoredGuest.eventWindow.suffix(128))
         persistenceCommitSequence = restoredCommitSequence
     }
@@ -285,9 +322,11 @@ actor SessionCoordinator {
 
     func createRoom(port: UInt16? = nil) async throws {
         guard isHost else { throw Error.hostOnly }
+        guard hasCompatibleRulesetConfiguration else { throw Error.dataUnavailable }
         startProcessingIfNeeded()
         tokens[configuration.playerID] = configuration.reconnectToken
         peerByPlayer[configuration.playerID] = configuration.playerID
+        connectedPlayerIDs.insert(configuration.playerID)
         try await tokenStore?.save(.init(
             roomID: configuration.roomID,
             playerID: configuration.playerID,
@@ -300,9 +339,12 @@ actor SessionCoordinator {
 
     func joinRoom() async throws {
         guard !isHost else { throw Error.hostOnly }
+        guard hasCompatibleRulesetConfiguration else { throw Error.dataUnavailable }
         startProcessingIfNeeded()
         try await transport.browse()
         try await transport.connect(to: configuration.hostPlayerID)
+        connectedPlayerIDs.formUnion([configuration.playerID, configuration.hostPlayerID])
+        publishState()
         try await send(.hello(reconnectToken: configuration.reconnectToken), to: configuration.hostPlayerID)
         let clock = ContinuousClock()
         let deadline = clock.now.advanced(by: .seconds(2))
@@ -331,8 +373,13 @@ actor SessionCoordinator {
 
     func startGame() async throws {
         guard isHost else { throw Error.hostOnly }
+        guard hasCompatibleRulesetConfiguration else { throw Error.dataUnavailable }
         guard startPhase == .notStarted else { throw Error.gameAlreadyStarted }
-        guard tokens.count >= 2, ready == Set(tokens.keys) else { throw Error.notAllPlayersReady }
+        let lobbyPlayers = Set(tokens.keys)
+        guard pendingSeatAssignments.isEmpty,
+              tokens.count >= 2,
+              ready == lobbyPlayers,
+              connectedPlayerIDs == lobbyPlayers else { throw Error.notAllPlayersReady }
         startPhase = .starting
         let ordered = [configuration.hostPlayerID] + playerIDs.filter { $0 != configuration.hostPlayerID }
         if let verifiedCatalog {
@@ -423,6 +470,7 @@ actor SessionCoordinator {
     func disconnect() async {
         processingTask?.cancel()
         processingTask = nil
+        pendingSeatAssignments.removeAll()
         for continuation in stateContinuations.values { continuation.finish() }
         stateContinuations.removeAll()
         await transport.disconnect()
@@ -432,7 +480,7 @@ actor SessionCoordinator {
         await acquireResolveGate()
         do {
             if isHost {
-                try await persistCommittedState()
+                try await persistPendingPrecommitOrCommittedState()
             } else {
                 try await persistGuestState(newEvent: nil)
             }
@@ -447,7 +495,7 @@ actor SessionCoordinator {
         await acquireResolveGate()
         do {
             if isHost {
-                try await persistCommittedState()
+                try await persistPendingPrecommitOrCommittedState()
             } else {
                 try await persistGuestState(newEvent: nil)
             }
@@ -480,11 +528,19 @@ actor SessionCoordinator {
             else { await handleAsGuest(envelope, peer: peer) }
         case let .disconnected(peer, _):
             if !isHost, peer == configuration.hostPlayerID {
+                connectedPlayerIDs.remove(configuration.hostPlayerID)
                 pauseReason = .hostDisconnected
                 publishState()
             } else if isHost, let player = peerByPlayer.first(where: { $0.value == peer })?.key {
+                peerByPlayer[player] = nil
+                connectedPlayerIDs.remove(player)
                 peersNeedingRecovery.insert(player)
+                if engine?.state.activePlayerID == player {
+                    pauseReason = .actorDisconnected
+                    await broadcastPause(.actorDisconnected)
+                }
                 publishState()
+                await broadcastPresence()
             }
         case .connected, .discovered:
             break
@@ -499,43 +555,78 @@ actor SessionCoordinator {
             return
         }
         guard envelope.protocolVersion == configuration.protocolVersion,
-              envelope.rulesetVersion == configuration.rulesetVersion else {
+              envelope.rulesetVersion == configuration.rulesetVersion,
+              (envelope.gameVariant ?? .standard) == configuration.gameVariant else {
             try? await send(.versionIncompatible, toTransportPeer: peer, recipient: envelope.senderID)
             return
         }
         switch envelope.payload {
         case let .hello(token):
             guard envelope.recipientID == configuration.playerID else { return }
+            let isAssignedSeat = tokens[envelope.senderID] != nil
+            if let pending = pendingSeatAssignments[envelope.senderID] {
+                if pending.token == token {
+                    try? await send(.rejection(.init(
+                        reasonCode: .persistenceUnavailable,
+                        recoverySuggestion: "Wait while the host safely saves the assigned seat, then retry."
+                    )), toTransportPeer: peer, recipient: envelope.senderID)
+                } else {
+                    try? await send(.rejection(.init(
+                        reasonCode: .invalidReconnectToken,
+                        recoverySuggestion: "Reauthenticate the seat with its reconnect token."
+                    )), toTransportPeer: peer, recipient: envelope.senderID)
+                }
+                return
+            }
+            if engine != nil, !isAssignedSeat {
+                try? await send(.rejection(.init(
+                    reasonCode: .unknownSender,
+                    recoverySuggestion: "The game has started and no new seat can be assigned."
+                )), toTransportPeer: peer, recipient: envelope.senderID)
+                return
+            }
             if let existing = tokens[envelope.senderID], existing != token {
                 try? await send(.rejection(.init(reasonCode: .invalidReconnectToken,
                     recoverySuggestion: "Reauthenticate the seat with its reconnect token.")),
                     toTransportPeer: peer, recipient: envelope.senderID)
                 return
             }
-            guard tokens[envelope.senderID] != nil || tokens.count < 4 else {
+            guard isAssignedSeat || tokens.count + pendingSeatAssignments.count < 4 else {
                 try? await send(.rejection(.init(reasonCode: .unknownSender,
                     recoverySuggestion: "The room already has four assigned seats.")),
                     toTransportPeer: peer, recipient: envelope.senderID)
                 return
             }
             guard acceptUnique(envelope, peer: peer) else { return }
-            tokens[envelope.senderID] = token
-            peerByPlayer[envelope.senderID] = peer
-            do {
-                try await tokenStore?.save(.init(
-                    roomID: configuration.roomID,
-                    playerID: envelope.senderID,
-                    reconnectToken: token
-                ))
-            } catch {
-                tokens[envelope.senderID] = nil
-                peerByPlayer[envelope.senderID] = nil
-                try? await send(.rejection(.init(
-                    reasonCode: .persistenceUnavailable,
-                    recoverySuggestion: "Wait while the host safely saves the assigned seat, then retry."
-                )), toTransportPeer: peer, recipient: envelope.senderID)
-                return
+            if !isAssignedSeat {
+                let assignment = PendingSeatAssignment(token: token, peer: peer)
+                pendingSeatAssignments[envelope.senderID] = assignment
+                do {
+                    try await tokenStore?.save(.init(
+                        roomID: configuration.roomID,
+                        playerID: envelope.senderID,
+                        reconnectToken: token
+                    ))
+                } catch {
+                    pendingSeatAssignments[envelope.senderID] = nil
+                    ready.remove(envelope.senderID)
+                    try? await send(.rejection(.init(
+                        reasonCode: .persistenceUnavailable,
+                        recoverySuggestion: "Wait while the host safely saves the assigned seat, then retry."
+                    )), toTransportPeer: peer, recipient: envelope.senderID)
+                    return
+                }
+                guard !Task.isCancelled,
+                      pendingSeatAssignments[envelope.senderID] == assignment else {
+                    pendingSeatAssignments[envelope.senderID] = nil
+                    return
+                }
+                pendingSeatAssignments[envelope.senderID] = nil
+                tokens[envelope.senderID] = token
             }
+            peerByPlayer[envelope.senderID] = peer
+            connectedPlayerIDs.insert(envelope.senderID)
+            await transport.authenticate(peer)
             publishState()
             do {
                 try await send(
@@ -544,6 +635,7 @@ actor SessionCoordinator {
                     version: engine?.state.authoritativeVersion ?? .init(rawValue: 0)
                 )
                 await broadcastLobbyState()
+                await broadcastPresence()
             } catch {
                 recordDeliveryFailure(for: envelope.senderID, error: error)
             }
@@ -622,6 +714,9 @@ actor SessionCoordinator {
               envelope.recipientID == configuration.playerID else { return }
         switch envelope.payload {
         case .createRoom:
+            guard envelope.protocolVersion == configuration.protocolVersion,
+                  envelope.rulesetVersion == configuration.rulesetVersion,
+                  (envelope.gameVariant ?? .standard) == configuration.gameVariant else { return }
             guard acceptUnique(envelope, peer: peer) else { return }
             joinOutcome = .accepted
             recoveryTargetVersion = envelope.authoritativeVersion
@@ -638,6 +733,7 @@ actor SessionCoordinator {
                 switch rejection.reasonCode {
                 case .wrongRoom: joinOutcome = .rejected(.roomMismatch)
                 case .invalidReconnectToken: joinOutcome = .rejected(.reconnectTokenMismatch)
+                case .persistenceUnavailable: joinOutcome = .rejected(.persistenceUnavailable)
                 default: joinOutcome = .rejected(.roomFull)
                 }
             } else {
@@ -651,6 +747,39 @@ actor SessionCoordinator {
             tokens = Dictionary(uniqueKeysWithValues: lobby.playerIDs.map { ($0, .init(rawValue: "host-authoritative-roster")) })
             ready = Set(lobby.readyPlayerIDs)
             publishState()
+        case let .presence(playerIDs):
+            guard envelope.protocolVersion == configuration.protocolVersion,
+                  envelope.rulesetVersion == configuration.rulesetVersion,
+                  (envelope.gameVariant ?? .standard) == configuration.gameVariant,
+                  Set(playerIDs).count == playerIDs.count,
+                  acceptUnique(envelope, peer: peer, countsAsProcessedMessage: false)
+            else { return }
+            let roster = Set(snapshot?.players.map(\.id) ?? self.playerIDs)
+            let connected = Set(playerIDs)
+            guard connected.isSubset(of: roster),
+                  connected.contains(configuration.hostPlayerID),
+                  connected.contains(configuration.playerID)
+            else { return }
+            connectedPlayerIDs = connected
+            publishState()
+        case let .pause(reason):
+            guard envelope.protocolVersion == configuration.protocolVersion,
+                  envelope.rulesetVersion == configuration.rulesetVersion,
+                  (envelope.gameVariant ?? .standard) == configuration.gameVariant,
+                  envelope.authoritativeVersion == snapshot?.authoritativeVersion,
+                  acceptUnique(envelope, peer: peer, countsAsProcessedMessage: false)
+            else { return }
+            pauseReason = reason
+            publishState()
+        case .resume:
+            guard envelope.protocolVersion == configuration.protocolVersion,
+                  envelope.rulesetVersion == configuration.rulesetVersion,
+                  (envelope.gameVariant ?? .standard) == configuration.gameVariant,
+                  envelope.authoritativeVersion == snapshot?.authoritativeVersion,
+                  acceptUnique(envelope, peer: peer, countsAsProcessedMessage: false)
+            else { return }
+            if pauseReason == .actorDisconnected { pauseReason = nil }
+            publishState()
         case let .legalResponse(response):
             guard let current = snapshot else { return }
             let context = SessionProtocol.SessionContext(
@@ -663,7 +792,8 @@ actor SessionCoordinator {
                 roomPlayerIDs: Set(current.players.map(\.id)),
                 authoritativeVersion: current.authoritativeVersion,
                 actionNumber: current.actionNumber,
-                reconnectTokens: [configuration.hostPlayerID: .init(rawValue: "transport-authenticated-host")]
+                reconnectTokens: [configuration.hostPlayerID: .init(rawValue: "transport-authenticated-host")],
+                gameVariant: configuration.gameVariant
             )
             guard case .legalResponse = try? SessionProtocol.EnvelopeValidator().validate(
                 envelope, against: context
@@ -707,7 +837,8 @@ actor SessionCoordinator {
                 authenticatedRemotePlayerID: configuration.hostPlayerID, hostPlayerID: configuration.hostPlayerID,
                 roomPlayerIDs: playerIDs, authoritativeVersion: current.authoritativeVersion,
                 actionNumber: current.actionNumber,
-                reconnectTokens: [configuration.hostPlayerID: .init(rawValue: "transport-authenticated-host")]
+                reconnectTokens: [configuration.hostPlayerID: .init(rawValue: "transport-authenticated-host")],
+                gameVariant: configuration.gameVariant
             )
             guard case let .clientEvent(value) = try? SessionProtocol.EnvelopeValidator().validate(envelope, against: context) else {
                 if invalidRecoveryReplayCache.insert(
@@ -871,8 +1002,17 @@ actor SessionCoordinator {
             }
             let remoteRecipients = Set(outgoing.keys.filter { $0 != configuration.playerID })
             let candidateRecovery = peersNeedingRecovery.union(remoteRecipients)
+            let resolution = ResolvedHostSubmission(
+                event: event,
+                engine: candidateEngine,
+                projections: projections,
+                eventWindows: candidateEventWindows,
+                outgoing: outgoing,
+                remoteRecipients: remoteRecipients,
+                peersNeedingRecovery: candidateRecovery
+            )
 
-            if let persistence {
+            if persistence != nil {
                 guard authorityCompleteness == .complete else {
                     persistenceError = .saveFailed
                     publishState()
@@ -892,12 +1032,10 @@ actor SessionCoordinator {
                     peersNeedingRecovery: candidateRecovery,
                     commitSequence: nextCommitSequence
                 )
+                pendingHostPrecommit = .init(archive: archive, resolution: resolution)
                 do {
-                    try await persistence.save(archive)
-                    persistenceCommitSequence = nextCommitSequence
+                    try await persistPendingHostPrecommit()
                 } catch {
-                    persistenceError = .saveFailed
-                    publishState()
                     if intent.senderID != configuration.playerID {
                         try? await send(.rejection(.init(
                             reasonCode: .persistenceUnavailable,
@@ -906,35 +1044,9 @@ actor SessionCoordinator {
                     }
                     throw Error.persistenceUnavailable
                 }
+            } else {
+                await commitHostResolution(resolution)
             }
-
-            engine = candidateEngine
-            snapshot = projections[configuration.playerID]?.snapshot
-            lastClientEvent = projections[configuration.playerID]
-            lastLegalResponse = nil
-            eventWindows = candidateEventWindows
-            peersNeedingRecovery = candidateRecovery
-            lastIntentRejection = nil
-            lastDeliveryError = nil
-            persistenceError = nil
-            publishState()
-
-            for player in playerIDs where remoteRecipients.contains(player) {
-                guard let envelope = outgoing[player] else { continue }
-                do {
-                    try await send(envelope, to: player)
-                    peersNeedingRecovery.remove(player)
-                    do {
-                        try await persistCommittedState()
-                    } catch {
-                        break
-                    }
-                } catch {
-                    recordDeliveryFailure(for: player, error: error)
-                }
-            }
-            publishState()
-            print("INDUSTRIALCITY_LOCAL converged version=\(event.version.rawValue) actor=\(event.actor.rawValue)")
         case let .rejected(rejection):
             if intent.senderID != configuration.playerID {
                 try await send(.rejection(rejection), to: intent.senderID)
@@ -954,6 +1066,44 @@ actor SessionCoordinator {
             }
             publishState()
         }
+    }
+
+    private func commitHostResolution(_ resolution: ResolvedHostSubmission) async {
+        engine = resolution.engine
+        snapshot = resolution.projections[configuration.playerID]?.snapshot
+        lastClientEvent = resolution.projections[configuration.playerID]
+        lastLegalResponse = nil
+        eventWindows = resolution.eventWindows
+        peersNeedingRecovery = resolution.peersNeedingRecovery
+        lastIntentRejection = nil
+        lastDeliveryError = nil
+        persistenceError = nil
+        let activeActorUnavailable = resolution.engine.gameState.activePlayerID.map {
+            connectedPlayerIDs.contains($0) == false
+        } ?? false
+        if activeActorUnavailable { pauseReason = .actorDisconnected }
+        publishState()
+
+        for player in playerIDs where resolution.remoteRecipients.contains(player) {
+            guard let envelope = resolution.outgoing[player] else { continue }
+            do {
+                try await send(envelope, to: player)
+                peersNeedingRecovery.remove(player)
+                do {
+                    try await persistCommittedState()
+                } catch {
+                    break
+                }
+            } catch {
+                recordDeliveryFailure(for: player, error: error)
+            }
+        }
+        if activeActorUnavailable { await broadcastPause(.actorDisconnected) }
+        publishState()
+        print(
+            "INDUSTRIALCITY_LOCAL converged version=\(resolution.event.version.rawValue) "
+                + "actor=\(resolution.event.actor.rawValue)"
+        )
     }
 
     private func distributeInitialSnapshots() async throws {
@@ -993,7 +1143,8 @@ actor SessionCoordinator {
                         roomID: configuration.roomID,
                         recipient: configuration.playerID,
                         roster: Set(playerIDs),
-                        authoritativeVersion: envelope.authoritativeVersion
+                        authoritativeVersion: envelope.authoritativeVersion,
+                        gameVariant: configuration.gameVariant
                     )
                 )
                 return true
@@ -1008,6 +1159,7 @@ actor SessionCoordinator {
         do {
             return value.checksum == (try GameCore.snapshotChecksum(
                 roomID: value.roomID, recipient: value.recipient,
+                gameVariant: value.gameVariant,
                 players: value.players, activePlayerID: value.activePlayerID, turn: value.turn,
                 actionNumber: value.actionNumber, authoritativeVersion: value.authoritativeVersion,
                 discardPile: value.discardPile, forcedSale: value.forcedSale, match: value.match
@@ -1063,9 +1215,7 @@ actor SessionCoordinator {
             try engine.snapshot(for: player)
         }
         try await send(.viewSnapshot(value), to: player, version: value.authoritativeVersion)
-        peersNeedingRecovery.remove(player)
-        if peersNeedingRecovery.isEmpty { lastDeliveryError = nil }
-        publishState()
+        await completeRecovery(for: player)
     }
 
     private func sendRecovery(
@@ -1081,9 +1231,7 @@ actor SessionCoordinator {
                    fromVersion == engine.state.authoritativeVersion
                     || events.last?.authoritativeVersion == engine.state.authoritativeVersion {
                     for envelope in events { try await send(envelope, to: player) }
-                    peersNeedingRecovery.remove(player)
-                    if peersNeedingRecovery.isEmpty { lastDeliveryError = nil }
-                    publishState()
+                    await completeRecovery(for: player)
                     return
                 }
             } catch {
@@ -1096,7 +1244,8 @@ actor SessionCoordinator {
 
     private func broadcastLobbyState() async {
         let lobby = SessionProtocol.Payload.LobbyState(playerIDs: playerIDs, readyPlayerIDs: readyPlayerIDs)
-        for player in playerIDs where player != configuration.playerID {
+        for player in playerIDs where player != configuration.playerID
+            && connectedPlayerIDs.contains(player) {
             do {
                 try await send(.lobbyState(lobby), to: player)
                 peersNeedingRecovery.remove(player)
@@ -1105,6 +1254,52 @@ actor SessionCoordinator {
             }
             catch { recordDeliveryFailure(for: player, error: error) }
         }
+    }
+
+    private func broadcastPresence() async {
+        let connected = connectedPlayerIDs.sorted { $0.rawValue < $1.rawValue }
+        let version = engine?.state.authoritativeVersion ?? .init(rawValue: 0)
+        for player in connected where player != configuration.playerID {
+            do {
+                try await send(.presence(connectedPlayerIDs: connected), to: player, version: version)
+            } catch {
+                recordDeliveryFailure(for: player, error: error)
+            }
+        }
+    }
+
+    private func broadcastPause(_ reason: SessionProtocol.PauseReason) async {
+        let version = engine?.state.authoritativeVersion ?? .init(rawValue: 0)
+        for player in connectedPlayerIDs where player != configuration.playerID {
+            do {
+                try await send(.pause(reason), to: player, version: version)
+            } catch {
+                recordDeliveryFailure(for: player, error: error)
+            }
+        }
+    }
+
+    private func broadcastResume() async {
+        let version = engine?.state.authoritativeVersion ?? .init(rawValue: 0)
+        for player in connectedPlayerIDs where player != configuration.playerID {
+            do {
+                try await send(.resume, to: player, version: version)
+            } catch {
+                recordDeliveryFailure(for: player, error: error)
+            }
+        }
+    }
+
+    private func completeRecovery(for player: GameCore.PlayerID) async {
+        peersNeedingRecovery.remove(player)
+        if peersNeedingRecovery.isEmpty { lastDeliveryError = nil }
+        let recoveredActiveActor = pauseReason == .actorDisconnected
+            && engine?.state.activePlayerID == player
+            && connectedPlayerIDs.contains(player)
+        if recoveredActiveActor { pauseReason = nil }
+        publishState()
+        if recoveredActiveActor { await broadcastResume() }
+        await broadcastPresence()
     }
 
     private func validatedLobbyState(_ lobby: SessionProtocol.Payload.LobbyState) -> Bool {
@@ -1153,7 +1348,8 @@ actor SessionCoordinator {
             protocolVersion: configuration.protocolVersion, rulesetVersion: configuration.rulesetVersion,
             roomID: roomID ?? configuration.roomID, messageID: .init(rawValue: UUID().uuidString),
             senderID: configuration.playerID, recipientID: recipient,
-            authoritativeVersion: version, payload: payload
+            authoritativeVersion: version, payload: payload,
+            gameVariant: configuration.gameVariant
         )
     }
 
@@ -1165,6 +1361,34 @@ actor SessionCoordinator {
         values.append(envelope)
         if values.count > 128 { values.removeFirst(values.count - 128) }
         eventWindows[player] = values
+    }
+
+    private func persistPendingPrecommitOrCommittedState() async throws {
+        if pendingHostPrecommit != nil {
+            try await persistPendingHostPrecommit()
+        } else {
+            try await persistCommittedState()
+        }
+    }
+
+    private func persistPendingHostPrecommit() async throws {
+        guard let pending = pendingHostPrecommit else { return }
+        guard let persistence else {
+            pendingHostPrecommit = nil
+            await commitHostResolution(pending.resolution)
+            return
+        }
+        do {
+            try await persistence.save(pending.archive)
+            persistenceCommitSequence = pending.archive.commitSequence
+            pendingHostPrecommit = nil
+            persistenceError = nil
+        } catch {
+            persistenceError = .saveFailed
+            publishState()
+            throw Error.persistenceUnavailable
+        }
+        await commitHostResolution(pending.resolution)
     }
 
     private func persistCommittedState() async throws {
@@ -1242,6 +1466,7 @@ actor SessionCoordinator {
             hostPlayerID: configuration.hostPlayerID,
             playerIDs: playerIDs,
             readyPlayerIDs: readyPlayerIDs,
+            connectedPlayerIDs: connectedPlayerIDs,
             snapshot: snapshot,
             forcedSale: snapshot?.forcedSale,
             peersNeedingRecovery: peersNeedingRecovery,

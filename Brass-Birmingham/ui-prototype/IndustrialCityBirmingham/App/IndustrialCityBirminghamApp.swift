@@ -39,50 +39,55 @@ struct IndustrialCityBirminghamApp: App {
 
     var body: some Scene {
         WindowGroup {
+            if case let .unsupportedGameVariant(rawValue) = environment.mode {
+                UnsupportedGameVariantView(rawValue: rawValue)
+            } else {
 #if DEBUG
-            if let realSession {
-                RealSessionRootView(
-                    store: realSession,
-                    runsScriptHarness: environment.runsLocalScriptHarness
-                )
-                    .environment(preferences)
-            } else if let session {
-                RootView(
-                    launchConfiguration: launchConfiguration,
-                    fixtureSession: session,
-                    nearbyPersistenceState: nearbyPersistenceState,
-                    nearbyCatalogSource: environment.nearbyCatalogSource
-                )
-                    .environment(session).environment(preferences)
-            } else {
-                RootView(
-                    launchConfiguration: launchConfiguration,
-                    nearbyPersistenceState: nearbyPersistenceState,
-                    nearbyCatalogSource: environment.nearbyCatalogSource
-                )
-                    .environment(preferences)
-            }
+                if let realSession {
+                    RealSessionRootView(
+                        store: realSession,
+                        runsScriptHarness: environment.runsLocalScriptHarness
+                    )
+                        .environment(preferences)
+                } else if let session {
+                    RootView(
+                        launchConfiguration: launchConfiguration,
+                        fixtureSession: session,
+                        nearbyPersistenceState: nearbyPersistenceState,
+                        nearbyCatalogSource: environment.nearbyCatalogSource
+                    )
+                        .environment(session).environment(preferences)
+                } else {
+                    RootView(
+                        launchConfiguration: launchConfiguration,
+                        nearbyPersistenceState: nearbyPersistenceState,
+                        nearbyCatalogSource: environment.nearbyCatalogSource
+                    )
+                        .environment(preferences)
+                }
 #else
-            if let realSession {
-                RealSessionRootView(
-                    store: realSession,
-                    runsScriptHarness: environment.runsLocalScriptHarness
-                )
-                    .environment(preferences)
-            } else {
-                RootView(
-                    launchConfiguration: launchConfiguration,
-                    nearbyPersistenceState: nearbyPersistenceState
-                )
-                    .environment(preferences)
-            }
+                if let realSession {
+                    RealSessionRootView(
+                        store: realSession,
+                        runsScriptHarness: environment.runsLocalScriptHarness
+                    )
+                        .environment(preferences)
+                } else {
+                    RootView(
+                        launchConfiguration: launchConfiguration,
+                        nearbyPersistenceState: nearbyPersistenceState
+                    )
+                        .environment(preferences)
+                }
 #endif
+            }
         }
     }
 
     private static func makeRealSession(for environment: AppEnvironment) -> SessionViewStore? {
         switch environment.mode {
         case .production: return nil
+        case .unsupportedGameVariant: return nil
 #if DEBUG
         case .fixture: return nil
         case .localUIFixture:
@@ -101,13 +106,43 @@ struct IndustrialCityBirminghamApp: App {
                 playerID: playerID, reconnectToken: .init(rawValue: "\(harness.roomID.rawValue)-\(playerID.rawValue)"),
                 hostPlayerID: .init(rawValue: "host")
             )
+            let persistenceFactory = SessionPersistenceFactory.nearbyRuntime
+            let persistence = SnapshotStore(
+                directory: persistenceFactory.directory(
+                    roomID: harness.roomID,
+                    playerID: playerID
+                ),
+                keyProvider: persistenceFactory.keyProvider,
+                verifiedCatalog: catalog
+            )
             return SessionViewStore(coordinator: SessionCoordinator(
                 configuration: configuration,
                 transport: LocalNetworkTransport(serviceName: harness.roomID.rawValue),
+                persistence: persistence,
                 rulesMode: .verified(catalog)
             ), role: harness.role, roomID: harness.roomID, playerID: playerID,
                harnessPort: harness.port, fixtureGuest: nil)
 #endif
         }
+    }
+}
+
+private struct UnsupportedGameVariantView: View {
+    let rawValue: String
+
+    var body: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 36))
+                .foregroundStyle(.orange)
+            Text("不支持的游戏模式")
+                .font(.headline)
+            Text("当前版本无法安全打开“\(rawValue)”模式，请返回大厅并创建标准游戏。")
+                .font(.subheadline)
+                .multilineTextAlignment(.center)
+                .foregroundStyle(.secondary)
+        }
+        .padding(28)
+        .accessibilityIdentifier("unsupported-game-variant")
     }
 }

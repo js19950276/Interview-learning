@@ -8,5 +8,9 @@ extension GameCore {
         }
 
         var entries: [Entry]
+
+        func income(at position: Int) -> Int? {
+            entries.first(where: { $0.position == position })?.income
+        }
     }
 }

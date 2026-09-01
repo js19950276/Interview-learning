@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 import os
 import sys
@@ -327,6 +328,80 @@ class GameDataReviewTests(unittest.TestCase):
             errors = verifier.validate_bundled_resources(repo)
             for name in [*forbidden_fixtures, "LinkedReference"]:
                 self.assertTrue(any(name in error for error in errors), (name, errors))
+
+    def test_match_chrome_catalog_is_explicitly_hash_pinned(self) -> None:
+        asset_names = {
+            "industry-brewery-medallion",
+            "industry-coal-medallion",
+            "industry-cotton-medallion",
+            "industry-iron-medallion",
+            "industry-manufacturer-medallion",
+            "industry-pottery-medallion",
+            "match-brass-corner",
+            "match-card-texture",
+            "match-iron-horizontal",
+            "match-iron-vertical",
+            "match-parchment-label",
+            "match-wood-fill",
+        }
+        prefix = "IndustrialCityBirmingham/Assets.xcassets/MatchChrome/"
+        expected_paths = {f"{prefix}Contents.json"}
+        for name in asset_names:
+            expected_paths.add(f"{prefix}{name}.imageset/Contents.json")
+            expected_paths.add(f"{prefix}{name}.imageset/asset.png")
+
+        catalog_root = REPO_ROOT / "IndustrialCityBirmingham/Assets.xcassets/MatchChrome"
+        catalog_paths = {
+            path.relative_to(REPO_ROOT).as_posix()
+            for path in catalog_root.rglob("*")
+            if path.is_file()
+        }
+        pinned_paths = {
+            path
+            for path in verifier.ALLOWED_FIXED_BUNDLED_RESOURCES
+            if path.startswith(prefix)
+        }
+
+        self.assertEqual(len([path for path in expected_paths if path.endswith("asset.png")]), 12)
+        self.assertEqual(len([path for path in expected_paths if path.endswith("Contents.json")]), 13)
+        self.assertEqual(catalog_paths, expected_paths)
+        self.assertEqual(pinned_paths, expected_paths)
+        for relative in expected_paths:
+            actual_hash = hashlib.sha256((REPO_ROOT / relative).read_bytes()).hexdigest()
+            self.assertEqual(verifier.ALLOWED_FIXED_BUNDLED_RESOURCES[relative], actual_hash)
+
+    def test_app_icon_is_an_opaque_hash_pinned_1024_square(self) -> None:
+        catalog = REPO_ROOT / "IndustrialCityBirmingham/Assets.xcassets/AppIcon.appiconset"
+        contents = json.loads((catalog / "Contents.json").read_text(encoding="utf-8"))
+        base_slots = [entry for entry in contents["images"] if "appearances" not in entry]
+
+        self.assertEqual(len(base_slots), 1)
+        self.assertEqual(base_slots[0].get("filename"), "app-icon.png")
+        icon = catalog / "app-icon.png"
+        png = icon.read_bytes()
+        self.assertEqual(png[:8], b"\x89PNG\r\n\x1a\n")
+        self.assertEqual(
+            (int.from_bytes(png[16:20], "big"), int.from_bytes(png[20:24], "big")),
+            (1024, 1024),
+        )
+        self.assertNotIn(png[25], (4, 6), "iOS app icon must not contain an alpha channel")
+        chunk_types = []
+        cursor = 8
+        while cursor + 12 <= len(png):
+            length = int.from_bytes(png[cursor:cursor + 4], "big")
+            chunk_type = png[cursor + 4:cursor + 8]
+            chunk_types.append(chunk_type)
+            cursor += 12 + length
+            if chunk_type == b"IEND":
+                break
+        self.assertNotIn(b"tRNS", chunk_types, "iOS app icon must not use PNG transparency")
+        self.assertEqual(chunk_types[-1], b"IEND")
+
+        relative = icon.relative_to(REPO_ROOT).as_posix()
+        self.assertEqual(
+            verifier.ALLOWED_FIXED_BUNDLED_RESOURCES[relative],
+            hashlib.sha256(png).hexdigest(),
+        )
 
     def test_bundled_resource_audit_rejects_a_symlinked_app_root(self) -> None:
         with tempfile.TemporaryDirectory(prefix="bundled-root-symlink-test-") as temporary:

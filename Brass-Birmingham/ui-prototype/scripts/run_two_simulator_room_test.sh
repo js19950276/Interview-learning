@@ -22,6 +22,7 @@ self_test() {
     grep -q 'intent-sent version=0' "$0"
     grep -q 'converged version=2 actor=host' "$0"
     [[ "$(grep -c -- '-local-script-harness' "$0")" -eq 3 ]]
+    ! grep -Eq 'CODE_SIGNING_ALLOWED[=]NO' "$0"
     grep -Eq '^LOCK_DIR=.*industrialcity-two-sim\.lock' "$0"
     grep -Eq '^RUN_DIR="\$\(mktemp -d ' "$0"
     grep -Fq 'DERIVED_DATA="$RUN_DIR/DerivedData"' "$0"
@@ -80,7 +81,7 @@ xcrun simctl bootstatus "$iphone_udid" -b
 xcrun simctl bootstatus "$ipad_udid" -b
 
 xcodebuild build -project IndustrialCityBirmingham.xcodeproj -scheme IndustrialCityBirmingham \
-    -destination 'generic/platform=iOS Simulator' -derivedDataPath "$DERIVED_DATA" CODE_SIGNING_ALLOWED=NO >/dev/null
+    -destination 'generic/platform=iOS Simulator' -derivedDataPath "$DERIVED_DATA" >/dev/null
 app_path="$DERIVED_DATA/Build/Products/Debug-iphonesimulator/IndustrialCityBirmingham.app"
 xcrun simctl install "$iphone_udid" "$app_path"
 xcrun simctl install "$ipad_udid" "$app_path"

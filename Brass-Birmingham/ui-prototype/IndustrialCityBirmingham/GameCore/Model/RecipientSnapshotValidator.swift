@@ -4,15 +4,35 @@ extension GameCore {
     nonisolated struct RecipientSnapshotValidationContext: Equatable, Sendable {
         let protocolVersion: Int
         let rulesetVersion: String
+        let gameVariant: GameVariant
         let roomID: RoomID
         let recipient: PlayerID
         let roster: Set<PlayerID>
         let authoritativeVersion: AuthoritativeVersion
+
+        init(
+            protocolVersion: Int,
+            rulesetVersion: String,
+            roomID: RoomID,
+            recipient: PlayerID,
+            roster: Set<PlayerID>,
+            authoritativeVersion: AuthoritativeVersion,
+            gameVariant: GameVariant = .standard
+        ) {
+            self.protocolVersion = protocolVersion
+            self.rulesetVersion = rulesetVersion
+            self.gameVariant = gameVariant
+            self.roomID = roomID
+            self.recipient = recipient
+            self.roster = roster
+            self.authoritativeVersion = authoritativeVersion
+        }
     }
 
     nonisolated enum RecipientSnapshotValidationError: String, Error, Equatable, Sendable {
         case protocolMismatch
         case rulesetMismatch
+        case gameVariantMismatch
         case roomMismatch
         case recipientMismatch
         case versionMismatch
@@ -33,6 +53,9 @@ extension GameCore {
             guard !context.rulesetVersion.isEmpty else {
                 throw RecipientSnapshotValidationError.rulesetMismatch
             }
+            guard (snapshot.gameVariant ?? .standard) == context.gameVariant else {
+                throw RecipientSnapshotValidationError.gameVariantMismatch
+            }
             guard snapshot.roomID == context.roomID else {
                 throw RecipientSnapshotValidationError.roomMismatch
             }
@@ -51,6 +74,10 @@ extension GameCore {
             guard let match = snapshot.match else {
                 throw RecipientSnapshotValidationError.privateSurfaceViolation
             }
+            let recipientIsForcedSaleDebtor = match.forcedSaleDebtorID == context.recipient
+            guard (snapshot.forcedSale != nil) == recipientIsForcedSaleDebtor else {
+                throw RecipientSnapshotValidationError.privateSurfaceViolation
+            }
             guard match.players.map(\.id).count == context.roster.count,
                   Set(match.players.map(\.id)) == context.roster
             else { throw RecipientSnapshotValidationError.rosterMismatch }
@@ -59,7 +86,8 @@ extension GameCore {
             guard match.trivialOptions.allSatisfy({ isCanonicalTrivialOption($0, visibleHand: visibleHand) })
             else { throw RecipientSnapshotValidationError.trivialOptionViolation }
             guard snapshot.checksum == (try GameCore.snapshotChecksum(
-                roomID: snapshot.roomID, recipient: snapshot.recipient, players: snapshot.players,
+                roomID: snapshot.roomID, recipient: snapshot.recipient,
+                gameVariant: snapshot.gameVariant, players: snapshot.players,
                 activePlayerID: snapshot.activePlayerID, turn: snapshot.turn,
                 actionNumber: snapshot.actionNumber, authoritativeVersion: snapshot.authoritativeVersion,
                 discardPile: snapshot.discardPile, forcedSale: snapshot.forcedSale, match: snapshot.match

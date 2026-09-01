@@ -12,7 +12,10 @@ struct ResourceRulesTests {
         state.boardIndustryPlacements = [
             industry("coal-b", at: "dudley", owner: opponent, kind: "coal-mine", resource: 2),
             industry("coal-a", at: "tamworth", owner: player, kind: "coal-mine", resource: 2),
-            industry("coal-far", at: "burton-on-trent", owner: opponent, kind: "coal-mine", resource: 2),
+            industry(
+                "coal-far", at: "burton-on-trent", owner: opponent,
+                kind: "coal-mine", level: 2, resource: 2
+            ),
         ]
         state.placedLinks = [
             link("birmingham-dudley"), link("birmingham-tamworth"),
@@ -36,7 +39,10 @@ struct ResourceRulesTests {
         var state = makeState()
         state.boardIndustryPlacements = [
             industry("near", at: "tamworth", owner: opponent, kind: "coal-mine", resource: 1),
-            industry("far", at: "burton-on-trent", owner: opponent, kind: "coal-mine", resource: 1),
+            industry(
+                "far", at: "burton-on-trent", owner: opponent,
+                kind: "coal-mine", level: 2, resource: 1
+            ),
         ]
         state.placedLinks = [link("birmingham-tamworth"), link("burton-on-trent-tamworth")]
         rebalanceResources(&state)
@@ -173,7 +179,7 @@ struct ResourceRulesTests {
             state: &ironState,
             catalog: catalog
         )
-        #expect(ironState.players[0].cash == 34)
+        #expect(ironState.players[0].cash == 35)
         #expect(ironState.boardIndustryPlacements[0].isFlipped)
         #expect(ironState.boardIndustryPlacements[0].marketDeliveryResolved)
         #expect(ironState.players[0].incomePosition == 13)
@@ -453,7 +459,7 @@ struct ResourceRulesTests {
         let ironPlan = developPlan(actorID: player, baseVersion: ironMixed.authoritativeVersion, requests: [
             .init(resource: .iron, consumerLocationID: "", context: .standard, source: .industry(placementID: "last-iron")),
             .init(resource: .iron, consumerLocationID: "", context: .standard, source: .marketSlot(resource: .iron, index: 0)),
-        ], tileIDs: ["develop-1", "develop-2"])
+        ], tileIDs: ["red-manufacturer-1-1", "red-manufacturer-2-1"])
         _ = try applyPlan(ironPlan, to: &ironMixed, catalog: catalog)
         #expect(ironMixed.players[0].cash == 29)
         #expect(componentTotals(ironMixed) == ironBefore)
@@ -706,7 +712,7 @@ struct ResourceRulesTests {
             roomID: .init(rawValue: "room"),
             actionID: "action-iron-1",
             actorID: player,
-            target: .develop(tileIDs: ["develop-1"])
+            target: .develop(tileIDs: ["red-manufacturer-1-1"])
         )
         let request = GameCore.ResourceRequest(
             resource: .iron,
@@ -793,7 +799,7 @@ struct ResourceRulesTests {
             .init(
                 context: .init(
                     roomID: .init(rawValue: "room"), actionID: "wrong-count", actorID: player,
-                    target: .develop(tileIDs: ["develop-1", "develop-2"])
+                    target: .develop(tileIDs: ["red-manufacturer-1-1", "red-manufacturer-2-1"])
                 ),
                 baseVersion: original.authoritativeVersion,
                 requests: [request]
@@ -801,7 +807,7 @@ struct ResourceRulesTests {
             .init(
                 context: .init(
                     roomID: .init(rawValue: "room"), actionID: "", actorID: player,
-                    target: .develop(tileIDs: ["develop-1"])
+                    target: .develop(tileIDs: ["red-manufacturer-1-1"])
                 ),
                 baseVersion: original.authoritativeVersion,
                 requests: [request]
@@ -893,20 +899,20 @@ struct ResourceRulesTests {
         second.placementID = "second"
         second.tile.id = "tile-second"
         duplicateSlot.boardIndustryPlacements = [first, second]
-        rebalanceResources(&duplicateSlot)
+        rebalanceResources(&duplicateSlot, repairIndustries: false)
 
         var duplicateTile = makeState()
         second.locationID = "tamworth"
         second.slotIndex = 0
         second.tile.id = first.tile.id
         duplicateTile.boardIndustryPlacements = [first, second]
-        rebalanceResources(&duplicateTile)
+        rebalanceResources(&duplicateTile, repairIndustries: false)
 
         var outOfBounds = makeState()
         var invalidSlot = first
         invalidSlot.slotIndex = 99
         outOfBounds.boardIndustryPlacements = [invalidSlot]
-        rebalanceResources(&outOfBounds)
+        rebalanceResources(&outOfBounds, repairIndustries: false)
 
         for invalid in [duplicateSlot, duplicateTile, outOfBounds] {
             #expect(GameCore.GameRulesEngine.legalResourceSources(
@@ -956,8 +962,7 @@ struct ResourceRulesTests {
     @Test func authorityDerivesRequirementsFromConcreteActionTargetsAndRoom() throws {
         let catalog = try verifiedCatalog()
         var state = makeState()
-        state.boardIndustryPlacements = [industry("build-beer", at: "walsall", owner: player, kind: "brewery", resource: 1)]
-        rebalanceResources(&state)
+        let publicBeerBefore = state.publicSupply.beer
         let context = GameCore.ResourceActionContext(
             roomID: .init(rawValue: "room"),
             actionID: "build-cotton-2",
@@ -971,7 +976,6 @@ struct ResourceRulesTests {
         )
         let requests: [GameCore.ResourceRequest] = [
             .init(resource: .coal, consumerLocationID: "birmingham", context: .standard, source: .marketSlot(resource: .coal, index: 0)),
-            .init(resource: .beer, consumerLocationID: "birmingham", context: .standard, source: .industry(placementID: "build-beer")),
         ]
         state.placedLinks = [link("birmingham-oxford")]
         let proposal = GameCore.ResourcePlan(context: context, baseVersion: state.authoritativeVersion, requests: requests)
@@ -987,6 +991,7 @@ struct ResourceRulesTests {
             to: &state,
             catalog: catalog
         )
+        #expect(state.publicSupply.beer == publicBeerBefore)
 
         var rail = makeState()
         rail.era = .rail
@@ -1035,7 +1040,7 @@ struct ResourceRulesTests {
         let wrongPairing = GameCore.ResourcePlan(
             context: .init(
                 roomID: .init(rawValue: "room"), actionID: "develop-wrong", actorID: player,
-                target: .develop(tileIDs: ["develop-1"])
+                target: .develop(tileIDs: ["red-manufacturer-1-1"])
             ),
             baseVersion: wrongRoom.authoritativeVersion,
             requests: [.init(resource: .coal, consumerLocationID: "", context: .standard, source: .marketSlot(resource: .coal, index: 0))]
@@ -1058,7 +1063,7 @@ struct ResourceRulesTests {
         let repeated = GameCore.ResourcePlan(
             context: .init(
                 roomID: .init(rawValue: "room"), actionID: "action-1", actorID: player,
-                target: .develop(tileIDs: ["develop-1"])
+                target: .develop(tileIDs: ["red-manufacturer-1-1"])
             ),
             baseVersion: state.authoritativeVersion,
             requests: [.init(resource: .iron, consumerLocationID: "", context: .standard, source: .marketSlot(resource: .iron, index: 0))]
@@ -1173,7 +1178,7 @@ struct ResourceRulesTests {
         actorID: GameCore.PlayerID,
         baseVersion: GameCore.AuthoritativeVersion,
         requests: [GameCore.ResourceRequest],
-        tileIDs: [String] = ["develop-1"],
+        tileIDs: [String] = ["red-manufacturer-1-1"],
         actionID: String = UUID().uuidString
     ) -> GameCore.ResourcePlan {
         .init(
@@ -1202,8 +1207,6 @@ struct ResourceRulesTests {
         let manufacturerIndex = state.players[0].industryStacks.firstIndex {
             $0.industryDefinitionID == "manufacturer"
         }!
-        state.players[0].industryStacks[manufacturerIndex].tiles[0].id = "develop-1"
-        state.players[0].industryStacks[manufacturerIndex].tiles[1].id = "develop-2"
         state.coalMarket = coalMarket(filledIndices: Set(0..<14))
         state.ironMarket = ironMarket(filledIndices: Set(0..<10))
         state.merchants = validMerchants()
@@ -1228,13 +1231,18 @@ struct ResourceRulesTests {
     }
 
     private func ironMarket(filledIndices: Set<Int>) -> GameCore.ResourceMarket {
-        let prices = [1, 1, 1, 2, 2, 2, 3, 3, 4, 4]
-        return .init(resource: .iron, slots: prices.enumerated().map {
+        return .init(resource: .iron, slots: GameCore.ResourceMarket.officialIronPrices.enumerated().map {
             .init(price: $0.element, hasCube: filledIndices.contains($0.offset))
         })
     }
 
-    private func rebalanceResources(_ state: inout GameCore.GameState) {
+    private func rebalanceResources(
+        _ state: inout GameCore.GameState,
+        repairIndustries: Bool = true
+    ) {
+        if repairIndustries {
+            repairIndustryFixture(&state, catalog: try! verifiedCatalog())
+        }
         let boardCoal = state.boardIndustryPlacements.filter { $0.tile.industryDefinitionID == "coal-mine" }.reduce(0) { $0 + max(0, $1.resourceCount) }
         let boardIron = state.boardIndustryPlacements.filter { $0.tile.industryDefinitionID == "iron-works" }.reduce(0) { $0 + max(0, $1.resourceCount) }
         let boardBeer = state.boardIndustryPlacements.filter { $0.tile.industryDefinitionID == "brewery" }.reduce(0) { $0 + max(0, $1.resourceCount) }

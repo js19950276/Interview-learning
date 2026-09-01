@@ -6,5 +6,7 @@ extension GameCore {
         var acceptedIndustryIDs: [String]
         var count: Int
         var playerCounts: [Int]
+
+        var linkPoints: Int { 2 }
     }
 }

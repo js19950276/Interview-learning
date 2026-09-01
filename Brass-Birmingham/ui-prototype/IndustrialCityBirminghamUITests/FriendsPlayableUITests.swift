@@ -19,7 +19,9 @@ final class FriendsPlayableUITests: XCTestCase {
         app.launchArguments = ["-local-ui-fixture", "-reduce-motion", "YES"]
         app.launch()
         XCTAssertTrue(app.otherElements["real.match"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["运河时代"].waitForExistence(timeout: 2))
+        let header = app.descendants(matching: .any)["match.header"]
+        XCTAssertTrue(header.waitForExistence(timeout: 2))
+        XCTAssertTrue(waitForLabel(header, containing: "运河时代"))
         XCTAssertTrue(app.descendants(matching: .any)["map.routeLegend"].waitForExistence(timeout: 2))
         XCUIDevice.shared.orientation = .landscapeLeft
         Thread.sleep(forTimeInterval: 2)
@@ -37,7 +39,9 @@ final class FriendsPlayableUITests: XCTestCase {
         app.launchArguments = ["-local-ui-fixture", "-rail-fixture", "-reduce-motion", "YES"]
         app.launch()
         XCTAssertTrue(app.otherElements["real.match"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["铁路时代"].waitForExistence(timeout: 2))
+        let header = app.descendants(matching: .any)["match.header"]
+        XCTAssertTrue(header.waitForExistence(timeout: 2))
+        XCTAssertTrue(waitForLabel(header, containing: "铁路时代"))
         XCTAssertTrue(app.descendants(matching: .any)["map.routeLegend"].waitForExistence(timeout: 2))
         XCUIDevice.shared.orientation = .landscapeLeft
         Thread.sleep(forTimeInterval: 2)
@@ -77,8 +81,8 @@ final class FriendsPlayableUITests: XCTestCase {
         XCTAssertTrue(confirm.waitForExistence(timeout: 2))
         confirm.tap()
 
-        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'v1'")).firstMatch
-            .waitForExistence(timeout: 2))
+        let header = app.descendants(matching: .any)["match.header"]
+        XCTAssertTrue(waitForLabel(header, containing: "权威版本 v1"))
         XCTAssertTrue(app.buttons[cardIdentifier].waitForNonExistence(timeout: 2))
     }
 
@@ -123,8 +127,8 @@ final class FriendsPlayableUITests: XCTestCase {
         }
         XCTAssertTrue(confirm.waitForExistence(timeout: 2))
         confirm.tap()
-        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'v1'")).firstMatch
-            .waitForExistence(timeout: 3))
+        let header = app.descendants(matching: .any)["match.header"]
+        XCTAssertTrue(waitForLabel(header, containing: "权威版本 v1", timeout: 3))
         if let submittedCardID {
             XCTAssertTrue(app.buttons[submittedCardID].waitForNonExistence(timeout: 2))
         }
@@ -254,5 +258,22 @@ final class FriendsPlayableUITests: XCTestCase {
         industries.name = "iphone-industry-drawer"
         industries.lifetime = .keepAlways
         add(industries)
+    }
+
+    @MainActor
+    private func waitForLabel(
+        _ element: XCUIElement,
+        containing text: String,
+        timeout: TimeInterval = 2
+    ) -> Bool {
+        XCTWaiter.wait(
+            for: [
+                XCTNSPredicateExpectation(
+                    predicate: NSPredicate(format: "label CONTAINS %@", text),
+                    object: element
+                )
+            ],
+            timeout: timeout
+        ) == .completed
     }
 }

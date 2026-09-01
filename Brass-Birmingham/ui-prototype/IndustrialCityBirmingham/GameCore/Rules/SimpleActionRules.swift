@@ -84,6 +84,10 @@ extension GameCore {
             else { throw SimpleActionRuleError.notActivePlayer }
             guard let card = player.hand.first(where: { $0.id == intent.cardID })
             else { throw SimpleActionRuleError.missingCard }
+            let (_, cashOverflow) = player.cash.addingReportingOverflow(30)
+            guard cashOverflow == false else {
+                throw GameRulesEngine.GameRulesInternalError.arithmeticOverflow
+            }
             let entries = verifiedCatalog.catalog.incomeTrack.entries
             guard let currentIncome = entries.first(where: { $0.position == player.incomePosition })?.income else {
                 throw SimpleActionRuleError.incomeFloor

@@ -236,6 +236,32 @@ nonisolated enum GameCore {
         struct RailPreparedDetails: Codable, Equatable, Sendable {
             let removedPlacementIDs: [String]
             let handCounts: [PlayerID: Int]
+
+            private enum CodingKeys: String, CodingKey {
+                case removedPlacementIDs
+                case handCounts
+            }
+
+            init(removedPlacementIDs: [String], handCounts: [PlayerID: Int]) {
+                self.removedPlacementIDs = removedPlacementIDs
+                self.handCounts = handCounts
+            }
+
+            init(from decoder: any Decoder) throws {
+                let container = try decoder.container(keyedBy: CodingKeys.self)
+                removedPlacementIDs = try container.decode([String].self, forKey: .removedPlacementIDs)
+                handCounts = try container.decode([PlayerID: Int].self, forKey: .handCounts)
+            }
+
+            func encode(to encoder: any Encoder) throws {
+                var container = encoder.container(keyedBy: CodingKeys.self)
+                try container.encode(removedPlacementIDs, forKey: .removedPlacementIDs)
+                var handCountsContainer = container.nestedUnkeyedContainer(forKey: .handCounts)
+                for (playerID, handCount) in handCounts.sorted(by: { $0.key.rawValue < $1.key.rawValue }) {
+                    try handCountsContainer.encode(playerID)
+                    try handCountsContainer.encode(handCount)
+                }
+            }
         }
         struct GameEndedDetails: Codable, Equatable, Sendable {
             let standings: [[PlayerID]]
@@ -293,6 +319,8 @@ nonisolated enum GameCore {
     struct ViewSnapshot: Codable, Equatable, Sendable {
         let roomID: RoomID
         let recipient: PlayerID
+        /// Missing means a legacy standard-game snapshot.
+        let gameVariant: GameVariant?
         let players: [VisiblePlayer]
         let activePlayerID: PlayerID
         let turn: Int
@@ -309,10 +337,12 @@ nonisolated enum GameCore {
             authoritativeVersion: AuthoritativeVersion, discardPile: [String],
             forcedSale: ForcedSaleProjection? = nil,
             match: MatchProjection? = nil,
+            gameVariant: GameVariant? = .standard,
             checksum: String
         ) {
             self.roomID = roomID
             self.recipient = recipient
+            self.gameVariant = gameVariant
             self.players = players
             self.activePlayerID = activePlayerID
             self.turn = turn
@@ -326,13 +356,14 @@ nonisolated enum GameCore {
 
         private enum CodingKeys: String, CodingKey {
             case roomID, recipient, players, activePlayerID, turn, actionNumber
-            case authoritativeVersion, discardPile, forcedSale, match, checksum
+            case authoritativeVersion, discardPile, forcedSale, match, gameVariant, checksum
         }
 
         init(from decoder: Decoder) throws {
             let values = try decoder.container(keyedBy: CodingKeys.self)
             roomID = try values.decode(RoomID.self, forKey: .roomID)
             recipient = try values.decode(PlayerID.self, forKey: .recipient)
+            gameVariant = try values.decodeIfPresent(GameVariant.self, forKey: .gameVariant)
             players = try values.decode([VisiblePlayer].self, forKey: .players)
             activePlayerID = try values.decode(PlayerID.self, forKey: .activePlayerID)
             turn = try values.decode(Int.self, forKey: .turn)
@@ -352,6 +383,7 @@ nonisolated enum GameCore {
 
     enum ProjectionError: Error, Equatable, Sendable {
         case unknownRecipient
+        case invalidPlayerOrder
     }
 
     struct HostEngine: Equatable, Sendable {
@@ -552,6 +584,7 @@ nonisolated enum GameCore {
             let checksum = try GameCore.snapshotChecksum(
                 roomID: roomID,
                 recipient: recipient,
+                gameVariant: gameState.resolvedGameVariant,
                 players: visiblePlayers,
                 activePlayerID: activePlayerID,
                 turn: gameState.roundNumber,
@@ -573,6 +606,7 @@ nonisolated enum GameCore {
                 discardPile: gameState.publicDiscard.map(\.id),
                 forcedSale: forcedSale,
                 match: match,
+                gameVariant: gameState.resolvedGameVariant,
                 checksum: checksum
             )
         }
@@ -729,6 +763,7 @@ nonisolated enum GameCore {
     static func snapshotChecksum(
         roomID: RoomID,
         recipient: PlayerID,
+        gameVariant: GameVariant? = .standard,
         players: [VisiblePlayer],
         activePlayerID: PlayerID,
         turn: Int,
@@ -741,6 +776,7 @@ nonisolated enum GameCore {
         struct Material: Encodable {
             var roomID: RoomID
             var recipient: PlayerID
+            var gameVariant: GameVariant?
             var players: [VisiblePlayer]
             var activePlayerID: PlayerID
             var turn: Int
@@ -751,7 +787,7 @@ nonisolated enum GameCore {
             var match: MatchProjection?
         }
         return try CanonicalChecksum.sha256(Material(
-            roomID: roomID, recipient: recipient, players: players,
+            roomID: roomID, recipient: recipient, gameVariant: gameVariant, players: players,
             activePlayerID: activePlayerID, turn: turn, actionNumber: actionNumber,
             authoritativeVersion: authoritativeVersion, discardPile: discardPile,
             forcedSale: forcedSale, match: match

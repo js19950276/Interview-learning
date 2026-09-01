@@ -124,6 +124,9 @@ struct ActionContextBar: View {
         if choices.contains(where: { choice in isIndustryPlacement(choice.value) }) {
             return prefix + "选择产业"
         }
+        if choices.contains(where: { choice in isResourceSource(choice.value) }) {
+            return prefix + resourceSourceInstruction(for: action, choices: choices)
+        }
         if choices.contains(where: { choice in isCard(choice.value) }) {
             return prefix + "选择额外手牌"
         }
@@ -167,5 +170,38 @@ struct ActionContextBar: View {
     private static func isCard(_ value: GameCore.LegalChoiceValue) -> Bool {
         if case .card = value { return true }
         return false
+    }
+
+    private static func isResourceSource(_ value: GameCore.LegalChoiceValue) -> Bool {
+        if case .resourceSource = value { return true }
+        return false
+    }
+
+    private static func resourceSourceInstruction(
+        for action: GameAction,
+        choices: [GameCore.LegalChoice]
+    ) -> String {
+        switch action {
+        case .sell:
+            return "选择啤酒来源"
+        case .develop:
+            return "选择钢铁来源"
+        case .network:
+            let isBeer = choices.contains { choice in
+                if case .resourceSource(.merchantBeer) = choice.value { return true }
+                return choice.label.contains("啤酒")
+            }
+            return isBeer ? "选择啤酒来源" : "选择煤炭来源"
+        case .build:
+            if choices.contains(where: { $0.label.contains("煤") }) {
+                return "选择煤炭来源"
+            }
+            if choices.contains(where: { $0.label.contains("铁") }) {
+                return "选择钢铁来源"
+            }
+            return "选择资源来源"
+        case .loan, .scout, .pass:
+            return "选择资源来源"
+        }
     }
 }

@@ -93,19 +93,44 @@ final class MatchInteractionUITests: XCTestCase {
             XCTAssertTrue(actionGrid.waitForExistence(timeout: 1))
 
             let map = app.descendants(matching: .any)["match.map"]
-            map.coordinate(withNormalizedOffset: CGVector(dx: 0.60, dy: 0.30)).tap()
+            let walsallBurtonRoute = map.coordinate(
+                withNormalizedOffset: CGVector(dx: 0.60, dy: 0.30)
+            )
+            walsallBurtonRoute.tap()
+            XCTAssertTrue(actionGrid.exists, "A route tap must not be treated as background")
+
+            let emptyNorthMapArea = map.coordinate(
+                withNormalizedOffset: CGVector(dx: 0.60, dy: 0.10)
+            )
+            emptyNorthMapArea.tap()
             XCTAssertTrue(actionGrid.waitForNonExistence(timeout: 2))
             return
         }
+
+        let buildCard = app.buttons["hand.card.card-birmingham"]
+        XCTAssertTrue(buildCard.waitForExistence(timeout: 2))
+        buildCard.tap()
+        app.buttons["match.actionButton"].tap()
+        app.buttons["action.build"].tap()
+
+        let birminghamTarget = app.buttons["map.target.birmingham"]
+        XCTAssertTrue(birminghamTarget.waitForExistence(timeout: 2))
+
+        let map = app.descendants(matching: .any)["match.map"]
+        XCTAssertTrue(map.exists)
 
         app.buttons["match.playerRail"].tap()
         let drawer = app.descendants(matching: .any)["overlay.playerRail"]
         XCTAssertTrue(drawer.waitForExistence(timeout: 1))
 
-        let map = app.descendants(matching: .any)["match.map"]
-        XCTAssertTrue(map.exists)
-
-        map.coordinate(withNormalizedOffset: CGVector(dx: 0.55, dy: 0.45)).tap()
+        let birminghamLocation = map.coordinate(
+            withNormalizedOffset: CGVector(dx: 0.50, dy: 0.57)
+        )
+        birminghamLocation.tap()
+        XCTAssertTrue(
+            waitForEnabled(app.buttons["action.confirm"]),
+            "The Birmingham map point must reach the same selected build draft"
+        )
         XCTAssertTrue(drawer.exists, "A map target tap must not be treated as background")
 
         map.swipeLeft()

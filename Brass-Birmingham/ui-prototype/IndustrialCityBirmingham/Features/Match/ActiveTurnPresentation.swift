@@ -45,6 +45,47 @@ nonisolated struct ActiveTurnNoticeTracker: Equatable, Sendable {
     }
 }
 
+nonisolated struct GameEndPresentation: Equatable, Sendable {
+    nonisolated struct Row: Equatable, Sendable {
+        let rank: Int
+        let playerNames: [String]
+    }
+
+    let title: String
+    let rows: [Row]
+    let accessibilityLabel: String
+
+    static func make(
+        standings: [[String]],
+        players: [PlayerSummary],
+        localPlayerID: String
+    ) -> Self? {
+        guard standings.isEmpty == false,
+              standings.allSatisfy({ $0.isEmpty == false })
+        else { return nil }
+        let namesByID = Dictionary(uniqueKeysWithValues: players.map { ($0.id, $0.name) })
+        var rank = 1
+        let rows = standings.map { group in
+            defer { rank += group.count }
+            return Row(
+                rank: rank,
+                playerNames: group.map { namesByID[$0] ?? $0 }
+            )
+        }
+        let winners = standings[0]
+        let title: String
+        if winners.contains(localPlayerID) {
+            title = winners.count == 1 ? "你获胜了" : "你并列获胜"
+        } else {
+            title = "对局结束"
+        }
+        let rankingLabel = rows.map {
+            "第 \($0.rank) 名：\($0.playerNames.joined(separator: "、"))"
+        }.joined(separator: "；")
+        return .init(title: title, rows: rows, accessibilityLabel: "\(title)，\(rankingLabel)")
+    }
+}
+
 extension PlayerColor {
     nonisolated var localizedName: String {
         switch self {

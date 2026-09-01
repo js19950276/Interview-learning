@@ -85,26 +85,8 @@ extension GameCore {
             state: GameState,
             catalog: VerifiedGameDataCatalog
         ) throws -> Bool {
-            try ExactCompletionSearch.containsCompletion(
-                root: draft,
-                key: { try $0.canonicalDigest() },
-                expand: { current in
-                    let query = LegalActionQuery(
-                        requestID: "availability", baseVersion: state.authoritativeVersion,
-                        draft: current
-                    )
-                    let response = try LegalActionQueryEngine.respond(
-                        to: query, actorID: actorID, state: state, catalog: catalog
-                    )
-                    if response.completePayload != nil { return .complete }
-                    guard !response.nextChoices.isEmpty else { return .deadEnd }
-                    return .branches(response.nextChoices.map { choice in
-                        var next = current
-                        next.selections.append(choice.value)
-                        return next
-                    })
-                },
-                isDeadEndError: { $0 is LegalActionQueryError }
+            try LegalActionQueryEngine.hasCompletablePath(
+                draft: draft, actorID: actorID, state: state, catalog: catalog
             )
         }
 

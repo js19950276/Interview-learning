@@ -176,6 +176,35 @@ struct SessionViewStoreTests {
         #expect(guestStore.canStart == false)
     }
 
+    @Test func hostStartButtonRejectsReadyGuestThatDisconnectedBeforeStart() async throws {
+        let catalog = try GameCore.GameDataLoader.loadBundledFixtureCatalog()
+        let hub = LoopbackTransportHub()
+        let host = verifiedCoordinator(
+            id: hostID, token: "v2-host", transport: hub.makeTransport(peerID: hostID), catalog: catalog
+        )
+        let guest = verifiedCoordinator(
+            id: guestID, token: "v2-guest", transport: hub.makeTransport(peerID: guestID), catalog: catalog
+        )
+        let hostStore = SessionViewStore(coordinator: host, role: .host)
+        let guestStore = SessionViewStore(coordinator: guest, role: .guest)
+        await hostStore.connect()
+        await guestStore.connect()
+        await hostStore.setReady(true)
+        await guestStore.setReady(true)
+        try await eventually { hostStore.readyPlayerIDs.count == 2 }
+
+        await guest.disconnect()
+        try await eventually {
+            hostStore.readyPlayerIDs.count == 2
+                && hostStore.connectedPlayerIDs == [self.hostID]
+        }
+
+        #expect(hostStore.canStart == false)
+        await hostStore.startGame()
+        #expect(hostStore.snapshot == nil)
+        #expect(hostStore.errorMessage == "仍有玩家未准备。")
+    }
+
     @Test func allGuestsReceiveAuthoritativeRosterAndReadyUpdates() async throws {
         let hub = LoopbackTransportHub()
         let host = coordinator(id: "host", token: "t-host", transport: hub.makeTransport(peerID: hostID))
@@ -229,6 +258,42 @@ struct SessionViewStoreTests {
         try await reconnected.joinRoom()
         try await eventually { store.syncStatus == .synchronized }
         #expect(store.snapshot?.activePlayerID == guestID)
+    }
+
+    @Test func inactiveGuestDisconnectDoesNotBlockTheOnlineActiveHost() async throws {
+        let hub = LoopbackTransportHub()
+        let inactiveID = GameCore.PlayerID(rawValue: "z-inactive")
+        let host = coordinator(
+            id: hostID.rawValue, token: "t-host",
+            transport: hub.makeTransport(peerID: hostID)
+        )
+        let nextGuest = coordinator(
+            id: guestID.rawValue, token: "t-guest",
+            transport: hub.makeTransport(peerID: guestID)
+        )
+        let inactiveGuest = coordinator(
+            id: inactiveID.rawValue, token: "t-inactive",
+            transport: hub.makeTransport(peerID: inactiveID)
+        )
+        let store = SessionViewStore(coordinator: host, role: .host)
+
+        await store.connect()
+        try await nextGuest.joinRoom()
+        try await inactiveGuest.joinRoom()
+        await store.setReady(true)
+        try await nextGuest.setReady(true)
+        try await inactiveGuest.setReady(true)
+        try await eventually { store.readyPlayerIDs.count == 3 }
+        await store.startGame()
+        try await eventually { store.snapshot?.activePlayerID == hostID }
+
+        await inactiveGuest.disconnect()
+        try await eventuallyAsync { await host.peersNeedingRecovery == [inactiveID] }
+        try await eventually { store.syncStatus == .synchronized }
+
+        let card = try #require(store.hand.first)
+        store.selectCard(card)
+        #expect(store.canSubmitPass)
     }
 
     @Test func successfulLobbyRebroadcastClearsRecovery() async throws {

@@ -7,6 +7,8 @@ extension GameCore {
     }
 
     nonisolated enum ScoringRules {
+        private static let merchantLocationLinkPoints = 2
+
         static func scoreEra(
             _ era: Era,
             state: inout GameState,
@@ -14,6 +16,7 @@ extension GameCore {
         ) throws -> GameTransitionEvent {
             let definitions = Dictionary(uniqueKeysWithValues: catalog.catalog.industries.map { ($0.id, $0) })
             let routes = Dictionary(uniqueKeysWithValues: catalog.catalog.board.routes.map { ($0.id, $0) })
+            let merchantLocationIDs = Set(catalog.catalog.board.merchantSlots.map(\.locationID))
             var linkPoints = Dictionary(uniqueKeysWithValues: state.players.map { ($0.id, 0) })
             var industryPoints = linkPoints
             let flipped = state.boardIndustryPlacements.filter(\.isFlipped)
@@ -37,6 +40,11 @@ extension GameCore {
                         .levels.first(where: { $0.level == placement.tile.level })?.linkPoints
                     else { throw ScoringRuleError.missingDefinition }
                     linkPoints[link.ownerID] = try checkedAdd(linkPoints[link.ownerID, default: 0], points)
+                }
+                for locationID in Set(adjacent) where merchantLocationIDs.contains(locationID) {
+                    linkPoints[link.ownerID] = try checkedAdd(
+                        linkPoints[link.ownerID, default: 0], merchantLocationLinkPoints
+                    )
                 }
             }
 
@@ -129,16 +137,16 @@ extension GameCore {
             ))
         }
 
-        static func resolveWinner(state: inout GameState) -> GameTransitionEvent {
+        static func standings(for state: GameState) -> [[PlayerID]] {
             let playersByID = Dictionary(uniqueKeysWithValues: state.players.map { ($0.id, $0) })
             let previousIndex = Dictionary(uniqueKeysWithValues: state.playerOrder.enumerated().map {
                 ($0.element, $0.offset)
             })
             let sorted = state.playerOrder.sorted { leftID, rightID in
                 guard let left = playersByID[leftID], let right = playersByID[rightID] else { return false }
-                let leftVP = left.victoryPoints - left.victoryPointDebt
-                let rightVP = right.victoryPoints - right.victoryPointDebt
-                if leftVP != rightVP { return leftVP > rightVP }
+                if left.victoryPoints != right.victoryPoints {
+                    return left.victoryPoints > right.victoryPoints
+                }
                 if left.incomePosition != right.incomePosition { return left.incomePosition > right.incomePosition }
                 if left.cash != right.cash { return left.cash > right.cash }
                 return previousIndex[leftID, default: 0] < previousIndex[rightID, default: 0]
@@ -148,7 +156,7 @@ extension GameCore {
                 guard let player = playersByID[playerID] else { continue }
                 if let lastID = standings.last?.first,
                    let last = playersByID[lastID],
-                   player.victoryPoints - player.victoryPointDebt == last.victoryPoints - last.victoryPointDebt,
+                   player.victoryPoints == last.victoryPoints,
                    player.incomePosition == last.incomePosition,
                    player.cash == last.cash {
                     standings[standings.count - 1].append(playerID)
@@ -156,10 +164,16 @@ extension GameCore {
                     standings.append([playerID])
                 }
             }
+            return standings
+        }
+
+        static func resolveWinner(state: inout GameState) -> GameTransitionEvent {
+            let standings = standings(for: state)
             state.turnPhase = .ended
             state.actionsRemaining = 0
             state.roundIncomeCursor = nil
             state.activePlayerID = standings.first?.first ?? state.playerOrder.first
+            state.finalStandings = standings
             return .gameEnded(.init(standings: standings))
         }
 

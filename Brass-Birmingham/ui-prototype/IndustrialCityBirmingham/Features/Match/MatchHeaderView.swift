@@ -3,6 +3,7 @@ import SwiftUI
 struct MatchHeaderView: View {
     let state: DemoMatchState
     let roomID: String?
+    let authoritativeVersion: Int?
     let syncStatus: String?
     let isSynchronized: Bool?
     let activeTurn: ActiveTurnPresentation?
@@ -11,6 +12,7 @@ struct MatchHeaderView: View {
     init(
         state: DemoMatchState,
         roomID: String? = nil,
+        authoritativeVersion: Int? = nil,
         syncStatus: String? = nil,
         isSynchronized: Bool? = nil,
         activeTurn: ActiveTurnPresentation? = nil,
@@ -18,6 +20,7 @@ struct MatchHeaderView: View {
     ) {
         self.state = state
         self.roomID = roomID
+        self.authoritativeVersion = authoritativeVersion
         self.syncStatus = syncStatus
         self.isSynchronized = isSynchronized
         self.activeTurn = activeTurn
@@ -114,6 +117,7 @@ struct MatchHeaderView: View {
     private var accessibilitySummary: String {
         [
             roomID.map { "房间 \($0)" },
+            authoritativeVersion.map { "权威版本 v\($0)" },
             Optional("\(state.era)，第 \(state.round) 回合，共 \(state.roundCount) 回合"),
             activeTurn?.accessibilityLabel,
             Optional("行动 \(state.actionNumber)"),

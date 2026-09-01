@@ -20,6 +20,11 @@ nonisolated protocol Transport: Sendable {
     func startHosting(roomID: GameCore.RoomID, port: UInt16?) async throws
     func browse() async throws
     func connect(to peer: GameCore.PlayerID) async throws
+    func authenticate(_ peer: GameCore.PlayerID) async
     func send(_ data: Data, to peer: GameCore.PlayerID) async throws
     func disconnect() async
+}
+
+extension Transport {
+    func authenticate(_: GameCore.PlayerID) async {}
 }

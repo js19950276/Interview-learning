@@ -244,7 +244,8 @@ final class GameMapScene: SKScene {
                     for: location,
                     in: Self.logicalSize,
                     isHighlighted: highlightedIDs.contains(location.id),
-                    highlightedMerchantIDs: highlightedIDs
+                    highlightedMerchantIDs: highlightedIDs,
+                    highlightedIndustryIDs: highlightedIDs
                 )
             )
         }
@@ -285,7 +286,7 @@ final class GameMapScene: SKScene {
         guard let name else { return nil }
         let parts = name.split(separator: ":", maxSplits: 1).map(String.init)
         guard parts.count == 2,
-              ["location", "route", "merchant"].contains(parts[0]),
+              ["location", "route", "merchant", "industry"].contains(parts[0]),
               !parts[1].isEmpty else { return nil }
         return parts[1]
     }

@@ -5,6 +5,7 @@ func repairCardFixture(
     _ state: inout GameCore.GameState,
     catalog: GameCore.VerifiedGameDataCatalog
 ) {
+    repairIndustryFixture(&state, catalog: catalog)
     var remaining = catalog.catalog.cards
         .filter { $0.playerCounts.contains(state.playerCount) }
         .flatMap { definition in
@@ -48,6 +49,201 @@ func repairCardFixture(
     }
     state.wildLocationPool = remaining.filter { $0.definitionID == "wild-location" }
     state.wildIndustryPool = remaining.filter { $0.definitionID == "wild-industry" }
+
+    let capacity = state.era == .canal
+        ? state.canalRoundCapacity
+        : state.railRoundCapacity
+    let expectedPlayableCount: Int
+    switch state.turnPhase {
+    case .active:
+        let actionBudget = GameCore.TurnRules.actionsPerTurn(
+            era: state.era, roundNumber: state.roundNumber
+        )
+        let remainingTurns = max(0, state.playerCount - state.turnsCompletedInRound - 1)
+        let remainingCurrentRoundActions = remainingTurns * actionBudget
+            + state.actionsRemaining
+        expectedPlayableCount = max(0, remainingCurrentRoundActions)
+            + max(0, capacity - state.roundNumber) * state.playerCount * 2
+    case .forcedSale:
+        expectedPlayableCount = max(0, capacity - state.roundNumber) * state.playerCount * 2
+    case .ended:
+        expectedPlayableCount = 0
+    }
+
+    if let expectedCounts = expectedCardZoneCounts(state) {
+        for playerID in state.playerOrder {
+            guard let playerIndex = state.players.firstIndex(where: { $0.id == playerID }),
+                  let expectedHandCount = expectedCounts.hands[playerID]
+            else { continue }
+            if state.players[playerIndex].hand.count > expectedHandCount {
+                let excess = state.players[playerIndex].hand.count - expectedHandCount
+                state.standardDrawDeck.append(
+                    contentsOf: state.players[playerIndex].hand.suffix(excess)
+                )
+                state.players[playerIndex].hand.removeLast(excess)
+            } else if state.players[playerIndex].hand.count < expectedHandCount {
+                let missing = expectedHandCount - state.players[playerIndex].hand.count
+                let drawCount = min(missing, state.standardDrawDeck.count)
+                state.players[playerIndex].hand.append(
+                    contentsOf: state.standardDrawDeck.prefix(drawCount)
+                )
+                state.standardDrawDeck.removeFirst(drawCount)
+            }
+        }
+        if state.standardDrawDeck.count > expectedCounts.deck {
+            let excess = state.standardDrawDeck.count - expectedCounts.deck
+            state.publicDiscard.append(contentsOf: state.standardDrawDeck.suffix(excess))
+            state.standardDrawDeck.removeLast(excess)
+        } else if state.standardDrawDeck.count < expectedCounts.deck {
+            let missing = expectedCounts.deck - state.standardDrawDeck.count
+            let restoreCount = min(missing, state.publicDiscard.count)
+            state.standardDrawDeck.append(contentsOf: state.publicDiscard.suffix(restoreCount))
+            state.publicDiscard.removeLast(restoreCount)
+        }
+    } else {
+        let handCount = state.players.reduce(0) { $0 + $1.hand.count }
+        let playableCount = handCount + state.standardDrawDeck.count
+        if playableCount > expectedPlayableCount {
+            let count = min(playableCount - expectedPlayableCount, state.standardDrawDeck.count)
+            state.publicDiscard.append(contentsOf: state.standardDrawDeck.suffix(count))
+            state.standardDrawDeck.removeLast(count)
+        } else if playableCount < expectedPlayableCount {
+            let count = min(expectedPlayableCount - playableCount, state.publicDiscard.count)
+            state.standardDrawDeck.append(contentsOf: state.publicDiscard.suffix(count))
+            state.publicDiscard.removeLast(count)
+        }
+    }
+}
+
+func repairIndustryFixture(
+    _ state: inout GameCore.GameState,
+    catalog: GameCore.VerifiedGameDataCatalog
+) {
+    for playerIndex in state.players.indices {
+        let playerID = state.players[playerIndex].id
+        let color = state.players[playerIndex].color
+        let canonicalTiles = catalog.catalog.industries.flatMap { definition in
+            definition.levels.flatMap { level in
+                (1...level.copiesPerColor).map { copy in
+                    GameCore.IndustryTile(
+                        id: "\(color.rawValue)-\(definition.id)-\(level.level)-\(copy)",
+                        industryDefinitionID: definition.id,
+                        level: level.level
+                    )
+                }
+            }
+        }
+        let canonicalByID = Dictionary(uniqueKeysWithValues: canonicalTiles.map { ($0.id, $0) })
+        var usedIDs = Set<String>()
+
+        for placementIndex in state.boardIndustryPlacements.indices
+        where state.boardIndustryPlacements[placementIndex].ownerID == playerID {
+            let placementTile = state.boardIndustryPlacements[placementIndex].tile
+            let exactCanonical = canonicalByID[placementTile.id] == placementTile
+            var selectedTile: GameCore.IndustryTile?
+            if exactCanonical {
+                selectedTile = placementTile
+                for stackIndex in state.players[playerIndex].industryStacks.indices {
+                    if let tileIndex = state.players[playerIndex].industryStacks[stackIndex].tiles
+                        .firstIndex(where: { $0.id == placementTile.id }) {
+                        state.players[playerIndex].industryStacks[stackIndex].tiles.remove(at: tileIndex)
+                        break
+                    }
+                }
+            } else if let stackIndex = state.players[playerIndex].industryStacks.firstIndex(where: {
+                $0.industryDefinitionID == placementTile.industryDefinitionID
+            }), let tileIndex = state.players[playerIndex].industryStacks[stackIndex].tiles.firstIndex(where: {
+                $0.level == placementTile.level && canonicalByID[$0.id] == $0
+            }) {
+                selectedTile = state.players[playerIndex].industryStacks[stackIndex].tiles.remove(at: tileIndex)
+            } else {
+                let occupiedIDs = Set(state.players[playerIndex].industryStacks.flatMap(\.tiles).map(\.id))
+                selectedTile = canonicalTiles.first {
+                    $0.industryDefinitionID == placementTile.industryDefinitionID
+                        && $0.level == placementTile.level
+                        && usedIDs.contains($0.id) == false
+                        && occupiedIDs.contains($0.id) == false
+                }
+            }
+            if let selectedTile, usedIDs.insert(selectedTile.id).inserted {
+                state.boardIndustryPlacements[placementIndex].tile = selectedTile
+            }
+        }
+
+        for stackIndex in state.players[playerIndex].industryStacks.indices {
+            for tileIndex in state.players[playerIndex].industryStacks[stackIndex].tiles.indices {
+                let tile = state.players[playerIndex].industryStacks[stackIndex].tiles[tileIndex]
+                if canonicalByID[tile.id] == tile, usedIDs.insert(tile.id).inserted {
+                    continue
+                }
+                if let replacement = canonicalTiles.first(where: {
+                    $0.industryDefinitionID == tile.industryDefinitionID
+                        && $0.level == tile.level
+                        && usedIDs.contains($0.id) == false
+                }) {
+                    state.players[playerIndex].industryStacks[stackIndex].tiles[tileIndex] = replacement
+                    usedIDs.insert(replacement.id)
+                }
+            }
+        }
+    }
+}
+
+private func expectedCardZoneCounts(
+    _ state: GameCore.GameState
+) -> (deck: Int, hands: [GameCore.PlayerID: Int])? {
+    let capacity = state.era == .canal ? state.canalRoundCapacity : state.railRoundCapacity
+    guard (2...4).contains(state.playerCount),
+          capacity == 12 - state.playerCount,
+          (1...capacity).contains(state.roundNumber),
+          state.playerOrder.count == state.playerCount,
+          Set(state.playerOrder) == Set(state.players.map(\.id))
+    else { return nil }
+    let actionSlots = state.era == .canal
+        ? state.playerCount + (capacity - 1) * state.playerCount * 2
+        : capacity * state.playerCount * 2
+    var deck = actionSlots - state.playerCount * 8
+    guard deck >= 0 else { return nil }
+    var hands = Dictionary(uniqueKeysWithValues: state.players.map { ($0.id, 8) })
+
+    func completeTurn(_ playerID: GameCore.PlayerID, budget: Int) -> Bool {
+        guard let hand = hands[playerID], hand >= budget else { return false }
+        let afterActions = hand - budget
+        let refill = min(8 - afterActions, deck)
+        hands[playerID] = afterActions + refill
+        deck -= refill
+        return true
+    }
+    if state.roundNumber > 1 {
+        for round in 1..<state.roundNumber {
+            let budget = GameCore.TurnRules.actionsPerTurn(era: state.era, roundNumber: round)
+            for playerID in state.playerOrder where completeTurn(playerID, budget: budget) == false {
+                return nil
+            }
+        }
+    }
+    let currentBudget = GameCore.TurnRules.actionsPerTurn(
+        era: state.era, roundNumber: state.roundNumber
+    )
+    switch state.turnPhase {
+    case .active:
+        guard state.playerOrder.indices.contains(state.turnsCompletedInRound),
+              (1...currentBudget).contains(state.actionsRemaining)
+        else { return nil }
+        for seat in 0..<state.turnsCompletedInRound
+        where completeTurn(state.playerOrder[seat], budget: currentBudget) == false {
+            return nil
+        }
+        let active = state.playerOrder[state.turnsCompletedInRound]
+        let taken = currentBudget - state.actionsRemaining
+        guard let activeHand = hands[active], activeHand >= taken else { return nil }
+        hands[active] = activeHand - taken
+    case .forcedSale, .ended:
+        for playerID in state.playerOrder where completeTurn(playerID, budget: currentBudget) == false {
+            return nil
+        }
+    }
+    return (deck, hands)
 }
 
 /// Protocol-only adapter for fixtures that intentionally do not model a verified game.

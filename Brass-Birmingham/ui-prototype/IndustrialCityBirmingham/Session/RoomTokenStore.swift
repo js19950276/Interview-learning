@@ -96,46 +96,6 @@ nonisolated struct SecurityKeychainAdapter: SecureItemAdapter {
     }
 }
 
-#if DEBUG
-nonisolated final class DebugMemorySecureItemAdapter: SecureItemAdapter, @unchecked Sendable {
-    private let lock = NSLock()
-    private var storage: [String: Data] = [:]
-
-    func read(service: String, account: String) throws -> Data? {
-        lock.withLock { storage[key(service: service, account: account)] }
-    }
-
-    func readAll(service: String) throws -> [Data] {
-        lock.withLock {
-            let prefix = "\(service)|"
-            return storage.compactMap { key, value in key.hasPrefix(prefix) ? value : nil }
-        }
-    }
-
-    func add(_ data: Data, service: String, account: String) throws {
-        try lock.withLock {
-            let itemKey = key(service: service, account: account)
-            guard storage[itemKey] == nil else { throw SecureItemAdapterError.duplicateItem }
-            storage[itemKey] = data
-        }
-    }
-
-    func update(_ data: Data, service: String, account: String) throws {
-        try lock.withLock {
-            let itemKey = key(service: service, account: account)
-            guard storage[itemKey] != nil else { throw SecureItemAdapterError.itemNotFound }
-            storage[itemKey] = data
-        }
-    }
-
-    func delete(service: String, account: String) throws {
-        lock.withLock { storage[key(service: service, account: account)] = nil }
-    }
-
-    private func key(service: String, account: String) -> String { "\(service)|\(account)" }
-}
-#endif
-
 actor RoomTokenStore {
     static let service = "com.didi.prototype.IndustrialCityBirmingham.room-token"
 

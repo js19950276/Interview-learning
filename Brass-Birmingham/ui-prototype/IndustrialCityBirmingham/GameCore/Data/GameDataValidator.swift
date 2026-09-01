@@ -67,6 +67,13 @@ extension GameCore {
                     path: "board.locations[\(index)].playerCounts",
                     into: &issues
                 )
+                if location.playerCounts != [2, 3, 4] {
+                    issues.append(issue(
+                        .invalidPlayerCount,
+                        "board.locations[\(index)].playerCounts",
+                        "All official board locations must remain available at 2, 3 and 4 players"
+                    ))
+                }
                 let requiresIndustrySlots = location.kind != .merchant
                 if requiresIndustrySlots == location.industrySlots.isEmpty {
                     issues.append(
@@ -115,6 +122,13 @@ extension GameCore {
                     path: "board.routes[\(index)].playerCounts",
                     into: &issues
                 )
+                if route.playerCounts != [2, 3, 4] {
+                    issues.append(issue(
+                        .invalidPlayerCount,
+                        "board.routes[\(index)].playerCounts",
+                        "All official board routes must remain available at 2, 3 and 4 players"
+                    ))
+                }
                 if route.endpoints.count != 2 || Set(route.endpoints).count != 2 {
                     issues.append(
                         issue(

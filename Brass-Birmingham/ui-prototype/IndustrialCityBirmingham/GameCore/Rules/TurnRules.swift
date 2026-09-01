@@ -39,7 +39,7 @@ extension GameCore {
             state.activePlayerID = state.playerOrder.first
             state.roundIncomeCursor = 0
 
-            if state.era == .rail && state.roundNumber >= state.railRoundCapacity {
+            if state.era == .rail && eraCardsAreExhausted(state) {
                 return try completeRound(state: &state, catalog: catalog)
             }
             return try resolveIncomeFromCursor(state: &state, catalog: catalog)
@@ -104,8 +104,8 @@ extension GameCore {
                     state.players[playerIndex].cash, proceeds - pending.shortfall
                 )
             } else {
-                state.players[playerIndex].victoryPointDebt = try checkedAdd(
-                    state.players[playerIndex].victoryPointDebt, pending.shortfall - proceeds
+                loseVictoryPoints(
+                    pending.shortfall - proceeds, playerIndex: playerIndex, state: &state
                 )
             }
             state.turnPhase = .active
@@ -139,9 +139,7 @@ extension GameCore {
                             .map(\.placementID)
                             .sorted()
                         if eligible.isEmpty {
-                            state.players[playerIndex].victoryPointDebt = try checkedAdd(
-                                state.players[playerIndex].victoryPointDebt, shortfall
-                            )
+                            loseVictoryPoints(shortfall, playerIndex: playerIndex, state: &state)
                         } else {
                             let pending = PendingForcedSale(
                                 playerID: playerID, shortfall: shortfall,
@@ -171,11 +169,17 @@ extension GameCore {
                 )),
             ]
             let capacity = state.era == .canal ? state.canalRoundCapacity : state.railRoundCapacity
-            if completedRound < capacity {
+            if eraCardsAreExhausted(state) == false {
+                guard completedRound < capacity else {
+                    throw GameRulesEngine.GameRulesInternalError.invalidAuthorityState
+                }
                 state.roundNumber += 1
                 state.actionsRemaining = actionsPerTurn(era: state.era, roundNumber: state.roundNumber)
                 state.activePlayerID = state.playerOrder.first
                 return events
+            }
+            guard completedRound == capacity else {
+                throw GameRulesEngine.GameRulesInternalError.invalidAuthorityState
             }
             let scoring = try ScoringRules.scoreEra(state.era, state: &state, catalog: catalog)
             events.append(scoring)
@@ -187,6 +191,10 @@ extension GameCore {
             return events
         }
 
+        private static func eraCardsAreExhausted(_ state: GameState) -> Bool {
+            state.standardDrawDeck.isEmpty && state.players.allSatisfy(\.hand.isEmpty)
+        }
+
         static func liquidationValue(
             of placement: BoardIndustryPlacement,
             catalog: GameDataCatalog
@@ -194,6 +202,15 @@ extension GameCore {
             catalog.industries.first(where: { $0.id == placement.tile.industryDefinitionID })?
                 .levels.first(where: { $0.level == placement.tile.level })?
                 .buildCost.quotientAndRemainder(dividingBy: 2).quotient
+        }
+
+        private static func loseVictoryPoints(
+            _ amount: Int, playerIndex: Int, state: inout GameState
+        ) {
+            guard amount > 0 else { return }
+            state.players[playerIndex].victoryPoints = max(
+                0, state.players[playerIndex].victoryPoints - amount
+            )
         }
 
         private static func checkedAdd(_ lhs: Int, _ rhs: Int) throws -> Int {

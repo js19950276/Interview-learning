@@ -32,6 +32,56 @@ struct RealMatchProjectionTests {
         #expect(opponent.players.first(where: { $0.id == alice })?.industryStacks == nil)
     }
 
+    @Test func projectionAndViewModelExposeTheAuthoritativeSpendingOrder() throws {
+        var game = state()
+        game.playerOrder = [bob, alice]
+        game.activePlayerID = bob
+
+        let match = try GameCore.MatchProjection.make(
+            state: game, recipient: alice, actionOptions: []
+        )
+        #expect(match.players.map(\.id) == [bob, alice])
+
+        let viewState = try RealMatchViewModel.make(
+            snapshot: snapshot(match: match, activePlayerID: bob), hostPlayerID: alice
+        )
+        #expect(viewState.players.map(\.id) == [bob.rawValue, alice.rawValue])
+        #expect(viewState.players.map(\.order) == [1, 2])
+        #expect(viewState.players.first?.isCurrent == true)
+    }
+
+    @Test func viewModelUsesAuthoritativeSessionPresenceForConnectionBadges() throws {
+        let match = try GameCore.MatchProjection.make(
+            state: state(), recipient: alice, actionOptions: []
+        )
+        let viewState = try RealMatchViewModel.make(
+            snapshot: snapshot(match: match),
+            hostPlayerID: alice,
+            connectedPlayerIDs: [alice]
+        )
+
+        #expect(viewState.players.first(where: { $0.id == alice.rawValue })?.isConnected == true)
+        #expect(viewState.players.first(where: { $0.id == bob.rawValue })?.isConnected == false)
+    }
+
+    @Test func viewModelPresentsDisplayedIncomeInsteadOfIncomeTrackPosition() throws {
+        var game = state()
+        let aliceIndex = try #require(game.players.firstIndex { $0.id == alice })
+        game.players[aliceIndex].incomePosition = 20
+        let match = try GameCore.MatchProjection.make(
+            state: game,
+            recipient: alice,
+            actionOptions: []
+        )
+
+        let viewState = try RealMatchViewModel.make(
+            snapshot: snapshot(match: match),
+            hostPlayerID: alice
+        )
+
+        #expect(viewState.income == 5)
+    }
+
     @Test func actionOptionsCarryExactGameCoreTypedPayloadAndConfirmationDelta() {
         let payload = GameCore.PlayerIntent.Payload.build(.init(
             cardID: "alice-card", locationID: "birmingham",
@@ -73,6 +123,33 @@ struct RealMatchProjectionTests {
         )
 
         #expect(firstChecksum != changedChecksum)
+    }
+
+    @Test func endedMatchProjectionPersistsPublicStandingsAndChecksumsThem() throws {
+        var ended = state()
+        ended.turnPhase = .ended
+        ended.finalStandings = [[alice, bob]]
+        let aliceProjection = try GameCore.MatchProjection.make(
+            state: ended, recipient: alice, actionOptions: []
+        )
+        let bobProjection = try GameCore.MatchProjection.make(
+            state: ended, recipient: bob, actionOptions: []
+        )
+
+        #expect(aliceProjection.finalStandings == [[alice, bob]])
+        #expect(bobProjection.publicChecksum == aliceProjection.publicChecksum)
+
+        var tampered = aliceProjection
+        tampered.finalStandings = [[bob], [alice]]
+        #expect(tampered.isRecipientSafe(
+            recipient: alice, visibleHand: aliceProjection.ownHand.map(\.id)
+        ) == false)
+
+        let restored = try JSONDecoder().decode(
+            GameCore.MatchProjection.self,
+            from: JSONEncoder.canonical.encode(aliceProjection)
+        )
+        #expect(restored.finalStandings == [[alice, bob]])
     }
 
     @Test func realViewModelCarriesPublicIndustryAndLinkPlacementsIntoMapModels() throws {
@@ -220,6 +297,48 @@ struct RealMatchProjectionTests {
         #expect(industry.cost > 0)
     }
 
+    @Test func realViewModelMarksIndustryTopUnavailableWhenCurrentEraForbidsIt() throws {
+        let catalog = try verifiedCatalog()
+
+        let supportedMatch = try GameCore.MatchProjection.make(
+            state: state(), recipient: alice, actionOptions: []
+        )
+        let supported = try RealMatchViewModel.make(
+            snapshot: snapshot(match: supportedMatch),
+            hostPlayerID: alice, catalog: catalog
+        )
+        #expect(supported.industries.first?.isAvailable == true)
+
+        var canal = state()
+        let canalPlayerIndex = try #require(canal.players.firstIndex { $0.id == alice })
+        canal.players[canalPlayerIndex].industryStacks = [
+            .init(industryDefinitionID: "brewery", tiles: [
+                .init(
+                    id: "alice-brewery-four", industryDefinitionID: "brewery", level: 4
+                ),
+            ]),
+        ]
+        let canalMatch = try GameCore.MatchProjection.make(
+            state: canal, recipient: alice, actionOptions: []
+        )
+        let canalView = try RealMatchViewModel.make(
+            snapshot: snapshot(match: canalMatch),
+            hostPlayerID: alice, catalog: catalog
+        )
+        #expect(canalView.industries.first?.isAvailable == false)
+
+        var rail = state()
+        rail.era = .rail
+        let railMatch = try GameCore.MatchProjection.make(
+            state: rail, recipient: alice, actionOptions: []
+        )
+        let railView = try RealMatchViewModel.make(
+            snapshot: snapshot(match: railMatch),
+            hostPlayerID: alice, catalog: catalog
+        )
+        #expect(railView.industries.first?.isAvailable == false)
+    }
+
     @Test func legacySnapshotDecodesWithoutMatchProjection() throws {
         let legacy = GameCore.ViewSnapshot(
             roomID: room, recipient: alice,
@@ -265,12 +384,12 @@ struct RealMatchProjectionTests {
         }
     }
 
-    @Test func actionableProjectionUsesSnapshotSchemaFour() {
-        #expect(SnapshotEnvelope.currentSchemaVersion == 4)
+    @Test func actionableProjectionUsesSnapshotSchemaFive() {
+        #expect(SnapshotEnvelope.currentSchemaVersion == 5)
     }
 
     @Test func snapshotSchemaSupportIsExplicitAndDoesNotClaimSchemaThree() {
-        #expect(SnapshotEnvelope.supportedSchemaVersions == Set([2, 4]))
+        #expect(SnapshotEnvelope.supportedSchemaVersions == Set([2, 4, 5]))
     }
 
     @Test func legalQueryAndResponseAreVersionedTypedAndBounded() throws {
@@ -417,16 +536,22 @@ struct RealMatchProjectionTests {
         }
     }
 
-    private func snapshot(match: GameCore.MatchProjection) -> GameCore.ViewSnapshot {
+    private func snapshot(
+        match: GameCore.MatchProjection,
+        activePlayerID: GameCore.PlayerID? = nil
+    ) -> GameCore.ViewSnapshot {
+        let activePlayerID = activePlayerID ?? alice
         let players = [
             GameCore.VisiblePlayer(id: alice, handCount: 1, hand: ["alice-card"]),
             GameCore.VisiblePlayer(id: bob, handCount: 1, hand: nil),
         ]
         return .init(
-            roomID: room, recipient: alice, players: players, activePlayerID: alice,
+            roomID: room, recipient: alice, players: players,
+            activePlayerID: activePlayerID,
             turn: 1, actionNumber: 0, authoritativeVersion: .init(rawValue: 0), discardPile: [],
             match: match, checksum: try! GameCore.snapshotChecksum(
-                roomID: room, recipient: alice, players: players, activePlayerID: alice,
+                roomID: room, recipient: alice, players: players,
+                activePlayerID: activePlayerID,
                 turn: 1, actionNumber: 0, authoritativeVersion: .init(rawValue: 0),
                 discardPile: [], match: match
             )

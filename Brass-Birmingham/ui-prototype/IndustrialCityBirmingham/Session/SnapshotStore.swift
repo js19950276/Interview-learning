@@ -72,6 +72,14 @@ nonisolated struct HostSessionArchive: Codable, Equatable, Sendable {
     let tokenReferences: [RoomTokenReference]
     let peersNeedingRecovery: Set<GameCore.PlayerID>
 
+    private enum CodingKeys: String, CodingKey {
+        case authoritativeState
+        case gameState
+        case eventWindows
+        case tokenReferences
+        case peersNeedingRecovery
+    }
+
     init(
         authoritativeState: PersistedAuthoritativeGameState,
         gameState: GameCore.GameState,
@@ -85,6 +93,37 @@ nonisolated struct HostSessionArchive: Codable, Equatable, Sendable {
         self.tokenReferences = tokenReferences
         self.peersNeedingRecovery = peersNeedingRecovery
     }
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        authoritativeState = try container.decode(
+            PersistedAuthoritativeGameState.self,
+            forKey: .authoritativeState
+        )
+        gameState = try container.decodeIfPresent(GameCore.GameState.self, forKey: .gameState)
+        eventWindows = try container.decode(
+            [GameCore.PlayerID: [SessionProtocol.SessionEnvelope]].self,
+            forKey: .eventWindows
+        )
+        tokenReferences = try container.decode([RoomTokenReference].self, forKey: .tokenReferences)
+        peersNeedingRecovery = Set(try container.decode([GameCore.PlayerID].self, forKey: .peersNeedingRecovery))
+    }
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(authoritativeState, forKey: .authoritativeState)
+        try container.encodeIfPresent(gameState, forKey: .gameState)
+        var eventWindowsContainer = container.nestedUnkeyedContainer(forKey: .eventWindows)
+        for playerID in eventWindows.keys.sorted(by: { $0.rawValue < $1.rawValue }) {
+            try eventWindowsContainer.encode(playerID)
+            try eventWindowsContainer.encode(eventWindows[playerID] ?? [])
+        }
+        try container.encode(tokenReferences, forKey: .tokenReferences)
+        try container.encode(
+            peersNeedingRecovery.sorted { $0.rawValue < $1.rawValue },
+            forKey: .peersNeedingRecovery
+        )
+    }
 }
 
 nonisolated enum SessionArchivePayload: Codable, Equatable, Sendable {
@@ -95,12 +134,36 @@ nonisolated enum SessionArchivePayload: Codable, Equatable, Sendable {
 nonisolated struct SessionArchive: Codable, Equatable, Sendable {
     let protocolVersion: Int
     let rulesetVersion: String
+    /// Missing means a legacy standard-game archive.
+    let gameVariant: GameCore.GameVariant?
     let roomID: GameCore.RoomID
     let recipientID: GameCore.PlayerID
     let role: SessionArchiveRole
     let authoritativeVersion: GameCore.AuthoritativeVersion
     let commitSequence: UInt64
     let payload: SessionArchivePayload
+
+    init(
+        protocolVersion: Int,
+        rulesetVersion: String,
+        roomID: GameCore.RoomID,
+        recipientID: GameCore.PlayerID,
+        role: SessionArchiveRole,
+        authoritativeVersion: GameCore.AuthoritativeVersion,
+        commitSequence: UInt64,
+        payload: SessionArchivePayload,
+        gameVariant: GameCore.GameVariant? = .standard
+    ) {
+        self.protocolVersion = protocolVersion
+        self.rulesetVersion = rulesetVersion
+        self.gameVariant = gameVariant
+        self.roomID = roomID
+        self.recipientID = recipientID
+        self.role = role
+        self.authoritativeVersion = authoritativeVersion
+        self.commitSequence = commitSequence
+        self.payload = payload
+    }
 
     static func guest(
         protocolVersion: Int,
@@ -124,7 +187,8 @@ nonisolated struct SessionArchive: Codable, Equatable, Sendable {
                 eventWindow: Array(eventWindow.suffix(128)),
                 tokenReference: tokenReference,
                 hostPlayerID: hostPlayerID
-            ))
+            )),
+            gameVariant: snapshot.gameVariant ?? .standard
         )
     }
 
@@ -154,7 +218,8 @@ nonisolated struct SessionArchive: Codable, Equatable, Sendable {
                 eventWindows: bounded,
                 tokenReferences: tokenReferences,
                 peersNeedingRecovery: peersNeedingRecovery
-            ))
+            )),
+            gameVariant: gameState.resolvedGameVariant
         )
     }
 }
@@ -162,9 +227,26 @@ nonisolated struct SessionArchive: Codable, Equatable, Sendable {
 nonisolated struct SnapshotExpectation: Equatable, Sendable {
     let protocolVersion: Int
     let rulesetVersion: String
+    let gameVariant: GameCore.GameVariant
     let roomID: GameCore.RoomID
     let recipientID: GameCore.PlayerID
     let role: SessionArchiveRole
+
+    init(
+        protocolVersion: Int,
+        rulesetVersion: String,
+        roomID: GameCore.RoomID,
+        recipientID: GameCore.PlayerID,
+        role: SessionArchiveRole,
+        gameVariant: GameCore.GameVariant = .standard
+    ) {
+        self.protocolVersion = protocolVersion
+        self.rulesetVersion = rulesetVersion
+        self.gameVariant = gameVariant
+        self.roomID = roomID
+        self.recipientID = recipientID
+        self.role = role
+    }
 }
 
 nonisolated enum SnapshotStoreError: Error, Equatable, Sendable {
@@ -175,6 +257,7 @@ nonisolated enum SnapshotStoreError: Error, Equatable, Sendable {
     case schemaMismatch
     case protocolMismatch
     case rulesetMismatch
+    case gameVariantMismatch
     case roomMismatch
     case recipientMismatch
     case roleMismatch
@@ -190,8 +273,8 @@ nonisolated enum SnapshotStoreError: Error, Equatable, Sendable {
 }
 
 nonisolated struct SnapshotEnvelope: Codable, Equatable, Sendable {
-    static let currentSchemaVersion = 4
-    static let supportedSchemaVersions: Set<Int> = [2, currentSchemaVersion]
+    static let currentSchemaVersion = 5
+    static let supportedSchemaVersions: Set<Int> = [2, 4, currentSchemaVersion]
 
     var schemaVersion: Int
     let archive: SessionArchive
@@ -205,6 +288,57 @@ nonisolated struct SnapshotEnvelope: Codable, Equatable, Sendable {
 
     static func checksum(for archive: SessionArchive) throws -> String {
         try GameCore.CanonicalChecksum.sha256(archive)
+    }
+
+    static func legacyChecksum(fromPersistedEnvelope envelopeData: Data) throws -> String {
+        let bytes = [UInt8](envelopeData)
+        let prefix = Array(#"{"archive":"#.utf8)
+        guard bytes.starts(with: prefix), bytes.count > prefix.count else {
+            throw SnapshotStoreError.truncated
+        }
+
+        let archiveStart = prefix.count
+        guard bytes[archiveStart] == Character("{").asciiValue else {
+            throw SnapshotStoreError.truncated
+        }
+        var expectedClosers: [UInt8] = []
+        var isInsideString = false
+        var isEscaped = false
+        for index in archiveStart..<bytes.count {
+            let byte = bytes[index]
+            if isInsideString {
+                if isEscaped {
+                    isEscaped = false
+                } else if byte == Character("\\").asciiValue {
+                    isEscaped = true
+                } else if byte == Character("\"").asciiValue {
+                    isInsideString = false
+                }
+                continue
+            }
+
+            switch byte {
+            case Character("\"").asciiValue:
+                isInsideString = true
+            case Character("{").asciiValue:
+                expectedClosers.append(Character("}").asciiValue!)
+            case Character("[").asciiValue:
+                expectedClosers.append(Character("]").asciiValue!)
+            case Character("}").asciiValue, Character("]").asciiValue:
+                guard expectedClosers.popLast() == byte else {
+                    throw SnapshotStoreError.truncated
+                }
+                if expectedClosers.isEmpty {
+                    let archiveData = Data(bytes[archiveStart...index])
+                    return SHA256.hash(data: archiveData)
+                        .map { String(format: "%02x", $0) }
+                        .joined()
+                }
+            default:
+                continue
+            }
+        }
+        throw SnapshotStoreError.truncated
     }
 }
 
@@ -320,6 +454,11 @@ actor SnapshotStore {
     private let verifiedCatalog: GameCore.VerifiedGameDataCatalog?
     private var highestCommittedSequence: UInt64 = 0
 
+    private struct DecodedCommittedArchive {
+        let archive: SessionArchive
+        let schemaVersion: Int
+    }
+
     init(
         directory: URL,
         keyProvider: some SnapshotKeyProvider = KeychainSnapshotKeyProvider(),
@@ -338,7 +477,8 @@ actor SnapshotStore {
         try validateAuthorityState(in: archive)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         if FileManager.default.fileExists(atPath: committedFileURL.path) {
-            let committed = try decodeCommittedArchive()
+            let decoded = try decodeCommittedArchive()
+            let committed = decoded.archive
             highestCommittedSequence = max(highestCommittedSequence, committed.commitSequence)
             if archive.commitSequence < committed.commitSequence {
                 throw SnapshotStoreError.commitSequenceRollback
@@ -347,19 +487,15 @@ actor SnapshotStore {
                 guard try JSONEncoder.canonical.encode(archive) == JSONEncoder.canonical.encode(committed) else {
                     throw SnapshotStoreError.commitSequenceConflict
                 }
+                if decoded.schemaVersion == 4 {
+                    try writeCurrentEnvelope(committed)
+                }
                 return
             }
         } else if archive.commitSequence < highestCommittedSequence {
             throw SnapshotStoreError.commitSequenceRollback
         }
-        let envelope = try SnapshotEnvelope(archive: archive)
-        let canonical = try JSONEncoder.canonical.encode(envelope)
-        let encrypted = try SnapshotCrypto.seal(canonical, keyData: keyProvider.keyData())
-        try fileWriter.replaceCommittedFile(
-            with: encrypted,
-            committedURL: committedFileURL,
-            temporaryPrefix: Self.temporaryFilePrefix
-        )
+        try writeCurrentEnvelope(archive)
         highestCommittedSequence = archive.commitSequence
     }
 
@@ -370,19 +506,28 @@ actor SnapshotStore {
         guard FileManager.default.fileExists(atPath: committedFileURL.path) else {
             throw SnapshotStoreError.missing
         }
-        let archive = try decodeCommittedArchive(requiresCurrentSchema: requiresCurrentSchema)
+        let decoded = try decodeCommittedArchive(requiresCurrentSchema: requiresCurrentSchema)
+        let archive = decoded.archive
         guard archive.protocolVersion == expected.protocolVersion else { throw SnapshotStoreError.protocolMismatch }
         guard archive.rulesetVersion == expected.rulesetVersion else { throw SnapshotStoreError.rulesetMismatch }
+        guard (archive.gameVariant ?? .standard) == expected.gameVariant else {
+            throw SnapshotStoreError.gameVariantMismatch
+        }
         guard archive.roomID == expected.roomID else { throw SnapshotStoreError.roomMismatch }
         guard archive.recipientID == expected.recipientID else { throw SnapshotStoreError.recipientMismatch }
         guard archive.role == expected.role else { throw SnapshotStoreError.roleMismatch }
         guard archive.authoritativeVersion.rawValue >= 0 else { throw SnapshotStoreError.versionMismatch }
         try validateAuthorityState(in: archive)
+        if decoded.schemaVersion == 4 {
+            try writeCurrentEnvelope(archive)
+        }
         highestCommittedSequence = max(highestCommittedSequence, archive.commitSequence)
         return archive
     }
 
-    private func decodeCommittedArchive(requiresCurrentSchema: Bool = false) throws -> SessionArchive {
+    private func decodeCommittedArchive(
+        requiresCurrentSchema: Bool = false
+    ) throws -> DecodedCommittedArchive {
         let encrypted: Data
         do { encrypted = try Data(contentsOf: committedFileURL) }
         catch { throw SnapshotStoreError.fileFailure }
@@ -393,11 +538,18 @@ actor SnapshotStore {
         guard SnapshotEnvelope.supportedSchemaVersions.contains(envelope.schemaVersion) else {
             throw SnapshotStoreError.schemaMismatch
         }
-        guard !requiresCurrentSchema || envelope.schemaVersion == SnapshotEnvelope.currentSchemaVersion else {
+        // Schema 4 already contains complete authority. It can be validated and
+        // migrated in load(); only schema 2 is incomplete for verified recovery.
+        guard !requiresCurrentSchema || envelope.schemaVersion != 2 else {
             throw SnapshotStoreError.incompleteAuthorityState
         }
         let archive = envelope.archive
-        guard envelope.checksum == (try SnapshotEnvelope.checksum(for: archive)) else {
+        let checksum = if envelope.schemaVersion == SnapshotEnvelope.currentSchemaVersion {
+            try SnapshotEnvelope.checksum(for: archive)
+        } else {
+            try SnapshotEnvelope.legacyChecksum(fromPersistedEnvelope: plaintext)
+        }
+        guard envelope.checksum == checksum else {
             throw SnapshotStoreError.checksumMismatch
         }
         guard archive.authoritativeVersion.rawValue >= 0 else { throw SnapshotStoreError.versionMismatch }
@@ -405,7 +557,18 @@ actor SnapshotStore {
             archive,
             allowIncompleteHost: envelope.schemaVersion == 2
         ) else { throw SnapshotStoreError.privacyViolation }
-        return archive
+        return .init(archive: archive, schemaVersion: envelope.schemaVersion)
+    }
+
+    private func writeCurrentEnvelope(_ archive: SessionArchive) throws {
+        let envelope = try SnapshotEnvelope(archive: archive)
+        let canonical = try JSONEncoder.canonical.encode(envelope)
+        let encrypted = try SnapshotCrypto.seal(canonical, keyData: keyProvider.keyData())
+        try fileWriter.replaceCommittedFile(
+            with: encrypted,
+            committedURL: committedFileURL,
+            temporaryPrefix: Self.temporaryFilePrefix
+        )
     }
 
     private func validateAuthorityState(in archive: SessionArchive) throws {
@@ -449,6 +612,7 @@ actor SnapshotStore {
             guard archive.role == .guest,
                   guest.snapshot.recipient == archive.recipientID,
                   guest.snapshot.roomID == archive.roomID,
+                  (guest.snapshot.gameVariant ?? .standard) == (archive.gameVariant ?? .standard),
                   guest.snapshot.authoritativeVersion == archive.authoritativeVersion,
                   guest.tokenReference.roomID == archive.roomID,
                   guest.tokenReference.playerID == archive.recipientID,
@@ -467,13 +631,15 @@ actor SnapshotStore {
                             roomID: archive.roomID,
                             recipient: archive.recipientID,
                             roster: roster,
-                            authoritativeVersion: archive.authoritativeVersion
+                            authoritativeVersion: archive.authoritativeVersion,
+                            gameVariant: archive.gameVariant ?? .standard
                         )
                     )
                 } catch { return false }
             } else if guest.snapshot.checksum != (try GameCore.snapshotChecksum(
                 roomID: guest.snapshot.roomID,
                 recipient: guest.snapshot.recipient,
+                gameVariant: guest.snapshot.gameVariant,
                 players: guest.snapshot.players,
                 activePlayerID: guest.snapshot.activePlayerID,
                 turn: guest.snapshot.turn,
@@ -506,6 +672,7 @@ actor SnapshotStore {
                   host.peersNeedingRecovery.isSubset(of: roster) else { return false }
             if let gameState = host.gameState {
                 guard gameState.rulesetVersion == archive.rulesetVersion,
+                      gameState.resolvedGameVariant == (archive.gameVariant ?? .standard),
                       gameState.authoritativeVersion == archive.authoritativeVersion,
                       gameState.players.map(\.id) == rosterIDs,
                       gameState.players.map({ $0.hand.map(\.id) }) == host.authoritativeState.players.map(\.hand),
@@ -538,6 +705,7 @@ actor SnapshotStore {
         for envelope in values {
             guard envelope.protocolVersion == archive.protocolVersion,
                   envelope.rulesetVersion == archive.rulesetVersion,
+                  (envelope.gameVariant ?? .standard) == (archive.gameVariant ?? .standard),
                   envelope.roomID == archive.roomID,
                   envelope.recipientID == recipientID,
                   hostID == nil || envelope.senderID == hostID,
@@ -635,15 +803,7 @@ nonisolated struct SessionPersistenceFactory: Sendable {
     }
 
     static var nearbyRuntime: Self {
-#if DEBUG && targetEnvironment(simulator)
-        let adapter = DebugMemorySecureItemAdapter()
-        return .init(
-            tokenStore: RoomTokenStore(adapter: adapter),
-            keyProvider: KeychainSnapshotKeyProvider(adapter: adapter)
-        )
-#else
         return .init()
-#endif
     }
 
     func directory(roomID: GameCore.RoomID, playerID: GameCore.PlayerID) -> URL {
@@ -678,7 +838,8 @@ nonisolated struct SessionPersistenceFactory: Sendable {
             roomID: proposed.roomID,
             playerID: proposed.playerID,
             reconnectToken: credential.reconnectToken,
-            hostPlayerID: proposed.hostPlayerID
+            hostPlayerID: proposed.hostPlayerID,
+            gameVariant: proposed.gameVariant
         )
         let snapshotStore = SnapshotStore(
             directory: directory(roomID: configuration.roomID, playerID: configuration.playerID),
@@ -696,7 +857,8 @@ nonisolated struct SessionPersistenceFactory: Sendable {
                 rulesetVersion: configuration.rulesetVersion,
                 roomID: configuration.roomID,
                 recipientID: configuration.hostPlayerID,
-                role: .host
+                role: .host,
+                gameVariant: configuration.gameVariant
             )
             do {
                 let archive = try await snapshotStore.load(
@@ -752,7 +914,8 @@ nonisolated struct SessionPersistenceFactory: Sendable {
                 rulesetVersion: configuration.rulesetVersion,
                 roomID: configuration.roomID,
                 recipientID: configuration.playerID,
-                role: .guest
+                role: .guest,
+                gameVariant: configuration.gameVariant
             )
             do {
                 let archive = try await snapshotStore.load(expected: expectation)

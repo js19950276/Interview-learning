@@ -18,6 +18,8 @@ nonisolated enum AuthoritativeMapTargetResolver {
         case .buildTarget(let locationID, _): locationID
         case .route(let routeID): routeID
         case .merchant(let slotID): slotID
+        case .resourceSource(.industry(let placementID)): placementID
+        case .resourceSource(.merchantBeer(let slotID)): slotID
         default: nil
         }
     }
@@ -48,14 +50,19 @@ struct AuthoritativeMatchBoardView: View {
             if let snapshot = store.snapshot, let catalog = store.presentationCatalog {
                 switch Result(catching: {
                     try RealMatchViewModel.make(
-                        snapshot: snapshot, hostPlayerID: store.hostPlayerID, catalog: catalog
+                        snapshot: snapshot,
+                        hostPlayerID: store.hostPlayerID,
+                        catalog: catalog,
+                        connectedPlayerIDs: store.connectedPlayerIDs
                     )
                 }) {
                 case .success(let state):
-                    let activeTurn = ActiveTurnPresentation.make(
-                        players: state.players,
-                        localPlayerID: store.localPlayerID.rawValue
-                    )
+                    let activeTurn = state.finalStandings == nil
+                        ? ActiveTurnPresentation.make(
+                            players: state.players,
+                            localPlayerID: store.localPlayerID.rawValue
+                        )
+                        : nil
                     let noticeTaskID = ActiveTurnNoticeTaskID(
                         activePlayerID: activeTurn?.playerID,
                         isSynchronized: store.syncStatus == .synchronized
@@ -94,6 +101,7 @@ struct AuthoritativeMatchBoardView: View {
                     legalChoices(metrics: metrics)
                     confirmation(state: state, metrics: metrics)
                     forcedSale(metrics: metrics)
+                    gameEnd(state: state, metrics: metrics)
 
                     if store.syncStatus != .synchronized {
                         Color.black.opacity(0.35).ignoresSafeArea()
@@ -211,6 +219,47 @@ struct AuthoritativeMatchBoardView: View {
         .accessibilityElement(children: .contain)
         .accessibilityLabel(message)
         .accessibilityIdentifier("real.recovery")
+    }
+
+    @ViewBuilder
+    private func gameEnd(state: DemoMatchState, metrics: MatchLayoutMetrics) -> some View {
+        if let standings = state.finalStandings,
+           let presentation = GameEndPresentation.make(
+               standings: standings,
+               players: state.players,
+               localPlayerID: store.localPlayerID.rawValue
+           ) {
+            Color.black.opacity(0.58)
+                .ignoresSafeArea()
+            VStack(spacing: BrassSpacing.medium) {
+                Image(systemName: "trophy.fill")
+                    .font(.system(size: 32, weight: .semibold))
+                    .foregroundStyle(BrassColor.brass.color)
+                Text(presentation.title)
+                    .font(BrassTypography.title)
+                    .foregroundStyle(BrassColor.paper.color)
+                VStack(alignment: .leading, spacing: BrassSpacing.small) {
+                    ForEach(Array(presentation.rows.enumerated()), id: \.offset) { _, row in
+                        HStack(alignment: .firstTextBaseline, spacing: BrassSpacing.medium) {
+                            Text("第 \(row.rank) 名")
+                                .font(BrassTypography.label)
+                                .foregroundStyle(BrassColor.brass.color)
+                                .frame(minWidth: 62, alignment: .leading)
+                            Text(row.playerNames.joined(separator: "、"))
+                                .font(BrassTypography.body)
+                                .foregroundStyle(BrassColor.paper.color)
+                        }
+                    }
+                }
+            }
+            .frame(maxWidth: 430)
+            .brassPanel()
+            .padding(.horizontal, max(metrics.leftRailWidth, metrics.rightRailWidth) + 20)
+            .padding(.vertical, metrics.headerHeight + 12)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(presentation.accessibilityLabel)
+            .accessibilityIdentifier("real.gameEnd")
+        }
     }
 
     private func leftRail(state: DemoMatchState, metrics: MatchLayoutMetrics) -> some View {
@@ -366,6 +415,7 @@ struct AuthoritativeMatchBoardView: View {
         MatchHeaderView(
             state: state,
             roomID: store.roomID.rawValue,
+            authoritativeVersion: store.version.rawValue,
             syncStatus: store.syncStatus.rawValue,
             isSynchronized: store.syncStatus == .synchronized,
             activeTurn: activeTurn,
@@ -401,7 +451,7 @@ struct AuthoritativeMatchBoardView: View {
             isSynchronized: taskID.isSynchronized
         )
         guard shouldPresent, let presentation else {
-            if !taskID.isSynchronized { activeTurnNotice = nil }
+            if presentation == nil || !taskID.isSynchronized { activeTurnNotice = nil }
             return
         }
 
@@ -538,6 +588,9 @@ struct AuthoritativeMatchBoardView: View {
            response.completePayload != nil,
            let delta = response.confirmation {
             let current = store.snapshot?.match?.players.first(where: { $0.id == store.localPlayerID })
+            let displayedIncome = current.flatMap { player in
+                store.presentationCatalog?.catalog.incomeTrack.income(at: player.incomePosition)
+            }
             ConfirmationPanel(
                 title: "确认行动",
                 instruction: "由房主规则引擎验证；提交后等待权威事件",
@@ -548,8 +601,8 @@ struct AuthoritativeMatchBoardView: View {
                     coalDelta: resourceDelta(.coal, in: delta.resourceEffects),
                     ironDelta: resourceDelta(.iron, in: delta.resourceEffects),
                     beerDelta: resourceDelta(.beer, in: delta.resourceEffects),
-                    incomeBefore: current?.incomePosition,
-                    incomeAfter: current.map { $0.incomePosition + delta.incomeDelta },
+                    incomeBefore: displayedIncome,
+                    incomeAfter: displayedIncome.map { $0 + delta.incomeDelta },
                     moneyBefore: current?.cash,
                     moneyAfter: current.map { $0.cash + delta.cashDelta }
                 ),

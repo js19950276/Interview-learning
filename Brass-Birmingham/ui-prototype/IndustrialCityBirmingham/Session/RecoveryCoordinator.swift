@@ -339,6 +339,7 @@ actor RecoveryCoordinator {
                     guard event.snapshot.checksum == (try GameCore.snapshotChecksum(
                         roomID: event.snapshot.roomID,
                         recipient: event.snapshot.recipient,
+                        gameVariant: event.snapshot.gameVariant,
                         players: event.snapshot.players,
                         activePlayerID: event.snapshot.activePlayerID,
                         turn: event.snapshot.turn,

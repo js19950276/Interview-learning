@@ -62,6 +62,34 @@ struct GameDataTests {
         #expect(codes.contains(.invalidComponentCount))
     }
 
+    @Test func officialBoardLocationsAndRoutesCannotBeRemovedForLowerPlayerCounts() throws {
+        var catalog = completeCatalog()
+        let locationIndex = try #require(catalog.board.locations.firstIndex {
+            $0.id == "kidderminster-worcester-farm"
+        })
+        catalog.board.locations[locationIndex].playerCounts = [4]
+
+        let issues = GameCore.GameDataValidator.validate(catalog)
+
+        #expect(issues.contains {
+            $0.code == .invalidPlayerCount
+                && $0.path == "board.locations[\(locationIndex)].playerCounts"
+                && $0.detail.contains("official board locations")
+        })
+
+        var routeCatalog = completeCatalog()
+        let routeIndex = try #require(routeCatalog.board.routes.firstIndex {
+            $0.playerCounts == [2, 3, 4]
+        })
+        routeCatalog.board.routes[routeIndex].playerCounts = [4]
+        let routeIssues = GameCore.GameDataValidator.validate(routeCatalog)
+        #expect(routeIssues.contains {
+            $0.code == .invalidPlayerCount
+                && $0.path == "board.routes[\(routeIndex)].playerCounts"
+                && $0.detail.contains("official board routes")
+        })
+    }
+
     @Test func duplicateIndustryIsReportedWithoutCrashingTheValidator() {
         var catalog = completeCatalog()
         catalog.industries.append(catalog.industries[0])

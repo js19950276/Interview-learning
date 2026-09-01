@@ -20,9 +20,9 @@ struct GameRulesEngineTests {
         #expect(first.finalState.era == .rail)
         #expect(first.finalHash == second.finalHash)
         let expectedHashes = [
-            2: "da4e0e405139b24c500f9820bb496025bea0f35f6fd306a8176d5d04beae556f",
-            3: "6209a2452e4fa6f71aa53d3c1d368864a06fba2c70c78f4fdd6c7aaa31e119fd",
-            4: "5d1144952cdd74fa58f7fa37f87e979e52de3dac3e189bc3d0bcd03e2d4df129",
+            2: "f96349c91ea270a4d15f829c0654f9191c97ad857f512b4beeaa898381742675",
+            3: "8e6b0827d33208cbb05c10f7905b4bd73a831927b0d3963439cfe7c8ada68fa9",
+            4: "d1ca8e888d9283c18877a3d5138d81b89c634bbb5aff62da4410b176f0c1966e",
         ]
         #expect(first.finalHash == expectedHashes[playerCount])
         #expect(first.events == second.events)
@@ -69,6 +69,17 @@ struct GameRulesEngineTests {
             ownerID: debtor,
             tile: canonicalTile
         )]
+        // Model the two completed first-round actions immediately before round-end
+        // resolution: each player discarded once, refilled, and consumed one era card.
+        for playerID in state.playerOrder {
+            let playerIndex = try #require(state.players.firstIndex { $0.id == playerID })
+            state.publicDiscard.append(state.players[playerIndex].hand.removeFirst())
+            state.players[playerIndex].hand.append(state.standardDrawDeck.removeFirst())
+        }
+        state.actionsRemaining = 0
+        state.turnsCompletedInRound = state.playerCount
+        state.actionNumber = state.playerCount
+        state.authoritativeVersion = .init(rawValue: state.playerCount)
         let proofTile = try #require(state.boardIndustryPlacements.first?.tile)
         #expect(canonicalTiles.contains(proofTile))
         #expect(state.players[debtorIndex].industryStacks.flatMap(\.tiles).contains(proofTile) == false)

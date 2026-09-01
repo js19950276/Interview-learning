@@ -230,11 +230,27 @@ extension GameCore {
             let links = target.intent.routeIDs.map {
                 PlacedLink(routeID: $0, ownerID: target.actorID, era: candidate.era)
             }
-            candidate.placedLinks.append(contentsOf: links)
-            let effects = try ResourceRules.consumeResources(
-                for: target, roomID: roomID, state: &candidate, catalog: verifiedCatalog,
-                authority: authority
-            )
+            var effects: [ResourceEffect] = []
+            var consumedRequestCount = 0
+            if candidate.era == .rail {
+                for link in links {
+                    guard target.resourceRequests.indices.contains(consumedRequestCount),
+                          target.resourceRequests[consumedRequestCount].resource == .coal
+                    else { throw NetworkRuleError.illegalCoal }
+                    candidate.placedLinks.append(link)
+                    effects.append(contentsOf: try ResourceRules.consumeValidatedRequests(
+                        [target.resourceRequests[consumedRequestCount]],
+                        actorID: target.actorID, state: &candidate, catalog: verifiedCatalog
+                    ))
+                    consumedRequestCount += 1
+                }
+            } else {
+                candidate.placedLinks.append(contentsOf: links)
+            }
+            effects.append(contentsOf: try ResourceRules.consumeValidatedRequests(
+                Array(target.resourceRequests.dropFirst(consumedRequestCount)),
+                actorID: target.actorID, state: &candidate, catalog: verifiedCatalog
+            ))
             candidate.players[playerIndex].cash = try checkedSubtract(
                 candidate.players[playerIndex].cash, target.cashCost
             )
