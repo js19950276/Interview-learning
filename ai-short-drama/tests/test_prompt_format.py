@@ -24,6 +24,7 @@ def test_hook_rewrite_prompt():
         script_text="测试剧本内容",
         emotion_type="复仇爽感",
         emotion_desc="主角反杀",
+        hook_type="危机钩 — 开场即生死威胁,压迫感持续升级",
         story_card_summary="主角=A,动机=B",
         pacing_constraints="起势 15%",
     )
@@ -33,6 +34,7 @@ def test_hook_rewrite_prompt():
     assert "测试剧本内容" in messages[1]["content"]
     assert "复仇爽感" in messages[1]["content"]
     assert "主角反杀" in messages[1]["content"]
+    assert "危机钩" in messages[1]["content"]
     assert "主角=A,动机=B" in messages[1]["content"]
     assert "起势 15%" in messages[1]["content"]
     assert '"emotion_type"' in messages[1]["content"]
@@ -46,6 +48,7 @@ def test_rewrite_single_prompt():
     messages = _format_messages(
         REWRITE_PROMPT,
         emotion_type="治愈暖心",
+        hook_type="情感钩 — 先建立共情再引爆情绪",
         full_rewrite="原始剧本",
         suggestions="建议加强情感",
         story_card_summary="共享故事卡",
@@ -53,6 +56,7 @@ def test_rewrite_single_prompt():
     )
     assert len(messages) == 2
     assert "治愈暖心" in messages[1]["content"]
+    assert "情感钩" in messages[1]["content"]
     assert "原始剧本" in messages[1]["content"]
     assert "建议加强情感" in messages[1]["content"]
     assert "共享故事卡" in messages[1]["content"]
@@ -63,18 +67,25 @@ def test_rewrite_single_prompt():
 
 
 def test_emotion_score_prompt():
+    from prompts.emotion_score import SCORE_DIMENSIONS
     messages = _format_messages(
         SCORE_PROMPT,
         emotion_type="职场共鸣",
         full_text="完整剧本文本",
         persona_role=PERSONA_ROLES["primary"],
+        dim_hook=SCORE_DIMENSIONS["钩子强度"],
+        dim_payoff=SCORE_DIMENSIONS["爽感密度"],
+        dim_pacing=SCORE_DIMENSIONS["节奏紧凑度"],
+        dim_dialogue=SCORE_DIMENSIONS["台词口语度"],
+        dim_visual=SCORE_DIMENSIONS["画面可拍性"],
     )
     assert len(messages) == 2
     assert "职场共鸣" in messages[1]["content"]
     assert "完整剧本文本" in messages[1]["content"]
     assert "运营总监" in messages[0]["content"]  # primary persona
     assert '"scores"' in messages[1]["content"]
-    assert '"爽感"' in messages[1]["content"]
+    assert '"钩子强度"' in messages[1]["content"]
+    assert '"台词口语度"' in messages[1]["content"]
     assert "{{" not in messages[1]["content"]
     assert "}}" not in messages[1]["content"]
     print("  emotion_score prompt: OK")
@@ -82,10 +93,17 @@ def test_emotion_score_prompt():
 
 def test_emotion_score_personas_distinct():
     """三个 persona 应注入不同的 system 文本."""
-    text_for = lambda p: _format_messages(
-        SCORE_PROMPT, emotion_type="x", full_text="y",
-        persona_role=PERSONA_ROLES[p],
-    )[0]["content"]
+    from prompts.emotion_score import SCORE_DIMENSIONS
+    def text_for(p):
+        return _format_messages(
+            SCORE_PROMPT, emotion_type="x", full_text="y",
+            persona_role=PERSONA_ROLES[p],
+            dim_hook=SCORE_DIMENSIONS["钩子强度"],
+            dim_payoff=SCORE_DIMENSIONS["爽感密度"],
+            dim_pacing=SCORE_DIMENSIONS["节奏紧凑度"],
+            dim_dialogue=SCORE_DIMENSIONS["台词口语度"],
+            dim_visual=SCORE_DIMENSIONS["画面可拍性"],
+        )[0]["content"]
     sys_primary = text_for("primary")
     sys_secondary = text_for("secondary")
     sys_arbiter = text_for("arbiter")
@@ -130,14 +148,19 @@ def test_storyboard_prompt():
         full_rewrite="完整剧本内容",
         pacing_constraints="起势 15%",
         negative_vocab=vocab_listing(),
+        asset_registry="- [char-01] character:女主A — 30岁,黑色齐肩发",
     )
     assert len(messages) == 2
     assert "测试标题" in messages[1]["content"]
     assert "悬疑反转" in messages[1]["content"]
+    assert "char-01" in messages[1]["content"]  # 资产注册表已注入
     assert '"shots"' in messages[1]["content"]
     assert '"shot_number"' in messages[1]["content"]
     assert '"fragment_id"' in messages[1]["content"]
     assert '"negative_prompt"' in messages[1]["content"]
+    assert '"characters"' in messages[1]["content"]  # 资产引用字段
+    assert '"location_id"' in messages[1]["content"]
+    assert '"props"' in messages[1]["content"]
     assert "模糊" in messages[1]["content"]  # 中文 vocab listing 注入
     assert "起势 15%" in messages[1]["content"]
     assert "{{" not in messages[1]["content"]
@@ -160,11 +183,13 @@ def test_storyboard_segment_prompt():
         target_shots=12,
         starting_shot_num=20,
         negative_vocab=vocab_listing(),
+        asset_registry="- [char-01] character:女主A — 30岁,黑色齐肩发",
     )
     assert len(messages) == 2
     assert "本段剧本片段正文" in messages[1]["content"]
     assert "复仇爽感" in messages[1]["content"]
     assert "反杀打脸" in messages[1]["content"]
+    assert "char-01" in messages[1]["content"]  # 资产注册表已注入
     assert '"shots"' in messages[1]["content"]
     assert "模糊" in messages[1]["content"]
     # full_rewrite 占位已移除:模板不再要求该字段(否则 format 会 KeyError)
@@ -180,16 +205,19 @@ def test_hook_rewrite_segment_prompts():
         story_card_summary="主角=赘婿",
         emotion_type="都市赘婿·打脸",
         emotion_desc="赘婿逆袭",
+        hook_type="反转钩 — 身份反转落差越大越好",
         segment_name="起势",
         segment_pct=15,
         word_target=1440,
     )
     assert "都市赘婿·打脸" in first[1]["content"]
+    assert "反转钩" in first[1]["content"]
     assert "1440" in first[1]["content"]
     assert "起势" in first[1]["content"]
     assert "起势段对应的原稿片段" in first[1]["content"]
-    assert '"segment_text"' in first[1]["content"]
+    assert '"beats"' in first[1]["content"]          # 节拍流 schema
     assert '"opening_lines"' in first[1]["content"]
+    assert '"segment_text"' not in first[1]["content"]  # 散文字段已被节拍流取代
     # 整篇 script_text 占位已移除,改为本段对应原稿片段 segment_source
     assert "{script_text}" not in first[1]["content"]
     assert "{{" not in first[1]["content"] and "}}" not in first[1]["content"]
@@ -200,15 +228,17 @@ def test_hook_rewrite_segment_prompts():
         story_card_summary="主角=赘婿",
         emotion_type="都市赘婿·打脸",
         emotion_desc="赘婿逆袭",
+        hook_type="反转钩 — 身份反转落差越大越好",
         prev_tail="前文结尾...",
         segment_name="攀升",
         segment_pct=30,
         word_target=2880,
     )
     assert "攀升" in cont[1]["content"]
+    assert "反转钩" in cont[1]["content"]
     assert "攀升段对应的原稿片段" in cont[1]["content"]
     assert "前文结尾" in cont[1]["content"]
-    assert '"segment_text"' in cont[1]["content"]
+    assert '"beats"' in cont[1]["content"]           # 后续段同样返回节拍流
     assert '"opening_lines"' not in cont[1]["content"]  # 后续段不带元数据
     assert "{script_text}" not in cont[1]["content"]
     assert "{{" not in cont[1]["content"] and "}}" not in cont[1]["content"]

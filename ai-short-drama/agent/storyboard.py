@@ -35,6 +35,10 @@ class Shot:
     fragment_id: str = ""              # "S01-SC02-03"
     source_anchor: str = ""            # 引用 raw_text 段落锚点
     negative_prompt: str = ""          # 受控中文词汇组合
+    # 资产引用(借鉴 Jellyfish):指向 DramaState.assets 注册表 id,保跨镜头一致
+    characters: list[str] = field(default_factory=list)   # ["char-01", ...]
+    location_id: str = ""              # "loc-01"
+    props: list[str] = field(default_factory=list)        # ["prop-01", ...]
     # 后置验证发现的问题:[{"type": "方位颠倒", "detail": "..."}, ...]
     validation_issues: list[dict] = field(default_factory=list)
 
@@ -59,6 +63,7 @@ def _variant_synopsis(variant: Variant) -> str:
     """
     parts = [
         f"场景方向: {variant.emotion_type}" if variant.emotion_type else "",
+        f"钩子类型: {variant.hook_type}" if getattr(variant, "hook_type", "") else "",
         f"钩子核心: {variant.hook_summary}" if variant.hook_summary else "",
         f"情绪定位: {variant.emotion_positioning}" if variant.emotion_positioning else "",
         f"开场: {variant.opening_lines}" if variant.opening_lines else "",
@@ -130,7 +135,7 @@ def _split_variant_text(text: str, n_segments: int = 4) -> list[str]:
     return [text[cuts[i]:cuts[i + 1]].strip() for i in range(n_segments)]
 
 
-def _parse_shot(s: dict, fallback_idx: int, script: Optional[Script]) -> Shot:
+def _parse_shot(s: dict, fallback_idx: int, script: Optional[Script], assets=None) -> Shot:
     frag = _normalize_fragment_id(
         s.get("fragment_id", ""),
         default_episode=1, default_scene=1, default_shot=fallback_idx,
@@ -140,6 +145,19 @@ def _parse_shot(s: dict, fallback_idx: int, script: Optional[Script]) -> Shot:
         visual = s.get("visual_description", "") or ""
         source = script.find_anchor_by_substring(visual) or ""
     neg = _normalize_negative_prompt(s.get("negative_prompt", ""))
+    # 资产引用归一:有注册表时丢弃未知 id;无注册表时原样保留(向后兼容)
+    from agent.assets import normalize_id_set, normalize_location_id
+    characters = (s.get("characters", []) or [])
+    props = (s.get("props", []) or [])
+    location_id = (s.get("location_id", "") or "")
+    if assets:
+        characters = normalize_id_set(characters, assets)
+        props = normalize_id_set(props, assets)
+        location_id = normalize_location_id(location_id, assets)
+    else:
+        characters = [str(c).strip() for c in characters if str(c).strip()]
+        props = [str(p).strip() for p in props if str(p).strip()]
+        location_id = str(location_id).strip()
     return Shot(
         fragment_id=frag,
         source_anchor=source,
@@ -153,6 +171,9 @@ def _parse_shot(s: dict, fallback_idx: int, script: Optional[Script]) -> Shot:
         bgm_mood=s.get("bgm_mood", ""),
         emotion_note=s.get("emotion_note", ""),
         camera_movement=s.get("camera_movement", ""),
+        characters=characters,
+        location_id=location_id,
+        props=props,
     )
 
 
@@ -255,6 +276,7 @@ def generate_storyboard_segment(
     starting_shot_num: int,
     script: Optional[Script] = None,
     fragment_offset: int = 0,
+    assets=None,
 ) -> list[Shot]:
     """单次 LLM 调用,生成 target_shots 个镜头.
 
@@ -263,6 +285,7 @@ def generate_storyboard_segment(
       sub-1 fragment_offset=0  → SC02-01 ... SC02-15
       sub-2 fragment_offset=15 → SC02-16 ... SC02-30
     """
+    from agent.assets import asset_registry_text
     messages = _format_messages(
         SEGMENT_PROMPT,
         segment_name=segment_name,
@@ -274,6 +297,7 @@ def generate_storyboard_segment(
         target_shots=target_shots,
         starting_shot_num=starting_shot_num,
         negative_vocab=vocab_listing(),
+        asset_registry=asset_registry_text(assets or []),
     )
     result = call_llm_messages_json(messages)
     raw_shots = result.get("shots", [])
@@ -281,7 +305,7 @@ def generate_storyboard_segment(
 
     shots: list[Shot] = []
     for i, s in enumerate(raw_shots, start=starting_shot_num):
-        shot = _parse_shot(s, fallback_idx=i, script=script)
+        shot = _parse_shot(s, fallback_idx=i, script=script, assets=assets)
         shot.shot_number = i
         within_seg = (i - starting_shot_num + 1) + fragment_offset
         shot.fragment_id = f"S01-SC{segment_num:02d}-{within_seg:02d}"
@@ -295,14 +319,16 @@ def generate_storyboard(
     script: Optional[Script] = None,
     pacing_constraints: str = "",
     pacing_plan=None,  # PacingPlan, 用于按段拆分调用
+    assets=None,       # list[Asset] 资产注册表,分镜引用 + 跨镜头一致
 ) -> Storyboard:
     """分镜生成入口.
 
     若 pacing_plan 提供 → 4 段拆分调用(起势/攀升/风暴/决战),每段独立 LLM 调用,合并 shots.
     若未提供 pacing_plan → 单次 LLM 调用(向后兼容,适合短剧本/测试).
     """
+    from agent.assets import asset_registry_text
     if pacing_plan is not None and len(pacing_plan.segments) >= 1:
-        return _generate_segmented(variant, script_title, script, pacing_plan)
+        return _generate_segmented(variant, script_title, script, pacing_plan, assets=assets)
 
     # 单次调用兜底(短剧本)
     messages = _format_messages(
@@ -312,11 +338,12 @@ def generate_storyboard(
         full_rewrite=variant.full_rewrite,
         pacing_constraints=pacing_constraints or "(未提供节奏约束)",
         negative_vocab=vocab_listing(),
+        asset_registry=asset_registry_text(assets or []),
     )
     result = call_llm_messages_json(messages)
     log.info("分镜生成完成(单次调用)| 镜头数=%d", len(result.get('shots', [])))
 
-    shots = [_parse_shot(s, fallback_idx=i, script=script)
+    shots = [_parse_shot(s, fallback_idx=i, script=script, assets=assets)
              for i, s in enumerate(result.get("shots", []), start=1)]
 
     return Storyboard(
@@ -332,6 +359,7 @@ def _generate_segmented(
     script_title: str,
     script: Optional[Script],
     pacing_plan,
+    assets=None,
 ) -> Storyboard:
     """4 节奏段串行调用,大段进一步拆 sub-call(每次 LLM ≤ MAX_SHOTS_PER_CALL=15 镜头).
 
@@ -382,6 +410,7 @@ def _generate_segmented(
                 starting_shot_num=next_shot_num,
                 script=script,
                 fragment_offset=fragment_offset,
+                assets=assets,
             )
             seg_shots.extend(shots)
             next_shot_num += len(shots)

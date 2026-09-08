@@ -30,6 +30,7 @@ class RunSummary:
     score_error_count: int = 0
     stage_error_count: int = 0
     prompt_versions: dict[str, str] = field(default_factory=dict)
+    usage_by_stage: dict[str, dict[str, int]] = field(default_factory=dict)
     quality: dict[str, Any] = field(default_factory=dict)
 
 
@@ -81,5 +82,6 @@ def build_run_summary(state: DramaState) -> RunSummary:
         score_error_count=len(state.score_errors),
         stage_error_count=len(state.stage_errors),
         prompt_versions=dict(state.prompt_versions),
+        usage_by_stage={k: dict(v) for k, v in (state.usage_by_stage or {}).items()},
         quality=_summarize_quality(state),
     )

@@ -105,4 +105,7 @@ def pacing_constraints_text(plan: PacingPlan) -> str:
         + f"  - 情感钩子: {hd.emotion} 个\n"
         + f"  - 信息钩子: {hd.info} 个\n"
         + f"  - 危机钩子: {hd.crisis} 个"
+        + "\n\n【付费卡点】(借鉴 0xsline 付费卡点设计)\n"
+        + "  - 在中点反转揭晓前、悬念最高的位置(约全文 45%-55% 处)设置付费卡点\n"
+        + "  - 卡点前的最后一句必须是强悬念/强危机,卡点后立刻兑现一部分爽点"
     )

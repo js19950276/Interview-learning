@@ -70,6 +70,7 @@ def _entry_to_selected(entry: dict, reason: str) -> SelectedScene:
         hook_tags=list(entry.get("hook_tags", [])),
         one_liner=entry.get("one_liner", ""),
         reason=reason,
+        hook_type_hints=list(entry.get("hook_type_hints", [])),
     )
 
 

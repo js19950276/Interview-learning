@@ -1,6 +1,6 @@
 from langchain_core.prompts import ChatPromptTemplate
 
-VERSION = "1.7.0"   # 1.7: 分段调用用紧凑全剧概要替代整篇 full_rewrite,省重复 token;1.6: 融合 Seedance2.0 动漫分镜提示词规则 + 台词忠实/拆分约束
+VERSION = "1.8.0"   # 1.8: 资产注册表注入 + shots 引用资产 id(characters/location_id/props,跨镜头一致);1.7: 分段调用用紧凑全剧概要替代整篇 full_rewrite,省重复 token;1.6: 融合 Seedance2.0 动漫分镜提示词规则 + 台词忠实/拆分约束
 
 # 单段分镜 prompt (节奏分段拆分调用,每次只生成本段 shots,避免单次输出过大)
 SEGMENT_PROMPT = ChatPromptTemplate.from_messages([
@@ -62,6 +62,10 @@ SEGMENT_PROMPT = ChatPromptTemplate.from_messages([
 5. **source_anchor 必须强绑定**
    - 每个镜头的 source_anchor 字段填**这个镜头最直接对应的原文段落锚点**(如 S01-P03)
    - 这个镜头的 visual_description **必须能直接从该原文段落推导出来**,不许臆造段落里没有的关键动作
+6. **资产 id 强绑定(跨镜头一致性的关键)**
+   - 镜头中出现的每个角色,必须把它的资产 id 写进 characters 数组;主导场景写进 location_id;关键道具写进 props
+   - **只能引用资产注册表里已有的 id**,不要自创 id;注册表为空时这些字段留空
+   - 描述角色/场景/道具外观时,以注册表中的 appearance 锚点为准,不要每次重新发明外观(否则 AI 视频生成会脸漂/场景漂)
 
 【生成每个镜头后的自检清单】
 默念这 4 条,任何一条答"否"则**删掉重写**:
@@ -83,6 +87,9 @@ SEGMENT_PROMPT = ChatPromptTemplate.from_messages([
 
 【全剧概要】(供你理解全局定位,只生成本段分镜)
 {story_synopsis}
+
+【资产注册表】(所有镜头必须引用这里的 id,保证跨镜头外观一致)
+{asset_registry}
 
 【本段剧本片段】(重点关注,镜头从这里生成)
 ---
@@ -114,6 +121,9 @@ SEGMENT_PROMPT = ChatPromptTemplate.from_messages([
       "shot_number": {starting_shot_num},
       "shot_type": "景别(远景/全景/中景/近景/特写)",
       "duration_seconds": 15,
+      "characters": ["char-01(本镜头出场的角色资产 id,从注册表选,可多个)"],
+      "location_id": "loc-01(本镜头主导场景的资产 id,从注册表选)",
+      "props": ["prop-01(本镜头出现的关键道具资产 id,可多个)"],
       "visual_description": "中文描述,**必须列出 4-6 个切片**:\\n0-3秒 切片1: ...\\n3-6秒 切片2: ...\\n6-9秒 切片3: ...\\n9-12秒 切片4: ...\\n12-15秒 切片5: ...",
       "negative_prompt": "模糊, 低质量, 面部畸形, ...(从中文词汇表选 5-8 个)",
       "dialogue": "台词/旁白(无则留空)",
@@ -243,6 +253,9 @@ visual_description 字段**必须**列出小场景内部的 4-6 个切片。每�
 【节奏约束(按比例分配镜头数)】
 {pacing_constraints}
 
+【资产注册表】(所有镜头必须引用这里的 id,保证跨镜头外观一致)
+{asset_registry}
+
 【negative_prompt 受控词汇表(只能从这里挑选)】
 {negative_vocab}
 
@@ -259,6 +272,9 @@ visual_description 字段**必须**列出小场景内部的 4-6 个切片。每�
       "shot_number": 1,
       "shot_type": "小场景主导景别(远景/全景/中景/近景/特写,内部可混搭)",
       "duration_seconds": 15,
+      "characters": ["char-01(本镜头出场的角色资产 id,从注册表选,可多个)"],
+      "location_id": "loc-01(本镜头主导场景的资产 id,从注册表选)",
+      "props": ["prop-01(本镜头出现的关键道具资产 id,可多个)"],
       "visual_description": "中文小场景描述,**必须按下方格式列出 4-6 个切片**:\n0-3秒 切片1: ...\n3-6秒 切片2: ...\n6-9秒 切片3: ...\n9-12秒 切片4: ...\n12-15秒 切片5: ...",
       "negative_prompt": "模糊, 低质量, 面部畸形, ...(从中文词汇表选 5-8 个)",
       "dialogue": "台词/旁白(无则留空)",

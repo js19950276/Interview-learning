@@ -13,7 +13,13 @@ from pathlib import Path
 import streamlit as st
 
 from agent.llm import setup_llm_logging
-from agent.exporter import export_rewrite, export_storyboard_word, export_video_prompts
+from agent.exporter import (
+    export_rewrite,
+    export_storyboard_word,
+    export_storyboard_xlsx,
+    export_video_prompts,
+)
+from agent.jianying_exporter import export_jianying_draft_zip
 from agent.parser import parse_docx
 from agent.quality_metrics import assess_storyboard_quality, assess_variant_quality
 from agent.run_summary import build_run_summary
@@ -39,6 +45,39 @@ STAGE_LABELS = {
     Stage.STORYBOARDED: "🎬 分镜",
     Stage.EXPORTED: "📦 导出",
 }
+
+
+def render_cost_panel(state: DramaState) -> None:
+    """Sidebar:按阶段累计的 Token 用量(借鉴 ArcReel 费用追踪)."""
+    usage = state.usage_by_stage or {}
+    if not usage:
+        return
+    with st.sidebar:
+        st.divider()
+        st.subheader("💰 Token 用量")
+        rows = []
+        totals = {"calls": 0, "prompt_tokens": 0, "completion_tokens": 0, "cache_read_tokens": 0}
+        for stage_name in sorted(usage.keys()):
+            m = usage.get(stage_name) or {}
+            try:
+                label = STAGE_LABELS.get(Stage(stage_name), stage_name)
+            except ValueError:
+                label = stage_name
+            row = {
+                "阶段": label,
+                "调用": m.get("calls", 0),
+                "输入": m.get("prompt_tokens", 0),
+                "输出": m.get("completion_tokens", 0),
+                "缓存命中": m.get("cache_read_tokens", 0),
+            }
+            rows.append(row)
+            totals["calls"] += row["调用"]
+            totals["prompt_tokens"] += row["输入"]
+            totals["completion_tokens"] += row["输出"]
+            totals["cache_read_tokens"] += row["缓存命中"]
+        rows.append({"阶段": "**合计**", **totals})
+        st.dataframe(rows, hide_index=True, use_container_width=True)
+        st.caption("用量按阶段累计,重跑不清零(历史花费事实)")
 
 
 def render_target_minutes_panel(state: DramaState) -> None:
@@ -109,6 +148,7 @@ def _check_prompt_versions(state: DramaState) -> None:
     from prompts.emotion_score import VERSION as V_EMOTION_SCORE
     from prompts.compliance import VERSION as V_COMPLIANCE
     from prompts.storyboard import VERSION as V_STORYBOARD
+    from prompts.assets import VERSION as V_ASSETS
 
     current = {
         "story_card": V_STORY_CARD,
@@ -117,6 +157,7 @@ def _check_prompt_versions(state: DramaState) -> None:
         "emotion_score": V_EMOTION_SCORE,
         "compliance": V_COMPLIANCE,
         "storyboard": V_STORYBOARD,
+        "assets": V_ASSETS,
     }
     stage_dep = {
         "story_card": Stage.CARDED,
@@ -125,6 +166,7 @@ def _check_prompt_versions(state: DramaState) -> None:
         "emotion_score": Stage.SCORED,
         "compliance": Stage.SCORED,
         "storyboard": Stage.STORYBOARDED,
+        "assets": Stage.STORYBOARDED,
     }
     mismatches = []
     for module, recorded in state.prompt_versions.items():
@@ -296,6 +338,9 @@ def render_variants(state: DramaState) -> None:
         blocks = sum(1 for x in (report.issues if report else []) if x.severity == "block")
         warns = sum(1 for x in (report.issues if report else []) if x.severity == "warn")
         rewrite_cnt = state.rewrite_counts[i] if i < len(state.rewrite_counts) else 0
+        gates = state.quality_gate_reports.get(i) or []
+        gate_blocks = sum(1 for g in gates if g.get("level") == "block")
+        gate_warns = sum(1 for g in gates if g.get("level") == "warn")
 
         if err:
             final_disp = "⚠️ 失败"
@@ -308,12 +353,14 @@ def render_variants(state: DramaState) -> None:
         rows.append({
             "#": i,
             "场景": v.emotion_type,
+            "钩子": getattr(v, "hook_type", "") or "—",
             "final": final_disp,
             "主评": primary_disp,
             "副评": cross_disp,
             "仲裁": f"{arb.total:.1f}" if arb else "—",
             "重写": rewrite_cnt,
             "合规": ("⛔" * blocks + "⚠️" * warns) or "✓",
+            "质量门": ("⛔" * gate_blocks + "⚠️" * gate_warns) or "✓",
             "侵权风险": f"{ip_report.risk_level}/{ip_report.launch_advice}" if ip_report else "—",
         })
     st.dataframe(rows, hide_index=True, use_container_width=True)
@@ -358,6 +405,18 @@ def render_variants(state: DramaState) -> None:
             for check in quality.checks:
                 if not check.ok:
                     st.caption(f"⚠️ {check.name}: {check.detail}")
+            gates = state.quality_gate_reports.get(chosen) or []
+            if gates:
+                st.markdown("**质量门**(确定性硬检查)")
+                for g in gates:
+                    icon = {"block": "⛔", "warn": "⚠️"}.get(g.get("level"), "✓")
+                    st.markdown(f"{icon} **{g['name']}** — {g.get('detail', '')}")
+            st.markdown(f"**钩子类型**:{getattr(v, 'hook_type', '') or '—'}")
+            beats = getattr(v, "beats", None) or []
+            if beats:
+                act = sum(1 for b in beats if b.get("type") == "动作")
+                dia = sum(1 for b in beats if b.get("type") == "台词")
+                st.markdown(f"**节拍流**:{len(beats)} 拍(动作 {act} / 台词 {dia}),台词已逐句带说话人+语气,可直接对接分镜/TTS")
             st.markdown(f"**钩子总结**:{v.hook_summary}")
             st.markdown(f"**情绪定位**:{v.emotion_positioning}")
             st.markdown(f"**开场**:{v.opening_lines}")
@@ -401,7 +460,8 @@ def render_variants(state: DramaState) -> None:
                         st.caption(f"建议:{issue.suggestion}")
 
             # 单变体下载(仅重写文本)
-            buf = export_rewrite(state.script.title if state.script else "重写", v.emotion_type, v.full_rewrite)
+            buf = export_rewrite(state.script.title if state.script else "重写", v.emotion_type, v.full_rewrite,
+                                 hook_type=getattr(v, "hook_type", ""))
             st.download_button(
                 "📥 仅下载此变体重写文本",
                 data=buf,
@@ -446,6 +506,11 @@ def render_storyboard(state: DramaState) -> None:
     flagged_shots = []  # 后置验证标记问题的镜头
     for shot in sb.shots:
         flag = "⚠️" if shot.validation_issues else ""
+        asset_refs = ", ".join(shot.characters or [])
+        if shot.location_id:
+            asset_refs = (asset_refs + ", " if asset_refs else "") + "@" + shot.location_id
+        if shot.props:
+            asset_refs = (asset_refs + ", " if asset_refs else "") + "道具×" + str(len(shot.props))
         rows.append({
             "#": shot.shot_number,
             "校验": flag,
@@ -454,6 +519,7 @@ def render_storyboard(state: DramaState) -> None:
             "景别": shot.shot_type,
             "时长": f"{shot.duration_seconds}秒",
             "画面描述": shot.visual_description[:80],
+            "资产": asset_refs or "-",
             "BGM": shot.bgm_mood,
             "运镜": shot.camera_movement,
         })
@@ -480,12 +546,25 @@ def render_storyboard(state: DramaState) -> None:
                 icon = {"block": "⛔", "warn": "⚠️", "info": "ℹ️"}.get(issue.severity, "•")
                 st.markdown(f"{icon} [{issue.category}] **{issue.text_span}** — {issue.reason}")
 
-    col1, col2 = st.columns(2)
     title = state.script.title if state.script else "分镜"
+    fmt = st.radio(
+        "分镜 Word 格式",
+        ["国内(△/♪)", "海外(INT./EXT.)"],
+        horizontal=True,
+        key="sb_word_fmt",
+    )
+    fmt_value = "海外" if fmt.startswith("海外") else "国内"
+    target_model = st.radio(
+        "video_prompts 目标模型(按模型方言重组提示词)",
+        ["通用", "Seedance2.0", "MiniMax H3"],
+        horizontal=True,
+        key="sb_target_model",
+    )
+    col1, col2, col3, col4 = st.columns(4)
     with col1:
-        word_buf = export_storyboard_word(title, sb)
+        word_buf = export_storyboard_word(title, sb, assets=state.assets, fmt=fmt_value)
         st.download_button(
-            "📥 下载分镜 Word",
+            "📥 分镜 Word",
             data=word_buf,
             file_name=f"{title}_{sb.emotion_type}_分镜.docx",
             mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -493,14 +572,74 @@ def render_storyboard(state: DramaState) -> None:
             use_container_width=True,
         )
     with col2:
-        json_buf = export_video_prompts(sb)
+        json_buf = export_video_prompts(sb, assets=state.assets, target_model=target_model)
         st.download_button(
-            "📥 下载 video_prompts.json",
+            "📥 video_prompts.json",
             data=json_buf,
             file_name=f"{title}_{sb.emotion_type}_video_prompts.json",
             mime="application/json",
             use_container_width=True,
         )
+    with col3:
+        xlsx_buf = export_storyboard_xlsx(title, sb, assets=state.assets)
+        st.download_button(
+            "📥 九列分镜表 xlsx",
+            data=xlsx_buf,
+            file_name=f"{title}_{sb.emotion_type}_分镜表.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True,
+        )
+    with col4:
+        jy_buf = export_jianying_draft_zip(sb, assets=state.assets)
+        st.download_button(
+            "📥 剪映草稿 zip",
+            data=jy_buf,
+            file_name=f"{title}_{sb.emotion_type}_剪映草稿.zip",
+            mime="application/zip",
+            use_container_width=True,
+        )
+
+
+def render_assets(state: DramaState) -> None:
+    """资产注册表(借鉴 Jellyfish):查看 + 编辑外观锚点;编辑后仅重跑分镜."""
+    if not state.assets:
+        st.info("资产尚未提取(STORYBOARDED 阶段自动从选中变体提取)")
+        return
+    kind_icons = {"character": "🧑", "location": "🏠", "prop": "🗝️", "costume": "👕"}
+    rows = [
+        {
+            "id": a.id,
+            "类型": f"{kind_icons.get(a.kind, '•')} {a.kind}",
+            "名称": a.name,
+            "别名": "/".join(a.aliases) if a.aliases else "-",
+            "外观锚点": a.appearance,
+        }
+        for a in state.assets
+    ]
+    st.dataframe(rows, hide_index=True, use_container_width=True)
+
+    with st.expander("✏️ 编辑外观锚点(改完重新生成分镜)"):
+        if pipeline_alive(state):
+            st.caption("🔒 pipeline 运行中,暂不可编辑")
+        else:
+            new_appearances = {}
+            for a in state.assets:
+                alias = f"({'/'.join(a.aliases)})" if a.aliases else ""
+                new_appearances[a.id] = st.text_area(
+                    f"[{a.id}] {a.name}{alias}",
+                    value=a.appearance,
+                    key=f"asset_ap_{a.id}",
+                    height=68,
+                )
+            if st.button("💾 保存外观并重新生成分镜", type="primary"):
+                for a in state.assets:
+                    val = new_appearances.get(a.id, "").strip()
+                    if val:
+                        a.appearance = val
+                state.save()
+                state.invalidate_from(Stage.STORYBOARDED)   # 保留 assets/variant,只重跑分镜
+                maybe_start_pipeline(state.workspace, Stage.STORYBOARDED)
+                st.rerun()
 
 
 # ---------------- main ----------------
@@ -558,6 +697,7 @@ def main():
 
     # 目标时长和运行摘要 sidebar 面板
     render_target_minutes_panel(state)
+    render_cost_panel(state)
     render_run_summary_download(state)
 
     # 顶部信息
@@ -626,6 +766,9 @@ def main():
         expanded=(state.stage in [Stage.REWRITTEN, Stage.SCORED, Stage.SELECTED]),
     ):
         render_variants(state)
+
+    with st.expander("🧩 资产注册表(跨镜头一致性)", expanded=False):
+        render_assets(state)
 
     with st.expander(
         "🎬 分镜 + 导出",

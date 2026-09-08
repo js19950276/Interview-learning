@@ -92,12 +92,12 @@ class PipelineRun:
         )
 
     def rewritten(self) -> None:
-        from agent.hook_rewriter import rewrite_hooks
+        from agent.hook_rewriter import assign_hook_types, rewrite_hooks
         from agent.story_card import card_summary
         from agent.pacing import pacing_constraints_text
         from prompts.hook_rewrite import VERSION as HOOK_REWRITE_VERSION
         if self.state.script is None:
-            raise RuntimeError("REWRITTEN 阶段需要 script")
+            raise RuntimeError("REWRITTEN 阶段需要 script(请先 PARSED)")
         if self.state.scene_match is None or not self.state.scene_match.selected:
             raise RuntimeError("REWRITTEN 阶段需要 scene_match(请先 SCENE_MATCHED)")
         self._start_work()
@@ -106,7 +106,13 @@ class PipelineRun:
             (f"{s.genre}·{'/'.join(s.hook_tags)}" if s.hook_tags else s.genre, s.one_liner)
             for s in self.state.scene_match.selected
         ]
-        self._emit(Stage.REWRITTEN, f"并行生成 {len(scenes)} 变体(动态场景)...")
+        # 钩子类型轴:5 变体 = 5 场景 × 5 钩子类型一一配对(贪心亲和分配)
+        hook_types = assign_hook_types(self.state.scene_match.selected)
+        self._emit(
+            Stage.REWRITTEN,
+            f"并行生成 {len(scenes)} 变体(场景×钩子类型: "
+            f"{', '.join(f'{s.genre}×{h}' for s, h in zip(self.state.scene_match.selected, hook_types))})...",
+        )
         sc = card_summary(self.state.story_card) if self.state.story_card else ""
         pc = pacing_constraints_text(self.state.pacing_plan) if self.state.pacing_plan else ""
         variants = rewrite_hooks(
@@ -115,13 +121,14 @@ class PipelineRun:
             story_card_summary=sc,
             pacing_constraints=pc,
             pacing_plan=self.state.pacing_plan,
+            hook_types=hook_types,
         )
         with self.state._lock:
             self.state.variants = variants
             self.state._save_locked()
         self.state.advance_to(Stage.REWRITTEN)
         self.state.snapshot()
-        self._emit(Stage.REWRITTEN, f"5 变体生成完成 ({len(variants)} 个)")
+        self._emit(Stage.REWRITTEN, f"{len(variants)} 变体生成完成 (场景×钩子类型)")
 
     def scored(self) -> None:
         from agent.score_loop import run_score_loop
@@ -145,19 +152,35 @@ class PipelineRun:
     def storyboarded(self) -> None:
         from agent.storyboard import generate_storyboard
         from agent.compliance import scan as compliance_scan
+        from agent.assets import extract_assets
+        from agent.story_card import card_summary
         from prompts.storyboard import VERSION as STORYBOARD_VERSION
+        from prompts.assets import VERSION as ASSETS_VERSION
         if self.state.selected_variant_idx is None:
             raise RuntimeError("STORYBOARDED 阶段需要 selected_variant_idx(请先 SELECTED)")
         idx = self.state.selected_variant_idx
         variant = self.state.variants[idx]
         self._start_work()
         self.state.prompt_versions["storyboard"] = STORYBOARD_VERSION
+        self.state.prompt_versions["assets"] = ASSETS_VERSION
+        # 资产提取:注册表为空时提取一次(变体重建 invalidate 会清空);
+        # 用户在 UI 编辑过的外观保留,不重复提取
+        if not self.state.assets:
+            self._emit(Stage.STORYBOARDED, "提取资产注册表(角色/场景/道具/服装)...")
+            assets = extract_assets(
+                variant.full_rewrite,
+                story_card_summary=card_summary(self.state.story_card) if self.state.story_card else "",
+            )
+            with self.state._lock:
+                self.state.assets = assets
+                self.state._save_locked()
         self._emit(Stage.STORYBOARDED, f"为变体 {idx}({variant.emotion_type})分段生成分镜...")
         sb = generate_storyboard(
             variant,
             script_title=self.state.script.title if self.state.script else "未命名",
             script=self.state.script,
             pacing_plan=self.state.pacing_plan,  # 触发 4 段拆分调用
+            assets=self.state.assets,
         )
         # 第二次合规:扫分镜的视觉描述(可能引入新违规)
         all_visual = "\n".join(s.visual_description for s in sb.shots)
@@ -199,6 +222,8 @@ class PipelineRun:
 
     def resume_to(self, target: Stage) -> None:
         """从当前 stage 跑到 target(包含).SELECTED 需用户介入,自动跳过."""
+        from agent.llm import set_usage_tag, usage_snapshot, usage_delta
+
         target_idx = STAGE_ORDER.index(target)
         current_idx = STAGE_ORDER.index(self.state.stage)
         for stage in STAGE_ORDER[current_idx + 1:target_idx + 1]:
@@ -211,4 +236,19 @@ class PipelineRun:
                 continue
             method_name = self._METHOD_MAP.get(stage)
             if method_name:
+                # 用量追踪:stage 前后取快照差值,累计进 state.usage_by_stage(历史花费不清)
+                set_usage_tag(stage.value)
+                before = usage_snapshot()
                 getattr(self, method_name)()
+                delta = usage_delta(before, usage_snapshot())
+                set_usage_tag("")
+                if delta:
+                    with self.state._lock:
+                        merged = dict(self.state.usage_by_stage or {})
+                        for group, metrics in delta.items():
+                            bucket = dict(merged.get(group, {}))
+                            for k, v in metrics.items():
+                                bucket[k] = bucket.get(k, 0) + v
+                            merged[group] = bucket
+                        self.state.usage_by_stage = merged
+                        self.state._save_locked()

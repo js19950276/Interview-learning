@@ -14,6 +14,7 @@ from agent.compliance import scan as compliance_scan
 from agent.ip_risk import assess as ip_risk_assess
 from agent.emotion_scorer import ScoreResult, score_text
 from agent.hook_rewriter import Variant, rewrite_single_variant
+from agent.quality_metrics import run_variant_gates
 from agent.state import ComplianceReport, DramaState
 
 log = logging.getLogger("score_loop")
@@ -70,6 +71,7 @@ def run_score_loop(
         state.rewrite_counts = [0] * n
         state.compliance_reports = []
         state.ip_risk_reports = []
+        state.quality_gate_reports = {}
         state._save_locked()
 
     rewrite_budget = [MAX_TOTAL_REWRITES]
@@ -81,6 +83,12 @@ def run_score_loop(
                 return False
             rewrite_budget[0] -= 1
             return True
+
+    def _record_gates(idx: int, gates: list) -> None:
+        payload = [{"name": g.name, "level": g.level, "detail": g.detail} for g in gates]
+        with state._lock:
+            state.quality_gate_reports[idx] = payload
+            state._save_locked()
 
     def _process(idx: int) -> None:
         variant = state.variants[idx]
@@ -95,7 +103,41 @@ def run_score_loop(
                 on_progress(idx, variant.emotion_type if variant else f"variant-{idx}")
             return
         attempt = 0
+        gate_fixed = False   # 质量门只自动修复一次,避免和合规/评分重写互相吃预算
         while True:
+            # 确定性质量门:零 LLM 成本的硬检查,block 时先于合规/评分触发修复,
+            # 避免机械性失败(分段字数不达标/开场词丢失)浪费评分调用.
+            gates = run_variant_gates(variant, state.story_card, state.pacing_plan)
+            _record_gates(idx, gates)
+            block_gates = [g for g in gates if g.level == "block"]
+            if block_gates and not gate_fixed:
+                if attempt < MAX_REWRITES_PER_VARIANT and _claim_rewrite():
+                    gate_lines = [f"- [{g.name}] {g.detail}" for g in block_gates]
+                    log.info("variant-%d 质量门阻断,自动修复 | %s", idx, "; ".join(gate_lines))
+                    try:
+                        variant = rewrite_single_variant(
+                            variant,
+                            suggestions="以下是结构质量门未通过的硬性项,必须修正:\n" + "\n".join(gate_lines),
+                            story_card_summary=story_card_summary,
+                            pacing_constraints=pacing_constraints,
+                        )
+                    except Exception as e:
+                        err_msg = f"质量门修复重写失败: {type(e).__name__}: {str(e)[:200]}"
+                        log.error("variant-%d %s", idx, err_msg)
+                        with state._lock:
+                            state.score_errors[idx] = err_msg
+                            state._save_locked()
+                        break
+                    with state._lock:
+                        state.variants[idx] = variant
+                        state.rewrite_counts[idx] += 1
+                        state._save_locked()
+                    gate_fixed = True
+                    attempt += 1
+                    continue
+                else:
+                    log.error("variant-%d 质量门阻断但预算耗尽/已修复过,带伤进入评分", idx)
+
             target_id = f"variant-{idx}"
             try:
                 report = compliance_scan(variant.full_rewrite, target_id=target_id)

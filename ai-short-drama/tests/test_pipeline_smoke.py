@@ -42,24 +42,46 @@ def fake_llm_call(messages, max_tokens=81920, max_retries=2):
             "selected": [{"id": cid, "reason": f"mock-适合-{cid}"} for cid in chosen],
         }
 
-    # 钩子重构(单次 或 分段)
+    # 评分(emotion_score):必须在钩子分支之前判断——评分 persona 文本含"钩子强度"字样
+    if "情绪价值" in system or "评分" in system or "运营总监" in system or "用户研究员" in system or "编剧主编" in system:
+        return {
+            "scores": {"钩子强度": 8.0, "爽感密度": 7.5, "节奏紧凑度": 7.5,
+                       "台词口语度": 8.0, "画面可拍性": 7.5},
+            "total": 7.7,
+            "comment": "整体不错",
+            "improvement_suggestions": "",
+        }
+
+    # 钩子重构(单次 或 分段节拍流)
     if "钩子重构" in system or "钩子" in system and "情绪价值" not in system:
-        # 分段重写:user 含 "segment_text" schema
-        if '"segment_text"' in user:
+        # 分段重写:user 含 "beats" schema
+        if '"beats"' in user:
             sm = re.search(r"【场景方向】【(.+?)】", user)
             scene = sm.group(1) if sm else "未知场景"
             segm = re.search(r"【(起势|攀升|风暴|决战)】", user)
             seg_name = segm.group(1) if segm else "段"
-            seg_text = f"{scene}-{seg_name}段正文内容"
+            # 质量门要求每段 ≥ word_target 的 60%(25 分钟 → 总目标 7500 字),按段给足字数
+            unit = "剧情推进，冲突升级，情绪递进，反转不断。"
+            floor = {"起势": 700, "攀升": 1400, "风暴": 1650, "决战": 950}.get(seg_name, 300)
+            filler = [{"type": "动作", "speaker": "", "tone": "", "text": unit}
+                      for _ in range(floor // len(unit) + 2)]
             if '"opening_lines"' in user:  # 首段额外带元数据
                 return {
                     "opening_lines": f"{scene}的开场",
                     "visual_description": f"{scene}的画面",
                     "emotion_positioning": f"定位 {scene}",
                     "hook_summary": f"{scene} 钩子",
-                    "segment_text": seg_text,
+                    # 开场词必须落在前 3 拍,否则质量门"开场词(冷开场)"会 block
+                    "beats": [
+                        {"type": "台词", "speaker": "女主A", "tone": "低声",
+                         "text": f"{scene}的开场，我不会放过任何线索。"},
+                        {"type": "动作", "speaker": "", "tone": "",
+                         "text": "女主A猛地合上电脑，抓起外套冲出办公室。"},
+                        {"type": "台词", "speaker": "女主A", "tone": "咬牙",
+                         "text": "这一次，我要拿回属于我的一切。"},
+                    ] + filler,
                 }
-            return {"segment_text": seg_text}
+            return {"beats": filler}
         # 单次重写兜底
         m = re.search(r"请按照【(.+?)】", user)
         emotion = m.group(1) if m else "未知场景"
@@ -70,15 +92,6 @@ def fake_llm_call(messages, max_tokens=81920, max_retries=2):
             "emotion_positioning": f"定位 {emotion}",
             "hook_summary": f"{emotion} 钩子",
             "full_rewrite": f"完整剧本重写({emotion})",
-        }
-
-    # 评分(emotion_score)
-    if "情绪价值" in system or "评分" in system or "运营总监" in system or "用户研究员" in system or "编剧主编" in system:
-        return {
-            "scores": {"爽感": 8.0, "治愈感": 7.5, "共鸣度": 7.5, "逻辑性": 8.0, "视觉冲击力": 7.5},
-            "total": 7.7,
-            "comment": "整体不错",
-            "improvement_suggestions": "",
         }
 
     # 合规判定
@@ -103,6 +116,20 @@ def fake_llm_call(messages, max_tokens=81920, max_retries=2):
             "disclaimer": "本结果仅为创作风控初筛,不能替代律师法律意见。",
         }
 
+    # 资产提取(借鉴 Jellyfish 一致性资产管理)
+    if "美术制片" in system or ("assets" in user and "appearance" in user):
+        return {
+            "assets": [
+                {"kind": "character", "name": "女主A",
+                 "appearance": "30岁职场白领,黑色齐肩发,深灰西装,眼神坚毅",
+                 "aliases": ["阿A"]},
+                {"kind": "location", "name": "办公室",
+                 "appearance": "现代都市写字楼,冷白光,玻璃隔断,金属灰主调"},
+                {"kind": "prop", "name": "父亲的照片",
+                 "appearance": "旧木相框,黑白照片,边角磨损"},
+            ],
+        }
+
     # 后置分镜验证(1.5)
     if "分镜逻辑审查员" in system or "issues_by_fragment" in user:
         return {"issues_by_fragment": {}}  # mock: 无问题
@@ -120,6 +147,9 @@ def fake_llm_call(messages, max_tokens=81920, max_retries=2):
                     "shot_number": 1,
                     "shot_type": "特写",
                     "duration_seconds": 15,
+                    "characters": ["char-01"],
+                    "location_id": "loc-01",
+                    "props": ["prop-01"],
                     "visual_description": "0-3秒 特写女主A眼神\n3-6秒 中景办公室",
                     "negative_prompt": "模糊, 低质量, 面部畸形",
                     "dialogue": "我不会放弃",
@@ -134,6 +164,9 @@ def fake_llm_call(messages, max_tokens=81920, max_retries=2):
                     "shot_number": 2,
                     "shot_type": "中景",
                     "duration_seconds": 15,
+                    "characters": ["char-99"],   # 未知 id → 归一化应丢弃
+                    "location_id": "",
+                    "props": [],
                     "visual_description": "0-3秒 调查桌前\n3-6秒 翻文件",
                     "negative_prompt": "模糊, 水印",
                     "dialogue": "",
@@ -211,6 +244,7 @@ def test_pipeline_storyboard_after_select():
              mock.patch("agent.emotion_scorer.call_llm_messages_json", side_effect=fake_llm_call), \
              mock.patch("agent.compliance.call_llm_messages_json", side_effect=fake_llm_call), \
              mock.patch("agent.ip_risk.call_llm_messages_json", side_effect=fake_llm_call), \
+             mock.patch("agent.assets.call_llm_messages_json", side_effect=fake_llm_call), \
              mock.patch("agent.storyboard.call_llm_messages_json", side_effect=fake_llm_call):
             run = PipelineRun(state)
             run.resume_to(Stage.SCORED)
@@ -223,6 +257,10 @@ def test_pipeline_storyboard_after_select():
 
         assert state.stage == Stage.EXPORTED
         assert state.storyboard is not None
+        # 资产注册表应被提取,id 由代码重编
+        assert len(state.assets) == 3
+        assert [a.id for a in state.assets] == ["char-01", "loc-01", "prop-01"]
+        assert state.assets[0].aliases == ["阿A"]
         # 分段+sub-call 调用:25 分钟剧本(100 镜头)→ 8 次 LLM 调用
         # 每次 mock 返 2 镜头 → 共 16 镜头
         # 起势 1 次 (2) | 攀升 2 次 (4) | 风暴 3 次 (6) | 决战 2 次 (4) = 16
@@ -231,6 +269,11 @@ def test_pipeline_storyboard_after_select():
         assert [s.shot_number for s in state.storyboard.shots] == list(range(1, 17))
         # 起势(SC01)第 1 镜头
         assert state.storyboard.shots[0].fragment_id == "S01-SC01-01"
+        # 资产引用归一:合法 id 保留,未知 id(char-99)丢弃
+        assert state.storyboard.shots[0].characters == ["char-01"]
+        assert state.storyboard.shots[0].location_id == "loc-01"
+        assert state.storyboard.shots[0].props == ["prop-01"]
+        assert state.storyboard.shots[1].characters == []
         # 攀升(SC02)从第 3 镜头(idx 2)开始,sub-call 1 给 SC02-01..02
         assert state.storyboard.shots[2].fragment_id == "S01-SC02-01"
         # 攀升 sub-call 2 从第 5 镜头(idx 4),fragment_offset=2 → SC02-03..04
@@ -291,6 +334,7 @@ def test_validation_flags_problematic_shots():
              mock.patch("agent.emotion_scorer.call_llm_messages_json", side_effect=fake_with_validation_issue), \
              mock.patch("agent.compliance.call_llm_messages_json", side_effect=fake_with_validation_issue), \
              mock.patch("agent.ip_risk.call_llm_messages_json", side_effect=fake_with_validation_issue), \
+             mock.patch("agent.assets.call_llm_messages_json", side_effect=fake_with_validation_issue), \
              mock.patch("agent.storyboard.call_llm_messages_json", side_effect=fake_with_validation_issue):
             run = PipelineRun(state)
             run.resume_to(Stage.SCORED)

@@ -66,6 +66,7 @@ class SelectedScene:
     hook_tags: list[str] = field(default_factory=list)
     one_liner: str = ""
     reason: str = ""         # LLM 入选理由(或"粗筛兜底"/"手动指定")
+    hook_type_hints: list[str] = field(default_factory=list)  # 建议搭配的钩子类型(场景库可选字段)
 
 
 @dataclass
@@ -144,6 +145,19 @@ class IPRiskReport:
 
 
 @dataclass
+class Asset:
+    """资产实体(借鉴 Jellyfish 一致性资产管理):角色/场景/道具/服装注册表.
+
+    appearance 是外观锚点描述,分镜镜头直接复用,解决 AI 视频跨镜头一致性问题.
+    """
+    id: str = ""           # char-01 / loc-01 / prop-01 / cost-01
+    kind: str = ""         # character / location / prop / costume
+    name: str = ""
+    appearance: str = ""   # 40-80 字外观锚点(年龄/发型/服装/气质等,不含剧情)
+    aliases: list[str] = field(default_factory=list)
+
+
+@dataclass
 class DramaState:
     project_id: str = ""
     workspace: Path = field(default_factory=lambda: Path("."))
@@ -162,6 +176,8 @@ class DramaState:
     ip_risk_reports: list[IPRiskReport] = field(default_factory=list)
     selected_variant_idx: Optional[int] = None
     storyboard: Optional[Storyboard] = None
+    # 资产注册表:STORYBOARDED 阶段从选中变体提取;变体重建(invalidate REWRITTEN)时清空
+    assets: list[Asset] = field(default_factory=list)
 
     # 用户 UI 手动指定目标时长(覆盖 LLM 估计 + 字数启发).None=自动推导
     user_target_minutes: Optional[float] = None
@@ -170,10 +186,14 @@ class DramaState:
 
     # 失败可见化 (#1):variant_idx → 错误描述
     score_errors: dict[int, str] = field(default_factory=dict)
+    # 确定性质量门结果 (#7):variant_idx → [{name, level, detail}],score_loop 前置硬检查产出
+    quality_gate_reports: dict[int, list[dict]] = field(default_factory=dict)
     # 生成阶段失败 (storyboarded 等):stage_name → 错误描述
     stage_errors: dict[str, str] = field(default_factory=dict)
     # Prompt 版本快照 (#4):module_name → version,记录每个 stage 用的 prompt 版本
     prompt_versions: dict[str, str] = field(default_factory=dict)
+    # Token 用量(借鉴 ArcReel 费用追踪):stage 名 → {calls, prompt_tokens, ...},历史累计不清
+    usage_by_stage: dict[str, dict[str, int]] = field(default_factory=dict)
     # 当前正在跑的阶段开始时间戳 (#3-lite),供 UI 显示已运行时长
     current_work_started_at: float = 0.0
 
@@ -338,6 +358,7 @@ class DramaState:
                 (Stage.SCENE_MATCHED, "scene_match", None),
                 (Stage.PACED, "pacing_plan", None),
                 (Stage.REWRITTEN, "variants", []),
+                (Stage.REWRITTEN, "assets", []),
                 (Stage.SCORED, "primary_scores", []),
                 (Stage.SCORED, "cross_scores", []),
                 (Stage.SCORED, "arbiter_scores", {}),
@@ -346,6 +367,7 @@ class DramaState:
                 (Stage.SCORED, "compliance_reports", []),
                 (Stage.SCORED, "ip_risk_reports", []),
                 (Stage.SCORED, "score_errors", {}),
+                (Stage.SCORED, "quality_gate_reports", {}),
                 (Stage.SELECTED, "selected_variant_idx", None),
                 (Stage.STORYBOARDED, "storyboard", None),
                 (Stage.STORYBOARDED, "stage_errors", {}),

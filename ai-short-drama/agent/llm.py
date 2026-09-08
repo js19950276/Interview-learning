@@ -142,6 +142,68 @@ def _log_usage(usage: dict, tag: str = "") -> None:
         tag, usage.get("prompt_tokens"), usage.get("completion_tokens"),
         usage.get("total_tokens"), cache_read, cache_write,
     )
+    record_usage(usage)
+
+
+# ---------------------------------------------------------------------------
+# Token 用量追踪(ArcReel 式费用可见):线程安全累计,按"当前标签"(通常 = stage 名)分组.
+# 评分循环等并发调用发生在 pipeline 主线程阻塞于 scored() 期间,共享同一 stage 标签.
+# ---------------------------------------------------------------------------
+_USAGE_LOCK = threading.Lock()
+_USAGE_TOTALS: dict[str, dict[str, int]] = {}
+_current_tag = "other"
+
+
+def set_usage_tag(tag: str) -> None:
+    """设置后续 LLM 调用的用量归组标签(pipeline 每个 stage 开始前设置)."""
+    global _current_tag
+    _current_tag = (tag or "other").strip() or "other"
+
+
+def get_usage_tag() -> str:
+    return _current_tag
+
+
+def record_usage(usage: dict, tag: str = "") -> None:
+    """累加一次调用的 token 用量.线程安全;tag 缺省取当前标签."""
+    if not usage:
+        return
+    group = tag or get_usage_tag()
+    details = usage.get("prompt_tokens_details") or {}
+    entry = {
+        "calls": 1,
+        "prompt_tokens": int(usage.get("prompt_tokens") or 0),
+        "completion_tokens": int(usage.get("completion_tokens") or 0),
+        "total_tokens": int(usage.get("total_tokens") or 0),
+        "cache_read_tokens": int(usage.get("cache_read_input_tokens") or details.get("cached_tokens") or 0),
+        "cache_write_tokens": int(usage.get("cache_creation_input_tokens") or 0),
+    }
+    with _USAGE_LOCK:
+        bucket = _USAGE_TOTALS.setdefault(group, {})
+        for k, v in entry.items():
+            bucket[k] = bucket.get(k, 0) + v
+
+
+def usage_snapshot() -> dict[str, dict[str, int]]:
+    with _USAGE_LOCK:
+        return {k: dict(v) for k, v in _USAGE_TOTALS.items()}
+
+
+def reset_usage() -> None:
+    global _USAGE_TOTALS
+    with _USAGE_LOCK:
+        _USAGE_TOTALS = {}
+
+
+def usage_delta(before: dict[str, dict[str, int]], after: dict[str, dict[str, int]]) -> dict[str, dict[str, int]]:
+    """after 相对 before 的增量(按组/按指标),全零组不返回."""
+    out: dict[str, dict[str, int]] = {}
+    for group, metrics in after.items():
+        base = before.get(group, {})
+        diff = {k: v - base.get(k, 0) for k, v in metrics.items()}
+        if any(v for v in diff.values()):
+            out[group] = diff
+    return out
 
 
 def _http_post(

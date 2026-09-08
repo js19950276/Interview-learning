@@ -1,6 +1,31 @@
 from langchain_core.prompts import ChatPromptTemplate
 
-VERSION = "1.4.0"   # 1.4: 分段重写每段只发本段对应原稿片段(替代整篇重发,省重复 token);1.3: 分段重写(按节奏段逐段铺满字数,防 LLM 单次压缩);1.2: 动态场景驱动;1.1: 注入 story_card_summary + pacing_constraints
+VERSION = "1.6.0"   # 1.6: 节拍流结构化(beats: 动作⇄台词交替,台词逐句带说话人+语气,借鉴 shuohao-skills"台词不能写成散文");1.5: 每变体叠加钩子类型轴(悬念/反转/情感/信息/危机五选一,借鉴 0xsline);1.4: 分段重写每段只发本段对应原稿片段(替代整篇重发,省重复 token);1.3: 分段重写(按节奏段逐段铺满字数,防 LLM 单次压缩);1.2: 动态场景驱动;1.1: 注入 story_card_summary + pacing_constraints
+
+# 五种钩子类型(借鉴 0xsline/short-drama 钩子类型学),与 HookDistribution 五字段一一对应
+HOOK_TYPE_GUIDES = {
+    "悬念钩": "以未解之谜开场并持续延宕答案:信息只给一半,每段结尾再补一层新疑问,让观众必须往下滑才能安心",
+    "反转钩": "在情绪最高点掀翻此前认知:身份/立场/事实的反转落差越大越好,前文所有细节都要为反转服务",
+    "情感钩": "把人物关系推到情感极限:背叛/牺牲/和解,先建立共情再引爆情绪,泪点或爽点落在关系变化上",
+    "信息钩": "利用观众与主角的信息差驱动追看:观众不知道但主角知道(或反之)的关键信息逐段揭露",
+    "危机钩": "开场即生死/倒计时/重大威胁,压迫感持续升级不给喘息,每段都把赌注再抬高一级",
+}
+
+# 节拍流写法铁律(借鉴 shuohao-skills novel-script:台词是结构化数据,不能写成散文)
+BEAT_RULES = """【节拍流铁律(违反 = 本段作废)】
+- 正文必须是"动作 ⇄ 台词"交替的节拍流,每拍独立成条;不得连续 3 个同类节拍
+- 台词一句一拍,逐句带说话人与语气;必须口语化、短句、像人说的话——书面腔/解释性台词/长篇独白都是失败
+- 每段至少 2 个动作节拍:纯对白的段是广播剧,AI 视频生成时没有画面可拍
+- 动作节拍写"画面里发生什么"(具体可拍的动作/表情/环境变化),不写心理概括
+- 所有节拍合计仍须写满本段目标字数"""
+
+
+def hook_type_brief(hook_type: str) -> str:
+    """钩子类型 + 写法说明的一行文本,供 prompt 注入;未知类型返回占位."""
+    if not hook_type:
+        return "未指定(按当前场景最自然的钩子方式处理)"
+    guide = HOOK_TYPE_GUIDES.get(hook_type, "")
+    return f"{hook_type} — {guide}" if guide else hook_type
 
 PROMPT = ChatPromptTemplate.from_messages([
     ("system", """你是一位顶级短剧编剧和爆款内容策划专家，精通抖音/红果短剧的流量密码。
@@ -30,10 +55,12 @@ PROMPT = ChatPromptTemplate.from_messages([
 请按照【{emotion_type}】这一情绪维度对剧本进行"钩子重构"。
 
 情绪维度说明：{emotion_desc}
+钩子类型（本变体主钩子）：{hook_type}
 
 要求：
 - **严格遵循上述故事内核**：不偏离主角动机/世界观/转折/结局，只在情绪着色与表达上做诠释
 - **严格遵循节奏分段字数比例**（±5% 容差）和钩子分布
+- **以指定钩子类型为主轴**贯穿全剧，开头 10 秒就是该钩子的第一次兑现
 - 遵循"悬念/冲突/情感暴击 + 视觉冲击"公式
 - 开头10秒必须抓住观众注意力
 - 完整重写剧本，不是只改开头
@@ -66,6 +93,7 @@ REWRITE_PROMPT = ChatPromptTemplate.from_messages([
     ("human", """以下是一个需要优化的短剧变体：
 
 情绪类型：{emotion_type}
+钩子类型（本变体主钩子）：{hook_type}
 
 当前版本：
 {full_rewrite}
@@ -79,7 +107,7 @@ REWRITE_PROMPT = ChatPromptTemplate.from_messages([
 【节奏与钩子约束】
 {pacing_constraints}
 
-请基于改进建议重写这个变体，保持相同的情绪类型与故事内核，但提升整体质量。
+请基于改进建议重写这个变体，保持相同的情绪类型、钩子类型与故事内核，但提升整体质量。
 
 请严格按以下 JSON 格式返回（不要添加任何其他文字）：
 
@@ -100,7 +128,9 @@ _SEGMENT_SYSTEM = """你是一位顶级短剧编剧和爆款内容策划专家�
 - **必须写满本段目标字数**(允许 ±10%),宁可把场景、对白、动作、心理铺细,也不要概括或跳写。字数不足是严重失败。
 - 严格遵循给定的故事内核(主角动机/世界观/转折/结局),只在情绪着色与节奏上做诠释。全剧脉络以【故事内核】为准。
 - 你只会拿到本段对应的那一段原始剧本素材(全剧脉络看故事内核),据此改写本段即可,不要臆造其他段的情节。
-- 只输出本段正文,不要写其他段的内容,不要复述前文。
+- 只输出本段内容,不要写其他段的内容,不要复述前文。
+
+""" + BEAT_RULES + """
 
 重要：你的输出必须是合法的 JSON。文本中的特殊字符必须正确转义(双引号 \\" / 换行 \\n / 反斜杠 \\\\)。"""
 
@@ -116,18 +146,23 @@ SEGMENT_FIRST_PROMPT = ChatPromptTemplate.from_messages([
 {story_card_summary}
 
 【场景方向】【{emotion_type}】— {emotion_desc}
+【钩子类型（本变体主钩子，全剧以此为主轴）】{hook_type}
 
 【本段任务】写第一段【{segment_name}】({segment_pct}%),目标约 {word_target} 字。
-这是开篇,前 10 秒必须强钩子抓人(悬念/冲突/情感暴击 + 视觉冲击)。
+这是开篇,前 10 秒必须强钩子抓人(悬念/冲突/情感暴击 + 视觉冲击),并直接兑现上述钩子类型。
+**开场前 3 拍必须兑现钩子**(opening_lines 就取自这前 3 拍)。
 
 请严格按以下 JSON 返回(不要添加任何其他文字):
 
 {{
-  "opening_lines": "前10秒的台词(2-3句对白)",
+  "opening_lines": "前10秒的台词(2-3句对白,取自前3拍)",
   "visual_description": "画面描述(镜头语言、场景氛围)",
   "emotion_positioning": "整部变体的情绪定位说明",
   "hook_summary": "一句话概括这个钩子的核心吸引力",
-  "segment_text": "本段【{segment_name}】完整正文,约 {word_target} 字,务必写满"
+  "beats": [
+    {{"type": "动作", "speaker": "", "tone": "", "text": "画面里发生的具体动作/场景变化(可拍,不写心理概括)"}},
+    {{"type": "台词", "speaker": "角色名", "tone": "语气(如 冷冷地/哽咽/咬牙)", "text": "一句口语化台词"}}
+  ]
 }}"""),
 ])
 
@@ -143,17 +178,21 @@ SEGMENT_CONT_PROMPT = ChatPromptTemplate.from_messages([
 {story_card_summary}
 
 【场景方向】【{emotion_type}】— {emotion_desc}
+【钩子类型（本变体主钩子，继续延宕或升级，不要提前泄底）】{hook_type}
 
 【已写前文结尾(仅用于衔接,不要重复)】
 {prev_tail}
 
 【本段任务】承接前文,写【{segment_name}】({segment_pct}%),目标约 {word_target} 字。
-只写本段,自然承接上文,把冲突/情绪继续推进。
+只写本段,自然承接上文,把冲突/情绪继续推进,段尾留钩子。
 
 请严格按以下 JSON 返回(不要添加任何其他文字):
 
 {{
-  "segment_text": "本段【{segment_name}】完整正文,约 {word_target} 字,务必写满"
+  "beats": [
+    {{"type": "动作", "speaker": "", "tone": "", "text": "画面里发生的具体动作/场景变化(可拍,不写心理概括)"}},
+    {{"type": "台词", "speaker": "角色名", "tone": "语气(如 冷冷地/哽咽/咬牙)", "text": "一句口语化台词"}}
+  ]
 }}"""),
 ])
 
