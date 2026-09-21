@@ -27,6 +27,8 @@ nonisolated struct MapViewportInsets: Equatable, Sendable {
 struct MapViewportMetrics: Equatable {
     static let minimumZoom: CGFloat = 0.75
     static let maximumZoom: CGFloat = 2.8
+    /// 进入对局时的默认缩放:比最小值大,地图元素更易读,可平移探索边缘。
+    static let defaultZoom: CGFloat = 1.15
 
     let logicalSize: CGSize
     let viewportSize: CGSize
@@ -160,12 +162,12 @@ final class GameMapScene: SKScene {
     private(set) var viewportMetrics = MapViewportMetrics(
         logicalSize: logicalSize,
         viewportSize: logicalSize,
-        semanticZoom: MapViewportMetrics.minimumZoom
+        semanticZoom: MapViewportMetrics.defaultZoom
     )
 
     private let mapCamera = SKCameraNode()
     private let contentLayer = SKNode()
-    private var semanticZoom = MapViewportMetrics.minimumZoom
+    private var semanticZoom = MapViewportMetrics.defaultZoom
     private var translation: CGPoint = .zero
 
     override init() {

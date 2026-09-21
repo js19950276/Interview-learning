@@ -4,6 +4,7 @@ struct RealSessionRootView: View {
     @Environment(\.scenePhase) private var scenePhase
     @Bindable var store: SessionViewStore
     let runsScriptHarness: Bool
+    @State private var nameField = ""
 
     var body: some View {
         ZStack {
@@ -11,6 +12,16 @@ struct RealSessionRootView: View {
                 RealMatchView(store: store)
             } else {
                 realLobby
+            }
+        }
+        .onAppear {
+            nameField = UserDefaults.standard.string(forKey: "playerDisplayName") ?? ""
+            restoreSavedColor()
+        }
+        .onChange(of: nameField) { _, newValue in
+            let trimmed = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed.isEmpty == false, trimmed != store.displayName(for: store.localPlayerID) {
+                store.setDisplayName(trimmed)
             }
         }
         .task {
@@ -31,29 +42,132 @@ struct RealSessionRootView: View {
         }
     }
 
-    private var realLobby: some View {
-        ZStack {
+    /// 大厅色点:未占用可点选,自己已选中的高亮描边,被占用的置灰。
+    private func colorDot(_ color: GameCore.PlayerColor) -> some View {
+        let mine = store.playerColors[store.localPlayerID] == color
+        let takenByOther = store.playerColors.contains {
+            $0.key != store.localPlayerID && $0.value == color
+        }
+        return Button {
+            store.chooseColor(color)
+        } label: {
+            ZStack {
+                Circle()
+                    .fill(colorDotColor(color))
+                    .frame(width: 30, height: 30)
+                    .opacity(takenByOther ? 0.25 : 1)
+                if mine {
+                    Circle()
+                        .stroke(BrassColor.brass.color, lineWidth: 2.5)
+                        .frame(width: 36, height: 36)
+                }
+            }
+            .frame(minWidth: 44, minHeight: 44)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(takenByOther)
+        .accessibilityLabel("代表色 \(colorDisplayName(color))\(takenByOther ? "，已被占用" : mine ? "，已选中" : "")")
+        .accessibilityAddTraits(mine ? .isSelected : [])
+        .accessibilityIdentifier("real.color.\(color.rawValue)")
+    }
+
+    private func colorDotColor(_ color: GameCore.PlayerColor?) -> Color {
+        switch color {
+        case .red: Color(red: 0.85, green: 0.22, blue: 0.20)
+        case .yellow: Color(red: 0.87, green: 0.67, blue: 0.18)
+        case .blue: Color(red: 0.94, green: 0.94, blue: 0.90)
+        case .purple: Color(red: 0.61, green: 0.45, blue: 0.78)
+        case nil: BrassColor.fog.color
+        }
+    }
+
+    private func colorDisplayName(_ color: GameCore.PlayerColor) -> String {
+        switch color {
+        case .red: "红色"
+        case .yellow: "黄色"
+        case .blue: "白色"
+        case .purple: "紫色"
+        }
+    }
+
+    /// 恢复上次的颜色偏好;被他人占用时保留默认分配。
+    private func restoreSavedColor() {
+        guard let raw = UserDefaults.standard.string(forKey: "playerColor"),
+              let color = GameCore.PlayerColor(rawValue: raw),
+              store.playerColors[store.localPlayerID] != color,
+              store.playerColors.contains(where: { $0.key != store.localPlayerID && $0.value == color }) == false
+        else { return }
+        store.chooseColor(color)
+    }
+
+    private var realLobby: some View {        ZStack {
             LinearGradient(colors: [BrassColor.coal.color, BrassColor.iron.color],
                            startPoint: .topLeading, endPoint: .bottomTrailing).ignoresSafeArea()
-            VStack(alignment: .leading, spacing: BrassSpacing.large) {
-                Text("附近真实房间").font(BrassTypography.title)
-                Label(store.roomID.rawValue, systemImage: "number")
-                    .accessibilityIdentifier("real.room")
-                ForEach(store.players, id: \.self) { player in
-                    Label("\(player.rawValue) · \(store.readyPlayerIDs.contains(player) ? "已准备" : "未准备")",
-                          systemImage: player == store.hostPlayerID ? "crown.fill" : "person.fill")
+            ScrollView {
+                VStack(alignment: .leading, spacing: BrassSpacing.large) {
+                    Text("附近真实房间").font(BrassTypography.title)
+                    Label(store.roomID.rawValue, systemImage: "number")
+                        .accessibilityIdentifier("real.room")
+
+                    // 自己的显示名(即改即同步给全房间)
+                    HStack(spacing: BrassSpacing.small) {
+                        Image(systemName: "pencil")
+                            .foregroundStyle(BrassColor.brass.color)
+                        TextField("你的名字", text: $nameField)
+                            .textFieldStyle(.roundedBorder)
+                            .accessibilityLabel("你的名字")
+                            .accessibilityIdentifier("real.name.field")
+                    }
+                    .padding(.vertical, 4)
+
+                    // 代表色:四选一,被占用的不可选。
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("代表色")
+                            .font(BrassTypography.label)
+                            .foregroundStyle(BrassColor.paper.color.opacity(0.7))
+                        HStack(spacing: 12) {
+                            ForEach([GameCore.PlayerColor.red, .yellow, .blue, .purple], id: \.self) { color in
+                                colorDot(color)
+                            }
+                        }
+                    }
+                    .accessibilityElement(children: .contain)
+                    .accessibilityIdentifier("real.colorPicker")
+
+                    Text("玩家")
+                        .font(BrassTypography.label)
+                        .foregroundStyle(BrassColor.paper.color.opacity(0.7))
+                    ForEach(store.players, id: \.self) { player in
+                        HStack(spacing: 6) {
+                            Circle()
+                                .fill(colorDotColor(store.playerColors[player]))
+                                .frame(width: 9, height: 9)
+                            Label {
+                                Text("\(store.displayName(for: player)) · \(store.readyPlayerIDs.contains(player) ? "已准备" : "未准备")")
+                            } icon: {
+                                Image(systemName: player == store.hostPlayerID ? "crown.fill" : "person.fill")
+                            }
+                        }
+                        .accessibilityIdentifier("real.player.\(player.rawValue)")
+                    }
+
+                    Button(store.isReady ? "取消准备" : "准备") {
+                        Task { await store.setReady(!store.isReady) }
+                    }
+                    .buttonStyle(BrassPrimaryButtonStyle())
+                    .disabled(nameField.trimmingCharacters(in: .whitespaces).isEmpty)
+                    .accessibilityIdentifier("real.ready")
+                    Button("开始比赛") { Task { await store.startGame() } }
+                        .buttonStyle(BrassPrimaryButtonStyle()).disabled(!store.canStart)
+                        .accessibilityIdentifier("real.start")
+                    if let error = store.errorMessage { Text(error).foregroundStyle(BrassColor.danger.color) }
                 }
-                Button(store.isReady ? "取消准备" : "准备") {
-                    Task { await store.setReady(!store.isReady) }
-                }
-                .buttonStyle(BrassPrimaryButtonStyle())
-                .accessibilityIdentifier("real.ready")
-                Button("开始比赛") { Task { await store.startGame() } }
-                    .buttonStyle(BrassPrimaryButtonStyle()).disabled(!store.canStart)
-                    .accessibilityIdentifier("real.start")
-                if let error = store.errorMessage { Text(error).foregroundStyle(BrassColor.danger.color) }
+                .padding(BrassSpacing.large)
+                .background(BrassColor.coal.color.opacity(0.55), in: RoundedRectangle(cornerRadius: 14))
+                .foregroundStyle(BrassColor.paper.color)
             }
-            .foregroundStyle(BrassColor.paper.color).brassPanel().padding(BrassSpacing.large)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 }

@@ -107,7 +107,7 @@ struct ResourceMarketView: View {
         identifier: String
     ) -> some View {
         Label {
-            Text("\(title) \(market.remaining) · £\(market.cheapestPrice)")
+            Text("\(title) £\(market.cheapestPrice)")
                 .font(.caption2.bold().monospacedDigit())
                 .contentTransition(.numericText())
                 .animation(reduceMotion ? nil : .easeOut(duration: 0.35), value: market)
@@ -133,7 +133,7 @@ struct ResourceMarketView: View {
                 Label(title, systemImage: icon)
                     .font(BrassTypography.label)
                 Spacer()
-                Text("余 \(market.remaining) · 最低 £\(market.cheapestPrice)")
+                Text("最低 £\(market.cheapestPrice)")
                     .font(BrassTypography.number)
                     .monospacedDigit()
                     .contentTransition(.numericText())
@@ -141,11 +141,15 @@ struct ResourceMarketView: View {
             }
             HStack(spacing: 3) {
                 ForEach(Array(market.ladder.enumerated()), id: \.offset) { index, price in
+                    // 按每格真实占用渲染:买走便宜格后,空格留在左侧、
+                    // 剩余方块向高价端(右)收缩,与实体市场的退移方向一致。
+                    let isFilled = market.occupancy.map { $0[index] }
+                        ?? (market.ladder.count - index <= market.remaining)
                     Text("\(price)")
                         .font(.system(size: 9, weight: .bold, design: .monospaced))
-                        .foregroundStyle(index < market.remaining ? BrassColor.coal.color : BrassColor.paper.color)
+                        .foregroundStyle(isFilled ? BrassColor.coal.color : BrassColor.paper.color)
                         .frame(maxWidth: .infinity, minHeight: 22)
-                        .background(index < market.remaining ? BrassColor.brass.color : BrassColor.fog.color.opacity(0.25))
+                        .background(isFilled ? BrassColor.brass.color : BrassColor.fog.color.opacity(0.25))
                         .clipShape(RoundedRectangle(cornerRadius: 3))
                 }
             }
@@ -158,6 +162,6 @@ struct ResourceMarketView: View {
     }
 
     private func accessibilityLabel(title: String, market: MarketSummary) -> String {
-        "\(title)市场，剩余 \(market.remaining)，当前最低价格 \(market.cheapestPrice) 英镑"
+        "\(title)市场，当前最低价格 \(market.cheapestPrice) 英镑"
     }
 }

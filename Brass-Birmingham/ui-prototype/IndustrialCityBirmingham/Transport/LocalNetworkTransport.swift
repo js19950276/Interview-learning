@@ -70,10 +70,28 @@ actor LocalNetworkTransport: Transport {
             Task { await self?.listenerStateChanged(state, listener: listener) }
         }
         self.listener = listener
-        try await withCheckedThrowingContinuation { continuation in
-            hostingContinuation = continuation
-            listener.start(queue: queue)
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                hostingContinuation = continuation
+                listener.start(queue: queue)
+            }
+        } onCancel: {
+            // 任务取消时唤醒挂起方并释放监听器,避免 UI 永久卡在"正在加入"。
+            Task { await self.cancelHosting() }
         }
+    }
+
+    private func cancelHosting() {
+        listener?.cancel()
+        hostingContinuation?.resume(throwing: TransportError.connectionFailed)
+        hostingContinuation = nil
+    }
+
+    private func cancelConnecting(peer: GameCore.PlayerID) {
+        connections[peer]?.cancel()
+        connectionContinuations.removeValue(forKey: peer)?.resume(
+            throwing: TransportError.connectionFailed
+        )
     }
 
     func browse() async throws {
@@ -99,9 +117,13 @@ actor LocalNetworkTransport: Transport {
         decoders[peer] = .init()
         installStateHandler(connection, peer: peer)
         receive(on: connection, peer: peer)
-        try await withCheckedThrowingContinuation { continuation in
-            connectionContinuations[peer] = continuation
-            connection.start(queue: queue)
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                connectionContinuations[peer] = continuation
+                connection.start(queue: queue)
+            }
+        } onCancel: {
+            Task { await self.cancelConnecting(peer: peer) }
         }
     }
 
@@ -204,6 +226,8 @@ actor LocalNetworkTransport: Transport {
             logger.error("Listener cancelled before becoming ready")
             hostingContinuation?.resume(throwing: TransportError.connectionFailed)
             hostingContinuation = nil
+        case .setup:
+            break
         default:
             break
         }

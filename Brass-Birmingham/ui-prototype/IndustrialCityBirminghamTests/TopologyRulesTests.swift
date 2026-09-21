@@ -323,8 +323,9 @@ struct TopologyRulesTests {
             ], .duplicateRoutePlacement),
             ([link(on: "missing-route", owner: player)], .unknownRoute),
             ([link(on: "canal-a-b", owner: unknownOwner)], .unknownOwner),
+            // 连线时代合法性统一按"线路是否支持该时代"判定(linkEraMismatch)。
             ([link(on: "canal-a-b", owner: player, era: .rail)], .linkEraMismatch),
-            ([link(on: "rail-b-c", owner: player, era: .canal)], .routeUnavailableInEra),
+            ([link(on: "rail-b-c", owner: player, era: .canal)], .linkEraMismatch),
         ]
 
         for (links, expectedIssue) in cases {

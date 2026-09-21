@@ -8,7 +8,7 @@ struct MatchLayoutMetricsTests {
         let metrics = MatchLayoutMetrics(viewport: CGSize(width: width, height: 393))
         #expect(metrics.formFactor == .phone)
         #expect(metrics.leftRailWidth == 44)
-        #expect(metrics.rightRailWidth == 44)
+        #expect(metrics.rightRailWidth == 56)
         #expect(metrics.marketPlacement == .bottomLeftCompact)
         #expect(metrics.headerHeight == 44)
         #expect(metrics.mapTopInset == 44)
@@ -40,11 +40,11 @@ struct MatchLayoutMetricsTests {
     @Test func mapLegendInsetsClearHeaderAndRightRail() {
         let phone = MatchLayoutMetrics(viewport: CGSize(width: 852, height: 393))
         #expect(phone.mapLegendInsets.top == phone.mapTopInset)
-        #expect(phone.mapLegendInsets.trailing == 44)
+        #expect(phone.mapLegendInsets.trailing == 146)
 
         let tablet = MatchLayoutMetrics(viewport: CGSize(width: 1_194, height: 834))
         #expect(tablet.mapLegendInsets.top == tablet.mapTopInset)
-        #expect(tablet.mapLegendInsets.trailing == 176)
+        #expect(tablet.mapLegendInsets.trailing == 266)
     }
 
     @Test func mapLegendInsetsWithinPaddedViewportDoNotDoubleCountHeader() {
@@ -53,11 +53,11 @@ struct MatchLayoutMetricsTests {
             safeAreaTrailing: 59
         )
         #expect(phone.mapLegendInsetsWithinPaddedViewport.top == 0)
-        #expect(phone.mapLegendInsetsWithinPaddedViewport.trailing == 103)
+        #expect(phone.mapLegendInsetsWithinPaddedViewport.trailing == 205)
 
         let tablet = MatchLayoutMetrics(viewport: CGSize(width: 1_194, height: 834))
         #expect(tablet.mapLegendInsetsWithinPaddedViewport.top == 0)
-        #expect(tablet.mapLegendInsetsWithinPaddedViewport.trailing == 176)
+        #expect(tablet.mapLegendInsetsWithinPaddedViewport.trailing == 266)
     }
 
     @Test func mapLegendInsetsAlsoClearLandscapeSafeArea() {
@@ -66,7 +66,7 @@ struct MatchLayoutMetricsTests {
             safeAreaTrailing: 59
         )
 
-        #expect(phone.mapLegendInsets.trailing == 103)
+        #expect(phone.mapLegendInsets.trailing == 205)
     }
 
     @Test func phoneMapViewportInsetsClearHandAndMiniRailsWithoutDoubleCountingHeader() {
@@ -75,21 +75,27 @@ struct MatchLayoutMetricsTests {
             safeAreaTrailing: 59
         )
 
+        // 底部 = 手牌 92 + 常驻浮层带(市场/行动按钮/图例) 88。
         #expect(metrics.mapViewportInsets == MapViewportInsets(
             top: 0,
             leading: 44,
-            bottom: 92,
-            trailing: 103
+            bottom: 180,
+            trailing: 205
         ))
     }
 
-    @Test func tabletKeepsLegacyZeroMapViewportInsets() {
+    @Test func tabletMapViewportInsetsClearRailsAndHandWithSafeArea() {
         let metrics = MatchLayoutMetrics(
             viewport: CGSize(width: 1_194, height: 834),
             safeAreaTrailing: 24
         )
 
-        #expect(metrics.mapViewportInsets == .zero)
+        #expect(metrics.mapViewportInsets == MapViewportInsets(
+            top: 0,
+            leading: 184,
+            bottom: 132,
+            trailing: 290
+        ))
     }
 
     @Test func steamInspiredChromeKeepsMapDominant() {
@@ -97,7 +103,7 @@ struct MatchLayoutMetricsTests {
         #expect(phone.headerHeight == 44)
         #expect(phone.mapTopInset == 44)
         #expect(phone.leftRailWidth == 44)
-        #expect(phone.rightRailWidth == 44)
+        #expect(phone.rightRailWidth == 56)
         #expect(phone.handHeight == 92)
         #expect(phone.mapViewportInsets.top == 0)
         #expect(phone.mapLegendInsets.top == phone.mapTopInset)
@@ -108,7 +114,9 @@ struct MatchLayoutMetricsTests {
         #expect(tablet.leftRailWidth == 184)
         #expect(tablet.rightRailWidth == 176)
         #expect(tablet.handHeight == 132)
-        #expect(tablet.mapViewportInsets == .zero)
+        #expect(tablet.mapViewportInsets == MapViewportInsets(
+            top: 0, leading: 184, bottom: 132, trailing: 266
+        ))
         #expect(tablet.mapLegendInsets.top == tablet.mapTopInset)
     }
 }

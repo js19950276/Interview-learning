@@ -7,6 +7,7 @@ struct MatchHeaderView: View {
     let isSynchronized: Bool?
     let activeTurn: ActiveTurnPresentation?
     let metrics: MatchLayoutMetrics?
+    var onShowActionLog: (() -> Void)?
 
     init(
         state: DemoMatchState,
@@ -14,7 +15,8 @@ struct MatchHeaderView: View {
         syncStatus: String? = nil,
         isSynchronized: Bool? = nil,
         activeTurn: ActiveTurnPresentation? = nil,
-        metrics: MatchLayoutMetrics? = nil
+        metrics: MatchLayoutMetrics? = nil,
+        onShowActionLog: (() -> Void)? = nil
     ) {
         self.state = state
         self.roomID = roomID
@@ -22,6 +24,7 @@ struct MatchHeaderView: View {
         self.isSynchronized = isSynchronized
         self.activeTurn = activeTurn
         self.metrics = metrics
+        self.onShowActionLog = onShowActionLog
     }
 
     var body: some View {
@@ -51,13 +54,22 @@ struct MatchHeaderView: View {
             } else {
                 value(compact ? "当前 -" : "当前玩家 -", icon: "person.crop.circle")
             }
-            value(compact ? "A\(state.actionNumber)" : "行动 \(state.actionNumber)", icon: "bolt.fill")
-            value(compact ? "\(state.deckRemaining)" : "牌库 \(state.deckRemaining)", icon: "rectangle.stack.fill")
+            value(compact ? "行动\(state.actionNumber)" : "行动 \(state.actionNumber)", icon: "bolt.fill")
             value("£\(state.money)", icon: "sterlingsign.circle.fill")
-            value(compact ? signed(state.income) : "收入 \(signed(state.income))", icon: "chart.line.uptrend.xyaxis")
+            value(incomeText(compact: compact), icon: "chart.line.uptrend.xyaxis")
             value(compact ? "VP \(state.victoryPoints)" : "胜利点 \(state.victoryPoints)", icon: "medal.fill")
-            if let syncStatus {
-                syncValue(syncStatus)
+            if let onShowActionLog {
+                Button(action: onShowActionLog) {
+                    Label("日志", systemImage: "list.bullet.rectangle.portrait")
+                        .labelStyle(.iconOnly)
+                        .font(BrassTypography.number)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(BrassColor.brass.color)
+                .frame(minWidth: 32, minHeight: 32)
+                .contentShape(Rectangle())
+                .accessibilityLabel("玩家行动日志")
+                .accessibilityIdentifier("match.actionLog.toggle")
             }
         }
         .lineLimit(1)
@@ -76,21 +88,11 @@ struct MatchHeaderView: View {
         .labelStyle(.titleAndIcon)
     }
 
-    private func syncValue(_ text: String) -> some View {
-        HStack(spacing: 4) {
-            Image(systemName: isSynchronized == true ? "checkmark.icloud" : "arrow.triangle.2.circlepath")
-                .foregroundStyle(BrassColor.brass.color)
-                .accessibilityHidden(true)
-            Text(text)
-                .font(BrassTypography.number)
-                .monospacedDigit()
-                .accessibilityLabel(text)
-                .accessibilityIdentifier("real.sync")
-        }
-    }
-
-    private func signed(_ value: Int) -> String {
-        value >= 0 ? "+\(value)" : "\(value)"
+    /// 收入等级是“下个收入阶段收/付的金额”(RULES.md §6.3),
+    /// 不是累计变动;标明“下轮”避免被读成 +10 增量。
+    private func incomeText(compact: Bool) -> String {
+        let amount = state.income >= 0 ? "£\(state.income)" : "-£\(-state.income)"
+        return compact ? "下轮 \(amount)" : "下轮收入 \(amount)"
     }
 
     @ViewBuilder
@@ -117,11 +119,11 @@ struct MatchHeaderView: View {
             Optional("\(state.era)，第 \(state.round) 回合，共 \(state.roundCount) 回合"),
             activeTurn?.accessibilityLabel,
             Optional("行动 \(state.actionNumber)"),
-            Optional("牌库 \(state.deckRemaining)"),
             Optional("资金 \(state.money) 英镑"),
-            Optional("收入 \(signed(state.income))"),
+            Optional(state.income >= 0
+                ? "下轮收入 \(state.income) 英镑"
+                : "下轮需支付 \(-state.income) 英镑"),
             Optional("胜利点 \(state.victoryPoints)"),
-            syncStatus.map { "同步状态 \($0)" },
         ]
         .compactMap { $0 }
         .joined(separator: "，")

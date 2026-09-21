@@ -69,9 +69,12 @@ enum OrientationCoordinator {
         scene.windows.first(where: \.isKeyWindow)?.rootViewController?
             .setNeedsUpdateOfSupportedInterfaceOrientations()
 
+        // UIKit 可能从非主线程回调 errorHandler;闭包必须显式 @Sendable 脱离
+        // 主线程隔离,否则几何请求被拒时 dispatch_assert_queue 直接崩溃。
+        let logger = Self.logger
         scene.requestGeometryUpdate(
             .iOS(interfaceOrientations: mask)
-        ) { error in
+        ) { @Sendable error in
             logger.error(
                 "Geometry update failed for scene \(sceneIdentifier, privacy: .public): \(error.localizedDescription, privacy: .public)"
             )
@@ -147,9 +150,10 @@ enum OrientationCoordinator {
         let sceneIdentifier = scene.session.persistentIdentifier
         registry.reset(sceneIdentifier)
 
+        let logger = Self.logger
         scene.requestGeometryUpdate(
             .iOS(interfaceOrientations: .allButUpsideDown)
-        ) { error in
+        ) { @Sendable error in
             logger.error(
                 "Geometry reset failed for scene \(sceneIdentifier, privacy: .public): \(error.localizedDescription, privacy: .public)"
             )

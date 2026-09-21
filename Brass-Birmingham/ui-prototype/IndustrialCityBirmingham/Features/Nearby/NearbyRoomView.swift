@@ -413,7 +413,7 @@ private struct ProductionNearbyRoomView: View {
                 let roomID = GameCore.RoomID(rawValue: Self.makeRoomName())
                 let store = try await SessionViewStore.nearbyHost(
                     roomID: roomID,
-                    identity: Self.deviceIdentity(),
+                    identity: Self.deviceIdentity(roomID: roomID.rawValue),
                     persistenceFactory: persistenceFactory,
                     catalog: catalog
                 )
@@ -441,7 +441,7 @@ private struct ProductionNearbyRoomView: View {
             do {
                 let store = try await SessionViewStore.nearbyGuest(
                     room: room,
-                    identity: Self.deviceIdentity(),
+                    identity: Self.deviceIdentity(roomID: room.serviceName),
                     persistenceFactory: persistenceFactory,
                     catalog: catalog
                 )
@@ -465,7 +465,7 @@ private struct ProductionNearbyRoomView: View {
             do {
                 let store = try await NearbyHostRecoveryRoute.makeStore(
                     reference: reference,
-                    identity: Self.deviceIdentity(),
+                    identity: Self.deviceIdentity(roomID: reference.roomID.rawValue),
                     persistenceFactory: persistenceFactory,
                     transport: NearbyTransport(),
                     catalog: catalog
@@ -487,8 +487,8 @@ private struct ProductionNearbyRoomView: View {
         "BRASS-\(String(UUID().uuidString.replacingOccurrences(of: "-", with: "").prefix(6)))"
     }
 
-    private static func deviceIdentity() -> NearbySessionIdentity {
-        NearbySessionIdentity.make(deviceID: UIDevice.current.identifierForVendor)
+    private static func deviceIdentity(roomID: String) -> NearbySessionIdentity {
+        NearbySessionIdentity.make(deviceID: UIDevice.current.identifierForVendor, roomID: roomID)
     }
 }
 

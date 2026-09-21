@@ -10,7 +10,11 @@ nonisolated enum AuthoritativeMapTargetResolver {
         for targetID: String,
         in choices: [GameCore.LegalChoice]
     ) -> GameCore.LegalChoice? {
-        choices.first { Self.targetID(for: $0.value) == targetID }
+        let matches = choices.filter { Self.targetID(for: $0.value) == targetID }
+        // 同一地点可能有多个建造槽位:地图只有地点粒度,歧义时忽略点击,
+        // 由底部带"位置 N"的按钮完成槽位选择,避免静默代选第一个槽位。
+        guard matches.count == 1 else { return nil }
+        return matches.first
     }
 
     private static func targetID(for value: GameCore.LegalChoiceValue) -> String? {
@@ -31,6 +35,13 @@ struct AuthoritativeMatchBoardView: View {
     @State private var selections: [GameCore.LegalChoiceValue] = []
     @State private var selectionLabels: [String] = []
     @State private var forcedSaleIDs: [String] = []
+    @State private var autoAdvanceCount = 0
+    @State private var cancelArmed = false
+    @State private var marketExpanded = false
+    @State private var lastSelectedChoiceID: String?
+    @State private var lastSelectedChoiceAt: TimeInterval = 0
+    @State private var showsActionLog = false
+    @State private var railTwoEligible = false
     @State private var activeTurnNotice: ActiveTurnPresentation?
     @State private var activeTurnNoticeTracker = ActiveTurnNoticeTracker()
 
@@ -43,6 +54,7 @@ struct AuthoritativeMatchBoardView: View {
         GeometryReader { proxy in
             let metrics = MatchLayoutMetrics(
                 viewport: proxy.size,
+                safeAreaLeading: proxy.safeAreaInsets.leading,
                 safeAreaTrailing: proxy.safeAreaInsets.trailing
             )
             if let snapshot = store.snapshot, let catalog = store.presentationCatalog {
@@ -92,11 +104,37 @@ struct AuthoritativeMatchBoardView: View {
                     actions(state: state, metrics: metrics)
                     actionContext(state: state, metrics: metrics)
                     legalChoices(metrics: metrics)
-                    confirmation(state: state, metrics: metrics)
+                    // 强制出售面板会全屏覆盖并自带确认键,不再渲染被遮住的标准确认面板。
+                    if store.snapshot?.forcedSale == nil {
+                        confirmation(state: state, metrics: metrics)
+                    }
                     forcedSale(metrics: metrics)
+
+                    // 时代结算确认:暂停操作,全员确认后进入铁路时代。
+                    if let intermission = store.snapshot?.eraIntermission {
+                        EraIntermissionView(
+                            intermission: intermission,
+                            projections: store.snapshot?.match?.players ?? [],
+                            localPlayerID: store.localPlayerID.rawValue,
+                            displayName: { store.displayName(for: $0) },
+                            onConfirm: { store.confirmEraTransition() }
+                        )
+                        .transition(.opacity)
+                    }
+
+                    // 终局得分榜。
+                    if let gameEnded = store.snapshot?.gameEnded {
+                        FinalScoreboardView(
+                            standings: gameEnded.standings,
+                            projections: store.snapshot?.match?.players ?? [],
+                            displayName: { store.displayName(for: $0) }
+                        )
+                        .transition(.opacity)
+                    }
 
                     if store.syncStatus != .synchronized {
                         Color.black.opacity(0.35).ignoresSafeArea()
+                            .accessibilityElement(children: .ignore)
                             .accessibilityLabel("对局同步中，行动已暂停")
                             .accessibilityIdentifier("submission.blocker")
                     }
@@ -144,6 +182,17 @@ struct AuthoritativeMatchBoardView: View {
             }
         }
         .toolbar(.hidden, for: .navigationBar)
+        .sheet(isPresented: $showsActionLog) {
+            MatchActionLogView(
+                entries: store.actionLog,
+                playerLabel: { store.displayName(for: $0) },
+                playerColor: { playerID in
+                    let projection = store.snapshot?.match?.players
+                        .first(where: { $0.id == playerID })
+                    return MatchActionLogView.displayColor(projection?.color ?? .red)
+                }
+            )
+        }
         .task(id: store.snapshot?.forcedSale) {
             forcedSaleIDs = []
             if store.snapshot?.forcedSale != nil {
@@ -152,21 +201,72 @@ struct AuthoritativeMatchBoardView: View {
         }
         .onChange(of: store.version) { oldVersion, newVersion in
             guard newVersion != oldVersion else { return }
-            interaction.resetSelection()
-            selections = []
-            selectionLabels = []
-            forcedSaleIDs = []
+            resetTransientSelectionState()
         }
+        .onChange(of: store.errorMessage) { _, message in
+            // 被拒/选择序列非法时,store 会清空 legalResponse 并给出错误提示;
+            // 此时同步复位视图侧选择状态,避免残留造成僵尸态。
+            // 注意:每步选择开始时 legalResponse 也会短暂为 nil,不能以此作为复位条件。
+            guard message != nil, store.legalResponse == nil else { return }
+            resetTransientSelectionState()
+        }
+        .onChange(of: store.legalResponse?.nextChoices) { _, choices in
+            guard
+                let response = store.legalResponse,
+                response.error == nil,
+                response.completePayload == nil,
+                interaction.selectedAction != nil
+            else { return }
+            // 修路计数步:默认按“1 条铁路”静默前进,线路直接在地图上点;
+            // 想修 2 条时用提示条上的“改修 2 条”回退改选。
+            if response.nextChoices.allSatisfy({ choice in
+                if case .networkLinkCount = choice.value { return true }
+                return false
+            }) {
+                guard autoAdvanceCount < 8 else { return }
+                autoAdvanceCount += 1
+                railTwoEligible = response.nextChoices.contains { choice in
+                    if case .networkLinkCount(2) = choice.value { return true }
+                    return false
+                }
+                let single = response.nextChoices.first { choice in
+                    if case .networkLinkCount(1) = choice.value { return true }
+                    return false
+                } ?? response.nextChoices[0]
+                select(single, throttled: false)
+                return
+            }
+            // 单选项步骤自动前进:煤/铁/酒来源唯一、"结束出售"等不再强制多点一下。
+            guard
+                response.nextChoices.count == 1,
+                autoAdvanceCount < 8
+            else { return }
+            autoAdvanceCount += 1
+            select(response.nextChoices[0], throttled: false)
+        }
+    }
+
+    private func resetTransientSelectionState() {
+        interaction.resetSelection()
+        selections = []
+        selectionLabels = []
+        forcedSaleIDs = []
+        autoAdvanceCount = 0
+        railTwoEligible = false
+        cancelArmed = false
     }
 
     private func compactMarket(state: DemoMatchState, metrics: MatchLayoutMetrics) -> some View {
         ResourceMarketView(
             coal: state.coalMarket, iron: state.ironMarket,
-            presentation: .compact, reduceMotion: true
+            presentation: marketExpanded ? .overlay : .compact,
+            reduceMotion: true,
+            onExpand: { marketExpanded.toggle() }
         )
         .padding(.leading, metrics.leftRailWidth + 8)
         .padding(.bottom, metrics.handHeight + 8)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+        .frame(maxWidth: .infinity, maxHeight: .infinity,
+               alignment: marketExpanded ? .center : .bottomLeading)
     }
 
     private func leftRail(state: DemoMatchState, metrics: MatchLayoutMetrics) -> some View {
@@ -325,7 +425,8 @@ struct AuthoritativeMatchBoardView: View {
             syncStatus: store.syncStatus.rawValue,
             isSynchronized: store.syncStatus == .synchronized,
             activeTurn: activeTurn,
-            metrics: metrics
+            metrics: metrics,
+            onShowActionLog: { showsActionLog = true }
         )
         .padding(.horizontal, max(metrics.leftRailWidth, metrics.rightRailWidth) + 8)
         .frame(height: metrics.headerHeight)
@@ -399,6 +500,12 @@ struct AuthoritativeMatchBoardView: View {
                     selectScoutHandCard(id)
                     return
                 }
+                if interaction.selectedCardID == id {
+                    // 再次点击当前卡:整段重置行动流,回到可重新选择行动的状态。
+                    store.cancelLegalFlow()
+                    resetTransientSelectionState()
+                    return
+                }
                 store.selectCard(id)
                 interaction.selectCard(id)
                 selections = []
@@ -422,17 +529,41 @@ struct AuthoritativeMatchBoardView: View {
                         interaction.selectAction(action)
                         selections = []
                         selectionLabels = []
+                        autoAdvanceCount = 0
                         if let kind = GameCore.ActionKind(rawValue: action.rawValue) {
                             Task { await store.requestLegalOptions(action: kind) }
                         }
                     },
                     onClose: {
-                        interaction.cancelFlow()
+                        // 取消 = 连同选卡一起退出,回到"选择一张手牌"状态
+                        interaction.resetSelection()
                         selections = []
                         selectionLabels = []
+                        autoAdvanceCount = 0
                         store.cancelLegalFlow()
                     }
                 )
+            }
+            // 设计稿 §8.4:建造不可行时给出具体原因与出路,而不是静默变灰。
+            if interaction.selectedCardID != nil, interaction.selectedAction == nil,
+               let cardID = interaction.selectedCardID,
+               let hint = ActionBlockHint.buildReason(
+                   state: state, cardID: cardID, localPlayerID: store.localPlayerID.rawValue
+               ) {
+                Text("⚠︎ 建造暂时不可用:\(hint)")
+                    .font(BrassTypography.label)
+                    .foregroundStyle(BrassColor.paper.color.opacity(0.92))
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2)
+                    .padding(.vertical, 6)
+                    .padding(.horizontal, 12)
+                    .frame(maxWidth: .infinity)
+                    .background(BrassColor.coal.color.opacity(0.94), in: RoundedRectangle(cornerRadius: 8))
+                    .padding(.leading, metrics.leftRailWidth + 8)
+                    .padding(.trailing, metrics.rightRailWidth + 8)
+                    .padding(.bottom, metrics.handHeight + 8)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                    .accessibilityIdentifier("build.blocked.hint")
             }
         }
         .padding(.trailing, metrics.rightRailWidth + 8)
@@ -458,7 +589,11 @@ struct AuthoritativeMatchBoardView: View {
                     selectionLabels: selectionLabels,
                     choices: store.legalResponse?.nextChoices ?? []
                 ),
-                onCancel: cancelActionFlow
+                hint: nil,
+                canUndo: selectionLabels.isEmpty == false,
+                cancelArmed: cancelArmed,
+                onUndo: undoLastSelection,
+                onCancel: handleCancel
             )
             .padding(.leading, metrics.leftRailWidth + 8)
             .padding(.trailing, metrics.rightRailWidth + 8)
@@ -470,22 +605,75 @@ struct AuthoritativeMatchBoardView: View {
     @ViewBuilder
     private func legalChoices(metrics: MatchLayoutMetrics) -> some View {
         if let response = store.legalResponse, !response.nextChoices.isEmpty {
-            ScrollView(.horizontal) {
-                HStack(spacing: 8) {
-                    ForEach(response.nextChoices, id: \.id) { choice in
-                        Button(choice.label) { select(choice) }
-                            .buttonStyle(BrassPrimaryButtonStyle())
-                            .accessibilityIdentifier("legal.choice.\(choice.id)")
+            // 修路步骤不弹选项:线路已高亮,直接在地图上点选。
+            if routeStepActive {
+                HStack(spacing: 12) {
+                    Label("在地图上点选要修的铁路", systemImage: "hand.tap.fill")
+                        .font(BrassTypography.label)
+                        .foregroundStyle(BrassColor.paper.color)
+                    if canUpgradeToTwoRails {
+                        Button("改修 2 条") { upgradeToTwoRails() }
+                            .font(BrassTypography.label)
+                            .foregroundStyle(BrassColor.coal.color)
+                            .padding(.horizontal, 12)
+                            .frame(minHeight: 32)
+                            .background(BrassColor.brass.color)
+                            .clipShape(Capsule())
+                            .accessibilityIdentifier("network.twoRail.toggle")
                     }
-                }.padding(8)
+                }
+                .padding(.horizontal, 14)
+                .frame(minHeight: 40)
+                .background(BrassColor.coal.color.opacity(0.94))
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .padding(.horizontal, max(metrics.leftRailWidth, metrics.rightRailWidth) + 12)
+                .padding(.bottom, bottomActionOverlayInset(metrics: metrics))
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                .accessibilityIdentifier("network.mapPickHint")
+            } else {
+                ScrollView(.horizontal) {
+                    HStack(spacing: 8) {
+                        ForEach(response.nextChoices, id: \.id) { choice in
+                            Button(choice.label) { select(choice) }
+                                .buttonStyle(BrassPrimaryButtonStyle())
+                                .accessibilityIdentifier("legal.choice.\(choice.id)")
+                        }
+                    }.padding(8)
+                }
+                .background(BrassColor.coal.color.opacity(0.94))
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .padding(.horizontal, max(metrics.leftRailWidth, metrics.rightRailWidth) + 12)
+                .padding(.bottom, bottomActionOverlayInset(metrics: metrics))
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                .accessibilityIdentifier("legal.choices")
             }
-            .background(BrassColor.coal.color.opacity(0.94))
-            .clipShape(RoundedRectangle(cornerRadius: 10))
-            .padding(.horizontal, max(metrics.leftRailWidth, metrics.rightRailWidth) + 12)
-            .padding(.bottom, bottomActionOverlayInset(metrics: metrics))
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-            .accessibilityIdentifier("legal.choices")
         }
+    }
+
+    /// 当前是否处于“点选线路”步骤。
+    private var routeStepActive: Bool {
+        store.legalResponse?.nextChoices.contains { choice in
+            if case .route = choice.value { return true }
+            return false
+        } ?? false
+    }
+
+    /// 尚未点任何线路、且引擎提供了 2 条铁路的资格时,允许回退改选 2 条。
+    private var canUpgradeToTwoRails: Bool {
+        guard railTwoEligible else { return false }
+        if case .networkLinkCount(1) = selections.last { return true }
+        return false
+    }
+
+    private func upgradeToTwoRails() {
+        guard canUpgradeToTwoRails else { return }
+        selections.removeLast()
+        if selectionLabels.isEmpty == false { selectionLabels.removeLast() }
+        railTwoEligible = false
+        select(
+            .init(id: "network-count:2", label: "2 条铁路", value: .networkLinkCount(2)),
+            throttled: false
+        )
     }
 
     @ViewBuilder
@@ -504,8 +692,12 @@ struct AuthoritativeMatchBoardView: View {
                     coalDelta: resourceDelta(.coal, in: delta.resourceEffects),
                     ironDelta: resourceDelta(.iron, in: delta.resourceEffects),
                     beerDelta: resourceDelta(.beer, in: delta.resourceEffects),
-                    incomeBefore: current?.incomePosition,
-                    incomeAfter: current.map { $0.incomePosition + delta.incomeDelta },
+                    // 收入展示一律换算成收入等级(£):incomeDelta 是"格数",
+                    // 格≠钱(0~10 每 2 格 £1,10~20 每 3 格 £1,20~30 每 4 格 £1)。
+                    incomeBefore: current?.incomeLevel,
+                    incomeAfter: current.flatMap {
+                        Self.incomeLevel(at: $0.incomePosition + delta.incomeDelta)
+                    },
                     moneyBefore: current?.cash,
                     moneyAfter: current.map { $0.cash + delta.cashDelta }
                 ),
@@ -518,6 +710,23 @@ struct AuthoritativeMatchBoardView: View {
             .padding(.bottom, bottomActionOverlayInset(metrics: metrics))
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
         }
+    }
+
+    /// 捆绑收入轨的"格 → 收入等级(£)"映射,与 GameCore 校验过的数据同源。
+    private static let incomeLevelsByPosition: [Int: Int] = {
+        guard let url = Bundle.main.url(forResource: "income-track", withExtension: "json"),
+              let data = try? Data(contentsOf: url),
+              let track = try? JSONDecoder().decode(GameCore.IncomeTrack.self, from: data)
+        else { return [:] }
+        return Dictionary(uniqueKeysWithValues: track.entries.map { ($0.position, $0.income) })
+    }()
+
+    /// 格索引换算收入等级;越界时钳制到轨端点(引擎推进同样在轨端封顶)。
+    private static func incomeLevel(at position: Int) -> Int? {
+        guard let lowest = incomeLevelsByPosition.keys.min(),
+              let highest = incomeLevelsByPosition.keys.max()
+        else { return nil }
+        return incomeLevelsByPosition[min(max(position, lowest), highest)]
     }
 
     private func resourceDelta(
@@ -552,6 +761,9 @@ struct AuthoritativeMatchBoardView: View {
                         )
                     }
                     .buttonStyle(BrassPrimaryButtonStyle())
+                    // 已凑足后禁止继续勾选未选项(仍可反勾已选项);引擎侧会拒绝超额前缀。
+                    .disabled(store.legalResponse?.completePayload != nil
+                              && forcedSaleIDs.contains(id) == false)
                     .accessibilityIdentifier("forcedSale.\(id)")
                 }
                 Button("确认出售") {
@@ -591,7 +803,15 @@ struct AuthoritativeMatchBoardView: View {
         select(choice)
     }
 
-    private func select(_ choice: GameCore.LegalChoice) {
+    private func select(_ choice: GameCore.LegalChoice, throttled: Bool = true) {
+        // 节流防双击:同一选项在短窗口内的重复点击忽略(自动前进链不受限)。
+        // 注意不能用"值相同"判断——引擎允许连续从同一煤矿/酒厂取资源。
+        let now = Date().timeIntervalSince1970
+        if throttled, choice.id == lastSelectedChoiceID, now - lastSelectedChoiceAt < 0.35 {
+            return
+        }
+        lastSelectedChoiceID = choice.id
+        lastSelectedChoiceAt = now
         selections.append(choice.value)
         selectionLabels.append(choice.label)
         requestLegalOptionsForSelectedAction()
@@ -627,6 +847,28 @@ struct AuthoritativeMatchBoardView: View {
         selections = []
         selectionLabels = []
         store.cancelLegalFlow()
+    }
+
+    /// 误触保护:选择序列较长时,X 第一次按下只进入"确认取消"状态。
+    private func handleCancel() {
+        if selections.count >= 2, !cancelArmed {
+            cancelArmed = true
+            Task {
+                try? await Task.sleep(for: .seconds(2.5))
+                cancelArmed = false
+            }
+        } else {
+            cancelArmed = false
+            cancelActionFlow()
+        }
+    }
+
+    /// 撤销上一步选择:丢弃最后一个选择值并重新查询,误选不再需要整段重来。
+    private func undoLastSelection() {
+        guard selections.isEmpty == false else { return }
+        selections.removeLast()
+        if selectionLabels.isEmpty == false { selectionLabels.removeLast() }
+        requestLegalOptionsForSelectedAction()
     }
 
     private func bottomActionOverlayInset(metrics: MatchLayoutMetrics) -> CGFloat {

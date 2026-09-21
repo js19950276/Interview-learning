@@ -3,6 +3,50 @@ import Testing
 @testable import IndustrialCityBirmingham
 
 struct GameSetupTests {
+    @Test func makeGameAssignsRequestedLobbyColorsUniquely() throws {
+        let catalog = completeCatalog()
+        let verified = verifiedCatalog(catalog)
+        var rules = GameCore.SetupRules(seed: 5)
+        let players = [
+            GameCore.PlayerID(rawValue: "c1"),
+            GameCore.PlayerID(rawValue: "c2"),
+            GameCore.PlayerID(rawValue: "c3"),
+        ]
+        // 大厅指定颜色;被占用的请求(第二个 .red)自动落到未占用的最低色,
+        // 因此 c3 请求的 .yellow 已被 c2 兜底占用,c3 再落到 .blue。
+        let result = try rules.makeGame(
+            catalog: verified, playerIDs: players,
+            colors: [players[0]: .red, players[1]: .red, players[2]: .yellow]
+        )
+        let colors = Dictionary(uniqueKeysWithValues: result.state.players.map { ($0.id, $0.color) })
+        #expect(colors[players[0]] == .red)
+        #expect(colors[players[1]] == .yellow)
+        #expect(colors[players[2]] == .blue)
+        #expect(Set(colors.values).count == players.count)
+    }
+
+    @Test func differentSeedsProduceDifferentMerchantLayoutsAndDeals() throws {
+        let catalog = completeCatalog()
+        let verified = verifiedCatalog(catalog)
+        func merchantsAndOrder(seed: UInt64) throws -> ([String], [String]) {
+            var rules = GameCore.SetupRules(seed: seed)
+            let state = try rules.makeGame(
+                catalog: verified,
+                playerIDs: [GameCore.PlayerID(rawValue: "s1"), GameCore.PlayerID(rawValue: "s2")]
+            ).state
+            let merchants = state.merchants.map { "\($0.merchantDefinitionID)@\($0.slotID)" }.sorted()
+            let hands = state.players.map { $0.hand.map(\.definitionID).sorted().joined(separator: ",") }.sorted()
+            return (merchants, hands)
+        }
+        // 固定种子 → 确定性(重放一致性依赖)。
+        let a1 = try merchantsAndOrder(seed: 111)
+        let a2 = try merchantsAndOrder(seed: 111)
+        #expect(a1 == a2)
+        // 不同种子 → 贸易商布局或发牌必须不同(逐局随机性)。
+        let b = try merchantsAndOrder(seed: 999)
+        #expect(a1.0 != b.0 || a1.1 != b.1)
+    }
+
     @Test func twoPlayerSetupUsesTheOfficialStartingShape() throws {
         try verifySetup(playerCount: 2, seed: 2001, roundCapacity: 10)
     }
@@ -694,7 +738,8 @@ struct GameSetupTests {
         #expect(state.authoritativeVersion == .init(rawValue: 0))
         #expect(state.players.allSatisfy {
             $0.cash == 17
-                && $0.incomePosition == 10
+                // 开局收入标记在进程轨共轨的“10”格(分数位 10),该格硬币金额 £0。
+                && $0.incomePosition == GameCore.SetupRules.startingIncomePosition
                 && $0.victoryPoints == 0
                 && $0.spent == 0
                 && $0.hand.count == 8
@@ -703,9 +748,11 @@ struct GameSetupTests {
         #expect(Set(state.players.map(\.color)).count == playerCount)
         #expect(state.coalMarket.slots.map(\.price) == [1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7])
         #expect(state.coalMarket.slots.filter(\.hasCube).count == 13)
+        // “铺满煤，但留空一个 £1 格”(RULES.md §5.1.7);£8 是无限标记价非格子。
         #expect(state.coalMarket.slots.filter { $0.price == 1 && $0.hasCube == false }.count == 1)
-        #expect(state.ironMarket.slots.map(\.price) == [1, 1, 1, 2, 2, 2, 3, 3, 4, 4])
+        #expect(state.ironMarket.slots.map(\.price) == [1, 1, 2, 2, 3, 3, 4, 4, 5, 5])
         #expect(state.ironMarket.slots.filter(\.hasCube).count == 8)
+        // “铺满铁，但留空两个 £1 格”(RULES.md §5.1.8);£6 是无限标记价非格子。
         #expect(state.ironMarket.slots.filter { $0.price == 1 && $0.hasCube == false }.count == 2)
         #expect(state.canalRoundCapacity == roundCapacity)
         #expect(state.railRoundCapacity == roundCapacity)

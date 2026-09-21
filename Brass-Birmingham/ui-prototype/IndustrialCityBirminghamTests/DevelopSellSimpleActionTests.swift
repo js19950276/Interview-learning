@@ -490,6 +490,69 @@ struct DevelopSellSimpleActionTests {
         }
     }
 
+    @Test func scoutWithExhaustedWildPoolsStillExecutesAndGainsNothingFromEmptyPiles() throws {
+        let catalog = try verifiedCatalog()
+        var state = try setupState(catalog: catalog)
+        let actor = try #require(state.activePlayerID)
+        let index = try #require(state.players.firstIndex { $0.id == actor })
+        state.players[index].hand = [
+            .init(id: "c1", definitionID: "location-birmingham"),
+            .init(id: "c2", definitionID: "location-dudley"),
+            .init(id: "c3", definitionID: "industry-brewery"),
+        ]
+        repairCardFixture(&state, catalog: catalog)
+        // repair 后手牌是目录里的真实实例;取实际 ID 参与侦察。
+        let handIDs = state.players[index].hand.map(\.id)
+        #expect(handIDs.count == 3)
+        // 万能地点堆清空,万能产业堆保留 1 张:侦察仍可执行,只拿到产业堆的牌。
+        state.wildLocationPool.removeAll()
+        let remainingIndustryWild = state.wildIndustryPool.last
+        state.wildIndustryPool = [remainingIndustryWild!]
+
+        let target = try GameCore.SimpleActionRules.validateScout(
+            .init(cardIDs: handIDs),
+            actorID: actor, state: state, catalog: catalog
+        )
+        let roomID = GameCore.RoomID(rawValue: "scout-empty-pool")
+        var engineState = state
+        let event = try GameCore.GameRulesEngine.resolveScout(
+            target, roomID: roomID, state: &engineState, catalog: catalog
+        )
+
+        let after = try #require(engineState.players.first { $0.id == actor })
+        // 行动结束补牌回 8;侦察所得万能牌在手牌最前(补牌只追加)。
+        #expect(after.hand.count == 8)
+        #expect(after.hand.first?.definitionID == "wild-industry")
+        #expect(engineState.wildLocationPool.isEmpty)
+        #expect(engineState.wildIndustryPool.isEmpty)
+        #expect(engineState.publicDiscard.count == 3)
+
+        // 重放一致性
+        var replayed = state
+        try GameCore.GameRulesEngine.replay(
+            event, expectedRoomID: roomID, to: &replayed, catalog: catalog
+        )
+        #expect(replayed == engineState)
+
+        // 两堆全空:仍可侦察,一张也拿不到。
+        var bothEmpty = state
+        bothEmpty.wildLocationPool.removeAll()
+        bothEmpty.wildIndustryPool.removeAll()
+        let emptyTarget = try GameCore.SimpleActionRules.validateScout(
+            .init(cardIDs: handIDs),
+            actorID: actor, state: bothEmpty, catalog: catalog
+        )
+        var engineBoth = bothEmpty
+        _ = try GameCore.GameRulesEngine.resolveScout(
+            emptyTarget, roomID: roomID, state: &engineBoth, catalog: catalog
+        )
+        let afterBoth = try #require(engineBoth.players.first { $0.id == actor })
+        // 两堆全空:一张万能牌也拿不到,手牌只有补牌。
+        #expect(afterBoth.hand.allSatisfy {
+            $0.definitionID != "wild-location" && $0.definitionID != "wild-industry"
+        })
+    }
+
     @Test func scoutDiscardsThreeDistinctNormalCardsTakesBothWildsAndRejectsWhenWildHeld() throws {
         let catalog = try verifiedCatalog()
         var state = try setupState(catalog: catalog)

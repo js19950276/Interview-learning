@@ -181,8 +181,11 @@ actor RoomTokenStore {
     }
 
     func references(playerID: GameCore.PlayerID) throws -> [RoomTokenReference] {
-        let references = try adapter.readAll(service: Self.service).map { encoded in
-            let credential = try decoder.decode(RoomTokenCredential.self, from: encoded)
+        let references = try adapter.readAll(service: Self.service).compactMap { encoded -> RoomTokenReference? in
+            // 单条凭据损坏只跳过该项,不让整个可恢复房间列表失效。
+            guard let credential = try? decoder.decode(RoomTokenCredential.self, from: encoded) else {
+                return nil
+            }
             return RoomTokenReference(roomID: credential.roomID, playerID: credential.playerID)
         }
         return Array(Set(references.filter { $0.playerID == playerID })).sorted {

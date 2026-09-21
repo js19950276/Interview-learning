@@ -28,6 +28,10 @@ nonisolated struct PlayerSummary: Identifiable, Equatable, Codable, Sendable {
     var isHost: Bool
     var isReady: Bool
     var isConnected: Bool
+    /// 玩家卡展示数据:现金/收入等级/VP,缺省 = 旧数据。
+    var cash: Int = 0
+    var incomeLevel: Int = 0
+    var victoryPoints: Int = 0
 }
 
 nonisolated enum IndustryKind: String, CaseIterable, Identifiable, Codable, Sendable {
@@ -53,12 +57,22 @@ nonisolated struct IndustrySummary: Identifiable, Equatable, Codable, Sendable {
     var coalCost: Int
     var ironCost: Int
     var isAvailable: Bool
+    /// 垫板上该产业剩余板块总数(含所有等级),缺省 = 旧数据无此信息。
+    var remainingTotal: Int? = nil
+    /// 最低等级的剩余数量(发展总是移除最低等级,§7.3)。
+    var remainingLowest: Int? = nil
+    /// 当前最低等级板块的时代结算 VP 与路分(垫板右列展示),缺省 = 旧数据。
+    var victoryPoints: Int? = nil
+    var linkPoints: Int? = nil
 }
 
 nonisolated struct MarketSummary: Equatable, Codable, Sendable {
     var remaining: Int
     var cheapestPrice: Int
     var ladder: [Int]
+    /// 每格真实占用状态(与 ladder 等长):方块被买走后空格出现在便宜端,
+    /// 剩余方块向高价端收缩——渲染按此从右到左退移,缺省 = 旧数据按数量前缀。
+    var occupancy: [Bool]? = nil
 }
 
 nonisolated enum HandCardKind: Equatable, Codable, Sendable {
@@ -88,11 +102,18 @@ nonisolated struct MapMerchantPlacement: Identifiable, Equatable, Codable, Senda
     let bonusAmount: Int
 }
 
+nonisolated struct MapLocationSlot: Identifiable, Equatable, Codable, Sendable {
+    var id: Int { index }
+    let index: Int
+    let allowedKinds: [IndustryKind]
+}
+
 nonisolated struct MapLocation: Identifiable, Equatable, Codable, Sendable {
     let id: String
     let name: String
     let x: Double
     let y: Double
+    var slots: [MapLocationSlot] = []
     var industryPlacements: [MapIndustryPlacement] = []
     var merchantPlacements: [MapMerchantPlacement] = []
 
@@ -101,6 +122,7 @@ nonisolated struct MapLocation: Identifiable, Equatable, Codable, Sendable {
         name: String,
         x: Double,
         y: Double,
+        slots: [MapLocationSlot] = [],
         industryPlacements: [MapIndustryPlacement] = [],
         merchantPlacements: [MapMerchantPlacement] = []
     ) {
@@ -108,6 +130,7 @@ nonisolated struct MapLocation: Identifiable, Equatable, Codable, Sendable {
         self.name = name
         self.x = x
         self.y = y
+        self.slots = slots
         self.industryPlacements = industryPlacements
         self.merchantPlacements = merchantPlacements
     }
@@ -118,6 +141,7 @@ nonisolated struct MapLocation: Identifiable, Equatable, Codable, Sendable {
         name = try container.decode(String.self, forKey: .name)
         x = try container.decode(Double.self, forKey: .x)
         y = try container.decode(Double.self, forKey: .y)
+        slots = try container.decodeIfPresent([MapLocationSlot].self, forKey: .slots) ?? []
         industryPlacements = try container.decodeIfPresent(
             [MapIndustryPlacement].self, forKey: .industryPlacements
         ) ?? []
@@ -137,6 +161,10 @@ nonisolated struct MapIndustryPlacement: Identifiable, Equatable, Codable, Senda
     let resourceCount: Int
     let isFlipped: Bool
     let ownerColor: PlayerColor
+    var slotIndex: Int? = nil
+    /// 翻面后的结算展示值:时代结算 VP 与每条相邻连线可得的路分。
+    var victoryPoints: Int = 0
+    var linkPoints: Int = 0
 }
 
 nonisolated struct MapPlacedLink: Equatable, Codable, Sendable {

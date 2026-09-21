@@ -139,63 +139,44 @@ enum MapNodeFactory {
             position: merchantLayout.labelPosition,
             highlighted: isHighlighted
         ))
-        for (index, placement) in location.industryPlacements.enumerated() {
-            let industry = SKShapeNode(rectOf: CGSize(width: 28, height: 30), cornerRadius: 6)
-            industry.name = "industry:\(placement.placementID)"
-            let centeredIndex = CGFloat(index) - CGFloat(location.industryPlacements.count - 1) / 2
-            industry.position = CGPoint(x: centeredIndex * 31, y: -31)
-            industry.zPosition = 6
-            industry.fillColor = placement.isFlipped
-                ? forgedIron.withAlphaComponent(0.82)
-                : darkWood.withAlphaComponent(0.96)
-            industry.strokeColor = brass.withAlphaComponent(placement.isFlipped ? 0.42 : 0.78)
-            industry.lineWidth = placement.isFlipped ? 1 : 2
-            industry.userData = [
-                "ownerID": placement.ownerID,
-                "tileID": placement.tileID,
-                "level": placement.level,
-                "resourceCount": placement.resourceCount,
-                "isFlipped": placement.isFlipped,
-                "industryKind": placement.kind.rawValue,
-                "industryName": industryName(placement.kind),
-            ]
-            let texture = SKTexture(imageNamed: IndustrialMatchAsset.industryMedallion(placement.kind).name)
-            texture.filteringMode = .linear
-            let medallion = SKSpriteNode(texture: texture, size: CGSize(width: 17, height: 17))
-            medallion.name = "industry-medallion"
-            medallion.position = CGPoint(x: 0, y: 5)
-            medallion.alpha = placement.isFlipped ? 0.72 : 1
-            medallion.zPosition = 1
-            medallion.isUserInteractionEnabled = false
-            medallion.userData = [
-                "assetName": IndustrialMatchAsset.industryMedallion(placement.kind).name,
-            ]
-            industry.addChild(medallion)
-
-            let detail = placement.resourceCount > 0
-                ? "L\(placement.level)·\(placement.resourceCount)"
-                : "L\(placement.level)"
-            let detailLabel = SKLabelNode(text: detail)
-            detailLabel.name = "industry-detail"
-            detailLabel.fontName = "PingFangSC-Medium"
-            detailLabel.fontSize = 6.5
-            detailLabel.fontColor = parchment
-            detailLabel.verticalAlignmentMode = .center
-            detailLabel.position = CGPoint(x: 0, y: -8)
-            detailLabel.isUserInteractionEnabled = false
-            industry.addChild(detailLabel)
-
-            let ownerStrip = SKShapeNode(rectOf: CGSize(width: 20, height: 3), cornerRadius: 1.5)
-            ownerStrip.name = "industry-owner-strip"
-            ownerStrip.position = CGPoint(x: 0, y: -13)
-            ownerStrip.fillColor = ownerColor(placement.ownerColor)
-                .withAlphaComponent(placement.isFlipped ? 0.55 : 0.95)
-            ownerStrip.strokeColor = .clear
-            ownerStrip.lineWidth = 0
-            ownerStrip.zPosition = 1
-            ownerStrip.isUserInteractionEnabled = false
-            industry.addChild(ownerStrip)
-            marker.addChild(industry)
+        if location.slots.isEmpty {
+            // 演示回退:无槽位数据时仅绘制已占产业行(保持旧行为与基线)。
+            for (index, placement) in location.industryPlacements.enumerated() {
+                let centeredIndex = CGFloat(index) - CGFloat(location.industryPlacements.count - 1) / 2
+                let tile = occupiedIndustryNode(for: placement)
+                tile.position = CGPoint(x: centeredIndex * 44, y: -40)
+                marker.addChild(tile)
+            }
+        } else {
+            // 槽位层:每格对应一个产业槽——空槽显示虚线框与可建产业图标,
+            // 已占槽位按 slotIndex 对齐显示板块。数据来自权威地图定义。
+            for slot in location.slots {
+                let centeredIndex = CGFloat(slot.index) - CGFloat(location.slots.count - 1) / 2
+                let position = CGPoint(x: centeredIndex * 44, y: -40)
+                if let placement = location.industryPlacements.first(where: {
+                    $0.slotIndex == slot.index
+                }) {
+                    let tile = occupiedIndustryNode(for: placement)
+                    tile.position = position
+                    marker.addChild(tile)
+                } else {
+                    marker.addChild(emptySlotNode(
+                        allowedKinds: slot.allowedKinds,
+                        position: position,
+                        locationID: location.id
+                    ))
+                }
+            }
+            // 防御:slotIndex 缺失或不匹配的板块兜底绘制在槽位行下方。
+            let orphans = location.industryPlacements.filter { placement in
+                !location.slots.contains(where: { $0.index == placement.slotIndex })
+            }
+            for (index, placement) in orphans.enumerated() {
+                let centeredIndex = CGFloat(index) - CGFloat(orphans.count - 1) / 2
+                let tile = occupiedIndustryNode(for: placement)
+                tile.position = CGPoint(x: centeredIndex * 44, y: -78)
+                marker.addChild(tile)
+            }
         }
         for (index, placement) in location.merchantPlacements.enumerated() {
             let centeredIndex = CGFloat(index) - CGFloat(location.merchantPlacements.count - 1) / 2
@@ -210,6 +191,185 @@ enum MapNodeFactory {
             marker.addChild(merchant)
         }
         return marker
+    }
+
+    /// 六种物品图标(铁/煤/酒/陶瓷/箱子/棉花),来自手绘素材。
+    private static func industryGlyphNode(
+        for kind: IndustryKind,
+        size: CGFloat,
+        name: String
+    ) -> SKNode {
+        let container = SKNode()
+        container.name = name
+        container.userData = ["industryKind": kind.rawValue]
+        let texture = SKTexture(imageNamed: "industry-\(kind.rawValue)-glyph")
+        texture.filteringMode = .linear
+        let sprite = SKSpriteNode(texture: texture, size: CGSize(width: size, height: size))
+        sprite.zPosition = 1
+        sprite.isUserInteractionEnabled = false
+        container.addChild(sprite)
+        return container
+    }
+
+    /// 已占槽位:产业板块(图标 + 等级/资源 + 归属色条)。
+    /// 翻面(售出/采空)用斜杠条纹 + "已翻面"文字 + 图标褪色三重区分;
+    /// 未翻面的资源类板块(煤/铁/酒)右上角显示剩余数量徽章。
+    private static func occupiedIndustryNode(
+        for placement: MapIndustryPlacement
+    ) -> SKShapeNode {
+        let industry = SKShapeNode(rectOf: CGSize(width: 40, height: 44), cornerRadius: 8)
+        industry.name = "industry:\(placement.placementID)"
+        industry.zPosition = 6
+        industry.fillColor = placement.isFlipped
+            ? ink.withAlphaComponent(0.88)
+            : darkWood.withAlphaComponent(0.96)
+        industry.strokeColor = brass.withAlphaComponent(placement.isFlipped ? 0.30 : 0.78)
+        industry.lineWidth = placement.isFlipped ? 1 : 2
+        industry.userData = [
+            "ownerID": placement.ownerID,
+            "tileID": placement.tileID,
+            "level": placement.level,
+            "resourceCount": placement.resourceCount,
+            "isFlipped": placement.isFlipped,
+            "industryKind": placement.kind.rawValue,
+            "industryName": industryName(placement.kind),
+            "victoryPoints": placement.victoryPoints,
+            "linkPoints": placement.linkPoints,
+        ]
+        let glyph = industryGlyphNode(
+            for: placement.kind,
+            size: 28,
+            name: "industry-glyph"
+        )
+        glyph.position = CGPoint(x: 0, y: 7)
+        glyph.alpha = placement.isFlipped ? 0.30 : 1
+        glyph.zPosition = 1
+        industry.addChild(glyph)
+
+        if placement.isFlipped {
+            // 斜杠条纹:一眼看出板块已翻面,不再参与生产/出售。
+            let band = SKShapeNode(rectOf: CGSize(width: 62, height: 9), cornerRadius: 4)
+            band.name = "industry-flipped-band"
+            band.zRotation = .pi / 5
+            band.fillColor = porcelain.withAlphaComponent(0.30)
+            band.strokeColor = .clear
+            band.lineWidth = 0
+            band.zPosition = 2
+            band.isUserInteractionEnabled = false
+            industry.addChild(band)
+        }
+
+        // 翻面板块:斜杠条纹标识翻面,文字展示该板块的结算 VP 与路分。
+        let detail = placement.isFlipped
+            ? "VP\(placement.victoryPoints)·路\(placement.linkPoints)"
+            : "L\(placement.level)"
+        let detailLabel = SKLabelNode(text: detail)
+        detailLabel.name = "industry-detail"
+        detailLabel.fontName = "PingFangSC-Medium"
+        detailLabel.fontSize = 9
+        detailLabel.fontColor = placement.isFlipped
+            ? brass.withAlphaComponent(0.95)
+            : parchment
+        detailLabel.verticalAlignmentMode = .center
+        detailLabel.position = CGPoint(x: 0, y: -10)
+        detailLabel.isUserInteractionEnabled = false
+        industry.addChild(detailLabel)
+
+        if placement.isFlipped == false, placement.resourceCount > 0 {
+            // 剩余资源徽章:黄铜圆底 + 数量,贴在右上角。
+            let badge = SKShapeNode(circleOfRadius: 8)
+            badge.name = "industry-resource-badge"
+            badge.fillColor = brass
+            badge.strokeColor = ink.withAlphaComponent(0.9)
+            badge.lineWidth = 1
+            badge.zPosition = 3
+            badge.isUserInteractionEnabled = false
+            badge.position = CGPoint(x: 15, y: 16)
+            industry.addChild(badge)
+
+            let count = SKLabelNode(text: "\(placement.resourceCount)")
+            count.name = "industry-resource-count"
+            count.fontName = "PingFangSC-Semibold"
+            count.fontSize = 11
+            count.fontColor = ink
+            count.verticalAlignmentMode = .center
+            count.horizontalAlignmentMode = .center
+            count.isUserInteractionEnabled = false
+            count.zPosition = 4
+            count.position = CGPoint(x: 15, y: 16.5)
+            industry.addChild(count)
+        }
+
+        let ownerStrip = SKShapeNode(rectOf: CGSize(width: 30, height: 4), cornerRadius: 2)
+        ownerStrip.name = "industry-owner-strip"
+        ownerStrip.position = CGPoint(x: 0, y: -17)
+        ownerStrip.fillColor = ownerColor(placement.ownerColor)
+            .withAlphaComponent(placement.isFlipped ? 0.55 : 0.95)
+        ownerStrip.strokeColor = .clear
+        ownerStrip.lineWidth = 0
+        ownerStrip.zPosition = 1
+        ownerStrip.isUserInteractionEnabled = false
+        industry.addChild(ownerStrip)
+        return industry
+    }
+
+    /// 空槽位:虚线框 + 可建产业图标(双产业槽并排显示两个图标)。
+    /// 命名挂在 location 命名空间下,点击归到所属城市。
+    private static func emptySlotNode(
+        allowedKinds: [IndustryKind],
+        position: CGPoint,
+        locationID: String
+    ) -> SKShapeNode {
+        let box = SKShapeNode(rectOf: CGSize(width: 40, height: 44), cornerRadius: 8)
+        box.name = "location:\(locationID)"
+        box.fillColor = ink.withAlphaComponent(0.55)
+        box.strokeColor = .clear
+        box.lineWidth = 0
+        box.zPosition = 5
+        box.userData = [
+            "isEmptySlot": true,
+            "allowedKinds": allowedKinds.map(\.rawValue),
+        ]
+        let borderRect = CGRect(x: -18, y: -20, width: 36, height: 40)
+        let border = SKShapeNode(path: dashedPath(
+            CGPath(roundedRect: borderRect, cornerWidth: 6, cornerHeight: 6, transform: nil),
+            dash: 4,
+            gap: 4
+        ))
+        border.name = "empty-slot-dash"
+        border.fillColor = .clear
+        border.strokeColor = porcelain.withAlphaComponent(0.55)
+        border.lineWidth = 1.2
+        border.zPosition = 1
+        border.isUserInteractionEnabled = false
+        box.addChild(border)
+
+        // 浅色衬底:深色物品(煤/铁)在暗槽上也能读出来。
+        let backing = SKShapeNode(circleOfRadius: 15)
+        backing.name = "empty-slot-backing"
+        backing.fillColor = porcelain.withAlphaComponent(0.16)
+        backing.strokeColor = .clear
+        backing.zPosition = 0
+        backing.isUserInteractionEnabled = false
+        box.addChild(backing)
+
+        let kinds = allowedKinds.prefix(2)
+        let glyphSize: CGFloat = kinds.count > 1 ? 18 : 24
+        for (offset, kind) in kinds.enumerated() {
+            let glyph = industryGlyphNode(
+                for: kind,
+                size: glyphSize,
+                name: "empty-slot-kind"
+            )
+            glyph.alpha = 0.6
+            glyph.position = CGPoint(
+                x: kinds.count > 1 ? CGFloat(offset) * 11 - 5.5 : 0,
+                y: 0
+            )
+            box.addChild(glyph)
+        }
+        box.position = position
+        return box
     }
 
     static func routeNode(
@@ -527,36 +687,37 @@ enum MapNodeFactory {
         hitArea.isUserInteractionEnabled = false
         merchant.addChild(hitArea)
 
-        let parchmentPanel = SKShapeNode(rectOf: CGSize(width: 30, height: 23), cornerRadius: 4)
-        parchmentPanel.name = "merchant-parchment"
-        parchmentPanel.position = CGPoint(x: 0, y: 0)
-        parchmentPanel.fillColor = parchment.withAlphaComponent(0.88)
-        parchmentPanel.strokeColor = parchmentShadow
-        parchmentPanel.lineWidth = 0.8
-        parchmentPanel.zPosition = -0.5
-        parchmentPanel.isUserInteractionEnabled = false
-        merchant.addChild(parchmentPanel)
+        // 深色底板 + 白字:浅色小面板在真机上会糊进地图(用户反馈)。
+        let panel = SKShapeNode(rectOf: CGSize(width: 32, height: 26), cornerRadius: 4)
+        panel.name = "merchant-parchment"
+        panel.position = CGPoint(x: 0, y: 0)
+        panel.fillColor = ink.withAlphaComponent(0.88)
+        panel.strokeColor = porcelain.withAlphaComponent(0.35)
+        panel.lineWidth = 0.8
+        panel.zPosition = -0.5
+        panel.isUserInteractionEnabled = false
+        merchant.addChild(panel)
 
         merchant.addChild(merchantLabel(
             text: merchantAcceptanceGlyph(placement.acceptedIndustries),
             name: "merchant-acceptance",
-            fontSize: 13,
-            color: ink,
+            fontSize: 15,
+            color: porcelain,
             y: 10
         ))
         merchant.addChild(merchantLabel(
             text: placement.hasBeer ? "酒" : "—",
             name: "merchant-beer",
-            fontSize: 8,
-            color: placement.hasBeer ? brass : forgedIron.withAlphaComponent(0.65),
+            fontSize: 9,
+            color: placement.hasBeer ? brass : porcelain.withAlphaComponent(0.6),
             y: -2
         ))
         merchant.addChild(merchantLabel(
             text: merchantBonusLabel(placement),
             name: "merchant-bonus",
-            fontSize: 6.5,
-            color: parchment,
-            y: -14
+            fontSize: 8,
+            color: porcelain,
+            y: -15
         ))
         return merchant
     }
@@ -578,7 +739,7 @@ enum MapNodeFactory {
         let isTopEdgeMarket = location.y <= 0.06
         let isFarLeftMarket = location.x <= 0.06
         let horizontalOffset: CGFloat = isFarLeftMarket ? 26 : 0
-        let merchantDistance: CGFloat = location.industryPlacements.isEmpty ? 47 : 80
+        let merchantDistance: CGFloat = location.industryPlacements.isEmpty ? 47 : 96
         let merchantCenterY = isBottomEdgeMarket ? merchantDistance : -merchantDistance
         let inwardLabelY: CGFloat = merchantDistance + 45
         let labelY: CGFloat

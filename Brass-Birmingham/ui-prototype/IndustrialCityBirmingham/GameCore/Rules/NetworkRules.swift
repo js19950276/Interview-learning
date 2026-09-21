@@ -56,7 +56,21 @@ extension GameCore {
             guard Set(intent.routeIDs).count == intent.routeIDs.count else { throw NetworkRuleError.duplicateRoute }
             guard player.linksRemaining >= intent.routeIDs.count else { throw NetworkRuleError.insufficientLinks }
             let cashCost = state.era == .canal ? 3 : (intent.routeIDs.count == 1 ? 5 : 15)
-            guard player.cash >= cashCost else { throw NetworkRuleError.insufficientCash }
+            // 与 resolve 对齐：市场煤/无限供应煤的花费也要计入现金校验。
+            let marketCoalCost = intent.coalSources.reduce(0) { total, source in
+                switch source {
+                case .marketSlot(let resource, let index):
+                    guard resource == .coal, state.coalMarket.slots.indices.contains(index) else {
+                        return total
+                    }
+                    return total + state.coalMarket.slots[index].price
+                case .unlimitedMarket(let resource, let price):
+                    return resource == .coal ? total + price : total
+                case .industry, .merchantBeer:
+                    return total
+                }
+            }
+            guard player.cash >= cashCost + marketCoalCost else { throw NetworkRuleError.insufficientCash }
             if state.era == .rail {
                 guard intent.coalSources.count == intent.routeIDs.count else { throw NetworkRuleError.illegalCoal }
             } else if intent.coalSources.isEmpty == false {

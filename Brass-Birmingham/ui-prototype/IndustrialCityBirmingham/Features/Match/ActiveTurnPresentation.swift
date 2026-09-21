@@ -48,10 +48,10 @@ nonisolated struct ActiveTurnNoticeTracker: Equatable, Sendable {
 extension PlayerColor {
     nonisolated var localizedName: String {
         switch self {
-        case .amber: "琥珀色"
-        case .crimson: "深红色"
-        case .teal: "青绿色"
-        case .violet: "紫罗兰色"
+        case .amber: "黄色"
+        case .crimson: "红色"
+        case .teal: "白色"
+        case .violet: "紫色"
         }
     }
 

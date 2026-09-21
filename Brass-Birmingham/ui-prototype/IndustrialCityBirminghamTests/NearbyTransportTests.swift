@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import Network
 import Testing
@@ -9,7 +10,7 @@ struct NearbyTransportTests {
     @Test func debugSimulatorNearbyHostCreatesWithoutLaunchSwitches() async throws {
         let store = try await SessionViewStore.nearbyHost(
             roomID: .init(rawValue: "BRASS-UNIT-\(UUID().uuidString.prefix(6))"),
-            identity: NearbySessionIdentity(deviceID: UUID()),
+            identity: NearbySessionIdentity(deviceID: UUID(), roomID: "unit-room"),
             catalog: GameCore.GameDataLoader.loadBundledFixtureCatalog()
         )
 
@@ -19,7 +20,7 @@ struct NearbyTransportTests {
     }
 
     @Test func debugSimulatorNearbyBrowserUsesLocalServiceWithoutLaunchSwitches() {
-        #expect(NetworkBonjourBrowserDriver.runtimeServiceType == LocalNetworkTransport.serviceType)
+        #expect(NetworkBonjourBrowserDriver.runtimeServiceType == NearbyTransport.serviceType)
     }
 
     @MainActor
@@ -91,17 +92,20 @@ struct NearbyTransportTests {
 
     @Test func deviceIdentityProducesStableGuestSeatAndReconnectToken() {
         let deviceID = UUID(uuidString: "B305FCF8-F7CA-427E-8D47-83263A3D23F7")!
-        let first = NearbySessionIdentity(deviceID: deviceID)
-        let second = NearbySessionIdentity(deviceID: deviceID)
+        let first = NearbySessionIdentity(deviceID: deviceID, roomID: "ROOM")
+        let second = NearbySessionIdentity(deviceID: deviceID, roomID: "ROOM")
 
         #expect(first == second)
         #expect(first.playerID.rawValue == "guest-b305fcf8")
-        #expect(first.reconnectToken.rawValue == "nearby-b305fcf8-f7ca-427e-8d47-83263a3d23f7")
+        // 令牌按房间派生:SHA256(deviceID|roomID) 前 32 位 hex。
+        let digest = SHA256.hash(data: Data("b305fcf8-f7ca-427e-8d47-83263a3d23f7|ROOM".utf8))
+            .map { String(format: "%02x", $0) }.joined()
+        #expect(first.reconnectToken.rawValue == "nearby-" + digest.prefix(32))
     }
 
     @Test func missingVendorIdentifierReusesTheSameIdentityWithinTheProcess() {
-        let first = NearbySessionIdentity.make(deviceID: nil)
-        let second = NearbySessionIdentity.make(deviceID: nil)
+        let first = NearbySessionIdentity.make(deviceID: nil, roomID: "ROOM")
+        let second = NearbySessionIdentity.make(deviceID: nil, roomID: "ROOM")
 
         #expect(first == second)
         #expect(first.playerID == second.playerID)
@@ -297,7 +301,7 @@ struct NearbyTransportTests {
     }
 
     @Test(arguments: [
-        (TransportError.notConnected as any Error, NearbyPreflightIssue.noRooms),
+        (TransportError.notConnected as any Error, NearbyPreflightIssue.connectionFailed),
         (TransportError.connectionFailed as any Error, NearbyPreflightIssue.connectionFailed),
         (SessionCoordinator.Error.joinTimedOut as any Error, NearbyPreflightIssue.connectionFailed),
         (NearbyPreflightIssue.permissionDenied as any Error, NearbyPreflightIssue.permissionDenied),

@@ -504,7 +504,7 @@ struct SessionCoordinatorTests {
             protocolVersion: 1, rulesetVersion: "rules-v1", roomID: room,
             messageID: .init(rawValue: "misaddressed-hello"), senderID: guestID,
             recipientID: .init(rawValue: "someone-else"), authoritativeVersion: .init(rawValue: 0),
-            payload: .hello(reconnectToken: .init(rawValue: "t-guest"))
+            payload: .hello(reconnectToken: .init(rawValue: "t-guest"), displayName: nil)
         )
         try await attacker.send(JSONEncoder().encode(envelope), to: hostID)
         try await Task.sleep(for: .milliseconds(50))

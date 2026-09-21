@@ -539,7 +539,7 @@ struct SessionProtocolTests {
             payload: .passed(discardedCardID: "public-discard")
         )
         return [
-            .hello(reconnectToken: aliceToken), .createRoom, .joinRoom,
+            .hello(reconnectToken: aliceToken, displayName: nil), .createRoom, .joinRoom,
             .ready(true), .lobbyState(.init(playerIDs: [aliceID, bobID], readyPlayerIDs: [aliceID])),
             .start, .intent(passIntent()),
             .clientEvent(.init(event: event, snapshot: snapshot)),
@@ -660,7 +660,7 @@ enum SessionValidationCase: CaseIterable, Sendable {
         case .sender: result.senderID = .init(rawValue: "unknown")
         case .recipient: result.recipientID = .init(rawValue: "charlie")
         case .futureVersion: result.authoritativeVersion = .init(rawValue: 5)
-        case .token: result.payload = .hello(reconnectToken: .init(rawValue: "wrong"))
+        case .token: result.payload = .hello(reconnectToken: .init(rawValue: "wrong"), displayName: nil)
         }
         return result
     }

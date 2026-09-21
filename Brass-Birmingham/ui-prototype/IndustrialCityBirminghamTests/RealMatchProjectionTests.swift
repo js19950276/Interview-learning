@@ -9,6 +9,29 @@ struct RealMatchProjectionTests {
 
     private struct GoldenMaterial: Encodable { let b: String; let a: Int }
 
+    @Test func matchProjectionPlayersFollowTurnOrder() throws {
+        // §6.2:回合末按花费重排顺位后,左侧玩家列表必须跟随新顺位显示。
+        let catalog = try verifiedCatalog()
+        var rules = GameCore.SetupRules(seed: 5)
+        let players = [
+            GameCore.PlayerID(rawValue: "p1"),
+            GameCore.PlayerID(rawValue: "p2"),
+            GameCore.PlayerID(rawValue: "p3"),
+        ]
+        var state = try rules.makeGame(catalog: catalog, playerIDs: players).state
+        let expectedOrder: [GameCore.PlayerID] = [
+            .init(rawValue: "p3"), .init(rawValue: "p1"), .init(rawValue: "p2"),
+        ]
+        state.playerOrder = expectedOrder
+
+        let projection = try GameCore.MatchProjection.make(
+            state: state, recipient: players[0],
+            actionOptions: [], playerNames: [:]
+        )
+
+        #expect(projection.players.map(\.id) == expectedOrder)
+    }
+
     @Test func canonicalChecksumHasFixedSha256Golden() throws {
         #expect(try GameCore.CanonicalChecksum.sha256(GoldenMaterial(b: "x", a: 1))
                 == "ecf9e98ec0641e23113ff3ce8bdc78d0ddd249886517fd4a7f68cc83d4e65667")

@@ -19,10 +19,13 @@ struct GameRulesEngineTests {
         #expect(first.finalState.turnPhase == .ended)
         #expect(first.finalState.era == .rail)
         #expect(first.finalHash == second.finalHash)
+        // 金哈希随规则基线变化重录(2026-09:开局£0、官方市场、时代确认两阶段过渡)。
+        // 金哈希随审计修复重录(2026-09:官方市场留空£1格、连线保留+逐时代计分、
+        // 发展运河限1、侦察空堆部分取得、VP债即时封顶、伯明翰运河例外)。
         let expectedHashes = [
-            2: "da4e0e405139b24c500f9820bb496025bea0f35f6fd306a8176d5d04beae556f",
-            3: "6209a2452e4fa6f71aa53d3c1d368864a06fba2c70c78f4fdd6c7aaa31e119fd",
-            4: "5d1144952cdd74fa58f7fa37f87e979e52de3dac3e189bc3d0bcd03e2d4df129",
+            2: "92a703e7048e2aed3c512265b03af0d134820436fbac7888b99dec85470e0c08",
+            3: "31bf8281ac6fed33865bef55f287a80c8e964529617cded0dea38356efa0ec76",
+            4: "20f005b75cf43e09bd2aeeaab6ba0559bb1fc38ccd3d102db77a4d68358bd783",
         ]
         #expect(first.finalHash == expectedHashes[playerCount])
         #expect(first.events == second.events)
@@ -139,6 +142,27 @@ struct GameRulesEngineTests {
                 break
             }
             let state = engine.gameState
+            if case .eraIntermission(let intermission) = state.turnPhase {
+                for player in state.players.map(\.id)
+                where intermission.confirmedPlayerIDs.contains(player) == false {
+                    let confirm = engine.submit(.init(
+                        protocolVersion: 1,
+                        rulesetVersion: state.rulesetVersion,
+                        roomID: roomID,
+                        senderID: player,
+                        reconnectToken: try #require(tokens[player]),
+                        baseVersion: engine.gameState.authoritativeVersion,
+                        payload: .confirmEraIntermission
+                    ), catalog: catalog)
+                    guard case .accepted(let confirmEvent) = confirm else {
+                        Issue.record("era confirmation was rejected: \(confirm)")
+                        break
+                    }
+                    events.append(confirmEvent)
+                    ordinaryIntentCount += 1
+                }
+                continue
+            }
             guard state.turnPhase == .active else {
                 Issue.record("pass-only proof unexpectedly entered forced sale")
                 break

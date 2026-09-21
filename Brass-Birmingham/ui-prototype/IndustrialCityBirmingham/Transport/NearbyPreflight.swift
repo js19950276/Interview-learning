@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import Network
 
@@ -44,15 +45,18 @@ nonisolated struct NearbySessionIdentity: Equatable, Sendable {
     let reconnectToken: GameCore.ReconnectToken
     let shortID: String
 
-    init(deviceID: UUID) {
+    init(deviceID: UUID, roomID: String) {
         let canonical = deviceID.uuidString.lowercased()
         shortID = String(canonical.prefix(8))
         playerID = .init(rawValue: "guest-\(shortID)")
-        reconnectToken = .init(rawValue: "nearby-\(canonical)")
+        // 令牌按房间派生:单个房间泄露的凭据不能复用到其他房间。
+        let digest = SHA256.hash(data: Data("\(canonical)|\(roomID)".utf8))
+            .map { String(format: "%02x", $0) }.joined()
+        reconnectToken = .init(rawValue: "nearby-\(digest.prefix(32))")
     }
 
-    static func make(deviceID: UUID?) -> NearbySessionIdentity {
-        NearbySessionIdentity(deviceID: deviceID ?? processFallbackDeviceID)
+    static func make(deviceID: UUID?, roomID: String) -> NearbySessionIdentity {
+        NearbySessionIdentity(deviceID: deviceID ?? processFallbackDeviceID, roomID: roomID)
     }
 }
 
@@ -63,7 +67,9 @@ nonisolated enum NearbyPreflight {
         if error as? SessionCoordinator.Error == .dataUnavailable { return .gameDataUnavailable }
         if let networkError = error as? NWError { return issue(for: networkError) }
         if let transportError = error as? TransportError {
-            return transportError == .notConnected ? .noRooms : .connectionFailed
+            // notConnected 的真实语义是"未连接/已断开",映射成"没有房间"
+            // 会把用户引向无关的重新搜索。
+            return .connectionFailed
         }
         return .connectionFailed
     }

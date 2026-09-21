@@ -190,7 +190,23 @@ extension GameCore {
     nonisolated enum TurnPhase: Codable, Equatable, Sendable {
         case active
         case forcedSale(PendingForcedSale)
+        /// 时代结算确认:运河时代结束后的暂停界面,全员确认后才进入铁路时代。
+        case eraIntermission(EraIntermissionState)
         case ended
+    }
+
+    nonisolated struct EraIntermissionState: Codable, Equatable, Sendable {
+        let settledEra: Era
+        let awards: [EraAward]
+        var confirmedPlayerIDs: [PlayerID]
+    }
+
+    nonisolated struct EraAward: Codable, Equatable, Sendable {
+        let playerID: PlayerID
+        let linkPoints: Int
+        let industryPoints: Int
+        /// 确认时点的收入等级(£),供结算界面展示。
+        let incomeLevel: Int
     }
 
     nonisolated struct GameState: Codable, Equatable, Sendable {
@@ -224,6 +240,8 @@ extension GameCore {
         var authorityCompleteness: AuthorityCompleteness? = nil
         /// Bounded authoritative replay protection. `nil` denotes a legacy/incomplete state.
         var appliedResourceActionIDs: [String]? = nil
+        /// 终局排名(并列同组);仅在 turnPhase == .ended 时非空。
+        var finalStandings: [[PlayerID]]? = nil
 
         func canonicalBytes() throws -> Data {
             let encoder = JSONEncoder()
@@ -364,6 +382,7 @@ extension GameCore.GameState {
         case wildIndustryPool, publicDiscard, boardIndustryPlacements, placedLinks
         case coalMarket, ironMarket, publicSupply, merchants, authoritativeVersion
         case turnPhase, roundIncomeCursor, authorityCompleteness, appliedResourceActionIDs
+        case finalStandings
     }
 
     nonisolated init(from decoder: Decoder) throws {
@@ -404,5 +423,6 @@ extension GameCore.GameState {
         appliedResourceActionIDs = try values.decodeIfPresent(
             [String].self, forKey: .appliedResourceActionIDs
         )
+        finalStandings = try values.decodeIfPresent([[GameCore.PlayerID]].self, forKey: .finalStandings)
     }
 }

@@ -56,6 +56,10 @@ struct ActionContextBar: View {
     let totalActions: Int
     let action: GameAction
     let instruction: String
+    let hint: String?
+    let canUndo: Bool
+    let cancelArmed: Bool
+    let onUndo: () -> Void
     let onCancel: () -> Void
 
     var body: some View {
@@ -72,22 +76,54 @@ struct ActionContextBar: View {
                 .font(BrassTypography.label)
                 .foregroundStyle(BrassColor.coal.color)
 
-            Text(instruction)
-                .font(BrassTypography.label)
-                .lineLimit(1)
-                .minimumScaleFactor(0.74)
-                .foregroundStyle(BrassColor.coal.color.opacity(0.82))
-                .frame(maxWidth: .infinity, alignment: .leading)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(instruction)
+                    .font(BrassTypography.label)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.74)
+                    .foregroundStyle(BrassColor.coal.color.opacity(0.82))
+                if let hint {
+                    Text("⚠︎ " + hint)
+                        .font(.caption2)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.8)
+                        .foregroundStyle(BrassColor.danger.color.opacity(0.95))
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            if canUndo {
+                Button(action: onUndo) {
+                    HStack(spacing: 3) {
+                        Image(systemName: "arrow.uturn.backward")
+                        Text("上一步")
+                    }
+                    .font(BrassTypography.label)
+                    .frame(minWidth: 56, minHeight: 44)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(BrassColor.paper.color)
+                .accessibilityLabel("撤销上一步")
+                .accessibilityIdentifier("action.context.undo")
+            }
 
             Button(action: onCancel) {
-                Image(systemName: "xmark.circle.fill")
-                    .font(.system(size: 19, weight: .semibold))
-                    .frame(width: 44, height: 44)
-                    .contentShape(Rectangle())
+                if cancelArmed {
+                    Text("确认取消")
+                        .font(BrassTypography.label)
+                        .frame(minWidth: 64, minHeight: 44)
+                        .contentShape(Rectangle())
+                } else {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 19, weight: .semibold))
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
             }
             .buttonStyle(.plain)
             .foregroundStyle(BrassColor.danger.color)
-            .accessibilityLabel("取消")
+            .accessibilityLabel(cancelArmed ? "确认取消" : "取消")
             .accessibilityIdentifier("action.context.cancel")
         }
         .frame(minHeight: 44)
@@ -126,6 +162,30 @@ struct ActionContextBar: View {
         }
         if choices.contains(where: { choice in isCard(choice.value) }) {
             return prefix + "选择额外手牌"
+        }
+        if choices.contains(where: { choice in
+            if case .resourceSource = choice.value { return true }
+            return false
+        }) {
+            return prefix + "选择资源来源"
+        }
+        if choices.contains(where: { choice in
+            if case .networkLinkCount = choice.value { return true }
+            return false
+        }) {
+            return prefix + "选择铺设铁路数量"
+        }
+        if choices.contains(where: { choice in
+            if case .developTileCount = choice.value { return true }
+            return false
+        }) {
+            return prefix + "选择发展板块数量"
+        }
+        if choices.contains(where: { choice in
+            if case .sellDisposition = choice.value { return true }
+            return false
+        }) {
+            return prefix + "继续出售或结束出售"
         }
 
         return switch action {

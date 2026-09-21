@@ -23,19 +23,22 @@ nonisolated enum RealMatchViewModel {
             actionNumber: snapshot.actionNumber,
             deckRemaining: match.deckCount,
             money: local?.cash ?? 0,
-            income: local?.incomePosition ?? 0,
+            income: local?.incomeLevel ?? 0,
             victoryPoints: local?.victoryPoints ?? 0,
             players: match.players.enumerated().map { index, player in
                 PlayerSummary(
                     id: player.id.rawValue,
-                    name: player.id.rawValue,
+                    name: player.name ?? player.id.rawValue,
                     color: color(player.color),
                     order: index + 1,
                     spent: player.spent,
                     isCurrent: snapshot.activePlayerID == player.id,
                     isHost: hostPlayerID == player.id,
                     isReady: true,
-                    isConnected: true
+                    isConnected: true,
+                    cash: player.cash,
+                    incomeLevel: player.incomeLevel,
+                    victoryPoints: player.victoryPoints
                 )
             },
             industries: (local?.industryStacks ?? []).compactMap { stack in
@@ -47,7 +50,11 @@ nonisolated enum RealMatchViewModel {
                 return IndustrySummary(
                     id: tile.id, kind: kind, level: tile.level,
                     cost: level.buildCost, coalCost: level.coalCost,
-                    ironCost: level.ironCost, isAvailable: true
+                    ironCost: level.ironCost, isAvailable: true,
+                    remainingTotal: stack.tiles.count,
+                    remainingLowest: stack.tiles.filter { $0.level == tile.level }.count,
+                    victoryPoints: level.victoryPoints,
+                    linkPoints: level.linkPoints
                 )
             },
             coalMarket: market(match.coalMarket),
@@ -63,12 +70,22 @@ nonisolated enum RealMatchViewModel {
             },
             locations: BoardPresentationCatalog.standard.locations.map { location in
                 var presented = location
+                // 槽位层:来自权威地图数据,空槽可见"能修什么",占用按 slotIndex 对齐。
+                if let boardLocation = board.locations.first(where: { $0.id == location.id }) {
+                    presented.slots = boardLocation.industrySlots.enumerated().map { index, slot in
+                        MapLocationSlot(index: index, allowedKinds: slot.compactMap { industryKind($0) })
+                    }
+                }
                 presented.industryPlacements = match.boardIndustryPlacements
                     .filter { $0.locationID == location.id }
                     .compactMap { placement in
                         guard let kind = industryKind(placement.tile.industryDefinitionID),
                               let owner = match.players.first(where: { $0.id == placement.ownerID })
                         else { return nil }
+                        // 翻面结算展示值:该板块等级的 VP 与路分(来自已校验目录)。
+                        let levelInfo = catalog?.catalog.industries.first(where: {
+                            $0.id == placement.tile.industryDefinitionID
+                        })?.levels.first(where: { $0.level == placement.tile.level })
                         return .init(
                             placementID: placement.placementID,
                             ownerID: placement.ownerID.rawValue,
@@ -77,7 +94,10 @@ nonisolated enum RealMatchViewModel {
                             level: placement.tile.level,
                             resourceCount: placement.resourceCount,
                             isFlipped: placement.isFlipped,
-                            ownerColor: color(owner.color)
+                            ownerColor: color(owner.color),
+                            slotIndex: placement.slotIndex,
+                            victoryPoints: levelInfo?.victoryPoints ?? 0,
+                            linkPoints: levelInfo?.linkPoints ?? 0
                         )
                     }
                 presented.merchantPlacements = merchantsByLocation[location.id] ?? []
@@ -172,8 +192,17 @@ nonisolated enum RealMatchViewModel {
     }
 
     private static func market(_ market: GameCore.ResourceMarket) -> MarketSummary {
-        let prices = market.slots.filter(\.hasCube).map(\.price).sorted()
-        return .init(remaining: prices.count, cheapestPrice: prices.first ?? 0, ladder: prices)
+        // 阶梯展示整条价格轨(含空格):煤 £8、铁 £6 是"无限供应"格,
+        // 空着也要显示出来;市场被买空后最低价回退到无限价,而不是 £0。
+        // occupancy 记录每格真实占用:买走便宜格后,剩余方块向高价端(右)收缩。
+        let unlimitedPrice: Int = market.resource == .coal ? 8 : 6
+        let occupied = market.slots.filter(\.hasCube).map(\.price).sorted()
+        return .init(
+            remaining: occupied.count,
+            cheapestPrice: occupied.first ?? unlimitedPrice,
+            ladder: market.slots.map(\.price),
+            occupancy: market.slots.map(\.hasCube)
+        )
     }
 
     private static func color(_ value: GameCore.PlayerColor) -> PlayerColor {

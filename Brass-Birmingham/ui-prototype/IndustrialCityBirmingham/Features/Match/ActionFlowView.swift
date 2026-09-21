@@ -180,7 +180,7 @@ struct ActionFlowView: View {
                 title: "出售商品",
                 instruction: "从右侧产业栏选择产业，再选择商人和啤酒来源",
                 details: selectedOptions.enumerated().map { index, option in
-                    "\(index + 1). \(option.merchantName) · +£\(option.reward) · 收入 +\(option.incomeIncrease)"
+                    "\(index + 1). \(option.merchantName) · +£\(option.reward) · 收入轨 +\(option.incomeIncrease) 格"
                 },
                 sellOptions: selectedOptions
             )
@@ -204,7 +204,7 @@ struct ActionFlowView: View {
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text("\(option.merchantName) · +£\(option.reward)")
                                         .font(BrassTypography.label)
-                                    Text("啤酒：\(option.beerSource) · 收入 +\(option.incomeIncrease)")
+                                    Text("啤酒：\(option.beerSource) · 收入轨 +\(option.incomeIncrease) 格")
                                         .font(.caption2)
                                 }
                             }
@@ -224,7 +224,7 @@ struct ActionFlowView: View {
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel(
-                            "\(option.merchantName)，奖励 \(option.reward) 英镑，啤酒来源 \(option.beerSource)，收入增加 \(option.incomeIncrease)"
+                            "\(option.merchantName)，奖励 \(option.reward) 英镑，啤酒来源 \(option.beerSource)，收入轨前进 \(option.incomeIncrease) 格"
                         )
                         .accessibilityIdentifier("sell.option.\(option.id)")
                         .accessibilityAddTraits(isSelected ? .isSelected : [])

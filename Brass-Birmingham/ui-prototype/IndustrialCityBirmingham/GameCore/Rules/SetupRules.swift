@@ -33,13 +33,20 @@ extension GameCore {
     nonisolated struct SetupRules: Sendable {
         private var generator: SeededGenerator
 
+        /// 官方开局：收入标记放在进程轨(收入/分数共轨)的“10”格上——
+        /// 即分数标记会读到 10 分的那一格(0 基下标 10)。
+        /// 该格旁的硬币金额是 £0,所以开局收入等级是 £0(第一轮收入阶段收 £0);
+        /// 不要按“收入等级 £10”去落子,那是把共轨位置号误读成了金额。
+        static let startingIncomePosition = 10
+
         init(seed: UInt64) {
             generator = SeededGenerator(seed: seed)
         }
 
         mutating func makeGame(
             catalog verifiedCatalog: VerifiedGameDataCatalog,
-            playerIDs: [PlayerID]
+            playerIDs: [PlayerID],
+            colors: [PlayerID: PlayerColor] = [:]
         ) throws -> SetupResult {
             let catalog = verifiedCatalog.catalog
             guard (2...4).contains(playerIDs.count) else {
@@ -51,18 +58,30 @@ extension GameCore {
 
             let playerCount = playerIDs.count
             let roundCapacity = 12 - playerCount
+            // 座位代表色:优先用大厅选择的颜色;被占/缺省时按未占用顺序兜底,
+            // 保证四色唯一。
+            var usedColors: Set<PlayerColor> = []
             let preparedPlayers = playerIDs.enumerated().map { index, playerID in
-                SetupPlayer(
+                let requested = colors[playerID]
+                let assigned: PlayerColor
+                if let requested, usedColors.contains(requested) == false {
+                    assigned = requested
+                } else {
+                    assigned = PlayerColor.allCases.first(where: { usedColors.contains($0) == false })
+                        ?? PlayerColor.allCases[index % PlayerColor.allCases.count]
+                }
+                usedColors.insert(assigned)
+                return SetupPlayer(
                     id: playerID,
-                    color: PlayerColor.allCases[index],
+                    color: assigned,
                     hand: [],
                     privateBottomDiscard: nil,
                     industryStacks: Self.industryStacks(
                         catalog.industries,
-                        color: PlayerColor.allCases[index]
+                        color: assigned
                     ),
                     cash: 17,
-                    incomePosition: 10,
+                    incomePosition: Self.startingIncomePosition,
                     victoryPoints: 0,
                     spent: 0
                 )
@@ -320,7 +339,7 @@ extension GameCore {
                           player.hand.isEmpty,
                           player.privateBottomDiscard == nil,
                           player.cash == 17,
-                          player.incomePosition == 10,
+                          player.incomePosition == Self.startingIncomePosition,
                           player.victoryPoints == 0,
                           player.spent == 0,
                           value.players.contains(where: { $0.color == player.color }) == false
@@ -523,16 +542,15 @@ extension GameCore {
         }
 
         private static func validMarkets(coal: ResourceMarket, iron: ResourceMarket) -> Bool {
-            coal == ResourceMarket(
+            let coalPrices = (1...7).flatMap { Array(repeating: $0, count: 2) }
+            return coal == ResourceMarket(
                 resource: .coal,
-                slots: (1...7).flatMap { price in
-                    Array(repeating: MarketSlot(price: price, hasCube: true), count: 2)
-                }.enumerated().map { index, slot in
-                    MarketSlot(price: slot.price, hasCube: index != 0)
+                slots: coalPrices.enumerated().map { index, price in
+                    MarketSlot(price: price, hasCube: index != 0)
                 }
             ) && iron == ResourceMarket(
                 resource: .iron,
-                slots: [1, 1, 1, 2, 2, 2, 3, 3, 4, 4].enumerated().map { index, price in
+                slots: ([1, 1] + (2...5).flatMap { Array(repeating: $0, count: 2) }).enumerated().map { index, price in
                     MarketSlot(price: price, hasCube: index >= 2)
                 }
             )
@@ -567,6 +585,9 @@ extension GameCore {
             }
         }
 
+        /// 官方煤市场(规则书 setup 第7步"铺满煤,留空一个 £1 格"):
+        /// 14 个可放格 = £1×2 + £2~£7 各×2,开局 13 块、留空一个 £1;
+        /// £8 是印在板上的“无限供应”标记价(非格子):市场买空后按 £8 无限购买。
         private func coalMarket() -> ResourceMarket {
             let prices = (1...7).flatMap { Array(repeating: $0, count: 2) }
             return ResourceMarket(
@@ -577,8 +598,11 @@ extension GameCore {
             )
         }
 
+        /// 官方铁市场(规则书 setup 第8步"铺满铁,留空两个 £1 格"):
+        /// 10 个可放格 = £1×2 + £2~£5 各×2,开局 8 块铺满 £2~£5、两个 £1 空置;
+        /// £6 是“无限供应”标记价(非格子)。
         private func ironMarket() -> ResourceMarket {
-            let prices = [1, 1, 1, 2, 2, 2, 3, 3, 4, 4]
+            let prices = [1, 1] + (2...5).flatMap { Array(repeating: $0, count: 2) }
             return ResourceMarket(
                 resource: .iron,
                 slots: prices.enumerated().map { index, price in

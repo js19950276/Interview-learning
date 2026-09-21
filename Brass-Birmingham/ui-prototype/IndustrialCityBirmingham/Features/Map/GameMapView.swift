@@ -117,7 +117,7 @@ struct GameMapView: View {
     @State private var suppressNextDragEnd = false
     @State private var pinchStartTranslation: CGPoint?
     @State private var pinchAnchor: CGPoint?
-    @State private var committedScale = MapViewportMetrics.minimumZoom
+    @State private var committedScale = MapViewportMetrics.defaultZoom
     @State private var gestureScale: CGFloat = 1
     @State private var panSignpost: PrototypeSignpost.Interval?
     @State private var zoomSignpost: PrototypeSignpost.Interval?

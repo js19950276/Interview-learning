@@ -28,12 +28,15 @@ extension GameCore {
         ) throws {
             let (expectedVersion, versionOverflow) = event.previousVersion.rawValue.addingReportingOverflow(1)
             let (expectedAction, actionOverflow) = state.actionNumber.addingReportingOverflow(1)
+            // 时代结算确认不受当前行动座位限制,发起者可以是任一座位。
+            var isEraConfirmation = false
+            if case .eraIntermissionConfirmed = event.payload { isEraConfirmation = true }
             guard !versionOverflow, !actionOverflow,
                   event.roomID == expectedRoomID,
                   event.previousVersion == state.authoritativeVersion,
                   event.version.rawValue == expectedVersion,
                   event.actionNumber == expectedAction,
-                  event.actor == state.activePlayerID
+                  isEraConfirmation || event.actor == state.activePlayerID
             else { throw ReplayError.invalidEvent }
             var candidate = state
             let reproduced: AuthoritativeGameEvent
@@ -97,12 +100,63 @@ extension GameCore {
                         intent, actorID: event.actor, roomID: expectedRoomID,
                         state: &candidate, catalog: verifiedCatalog
                     )
+                case .eraIntermissionConfirmed(let playerID):
+                    let target = try SimpleActionRules.validateEraConfirmation(
+                        actorID: playerID, state: candidate, catalog: verifiedCatalog
+                    )
+                    reproduced = try resolveEraConfirmation(
+                        target, roomID: expectedRoomID, state: &candidate,
+                        catalog: verifiedCatalog
+                    )
                 }
             } catch {
                 throw ReplayError.invalidEvent
             }
             guard reproduced == event else { throw ReplayError.invalidEvent }
             state = candidate
+        }
+
+        /// 应用一名玩家的时代结算确认;全员确认后立即执行铁路时代准备。
+        static func resolveEraConfirmation(
+            _ target: ValidatedEraConfirmation,
+            roomID: RoomID,
+            state: inout GameState,
+            catalog verifiedCatalog: VerifiedGameDataCatalog
+        ) throws -> AuthoritativeGameEvent {
+            let previousVersion = state.authoritativeVersion
+            var candidate = state
+            guard case .eraIntermission(var intermission) = candidate.turnPhase else {
+                throw GameRulesInternalError.invariantViolation
+            }
+            intermission.confirmedPlayerIDs.append(target.actorID)
+            candidate.turnPhase = .eraIntermission(intermission)
+
+            var transitions: [GameTransitionEvent] = []
+            if case .eraIntermission(let confirmed) = candidate.turnPhase,
+               confirmed.confirmedPlayerIDs.count >= candidate.players.count {
+                transitions.append(
+                    try ScoringRules.prepareRailEra(state: &candidate, catalog: verifiedCatalog)
+                )
+            }
+
+            let (nextVersion, overflow) = previousVersion.rawValue.addingReportingOverflow(1)
+            guard overflow == false else { throw GameRulesInternalError.arithmeticOverflow }
+            let (nextAction, actionOverflow) = candidate.actionNumber.addingReportingOverflow(1)
+            guard actionOverflow == false else { throw GameRulesInternalError.arithmeticOverflow }
+            candidate.authoritativeVersion = .init(rawValue: nextVersion)
+            candidate.actionNumber = nextAction
+
+            let event = AuthoritativeGameEvent(
+                roomID: roomID,
+                actor: target.actorID,
+                previousVersion: previousVersion,
+                version: candidate.authoritativeVersion,
+                actionNumber: candidate.actionNumber,
+                payload: .eraIntermissionConfirmed(playerID: target.actorID),
+                transitions: transitions
+            )
+            state = candidate
+            return event
         }
 
         static func resolvePass(
@@ -379,10 +433,14 @@ extension GameCore {
                 }
                 candidate.publicDiscard.append(candidate.players[playerIndex].hand.remove(at: index))
             }
-            candidate.wildLocationPool.removeLast()
-            candidate.wildIndustryPool.removeLast()
-            candidate.players[playerIndex].hand.append(target.wildLocationCard)
-            candidate.players[playerIndex].hand.append(target.wildIndustryCard)
+            if let locationWild = target.wildLocationCard {
+                candidate.wildLocationPool.removeLast()
+                candidate.players[playerIndex].hand.append(locationWild)
+            }
+            if let industryWild = target.wildIndustryCard {
+                candidate.wildIndustryPool.removeLast()
+                candidate.players[playerIndex].hand.append(industryWild)
+            }
             let transitions = try finishAction(
                 actorIndex: playerIndex, previousVersion: previous,
                 state: &candidate, catalog: verifiedCatalog
@@ -585,10 +643,13 @@ extension GameCore {
         }
 
         private static func takeProductionFromSupply(_ placement: BoardIndustryPlacement, state: inout GameState) {
+            // 公共供应是无限供应区的台账（RULES.md §5.1.9，不足时用替代物）。
+            // 库存不足时允许记为负数：负值 = 已投入使用的替代物数量，
+            // 这样"面板+市场+供应"始终等于实体总数，权威守恒校验保持有效。
             switch placement.tile.industryDefinitionID {
-            case "coal-mine": state.publicSupply.coal = max(0, state.publicSupply.coal - placement.resourceCount)
-            case "iron-works": state.publicSupply.iron = max(0, state.publicSupply.iron - placement.resourceCount)
-            case "brewery": state.publicSupply.beer = max(0, state.publicSupply.beer - placement.resourceCount)
+            case "coal-mine": state.publicSupply.coal -= placement.resourceCount
+            case "iron-works": state.publicSupply.iron -= placement.resourceCount
+            case "brewery": state.publicSupply.beer -= placement.resourceCount
             default: break
             }
         }

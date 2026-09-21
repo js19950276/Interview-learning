@@ -11,8 +11,16 @@ nonisolated enum DemoFixture {
             roundCount: playerCount == 4 ? 8 : playerCount == 3 ? 9 : 10,
             actionNumber: 1, deckRemaining: 26, money: 17, income: 0, victoryPoints: 0,
             players: players(count: playerCount), industries: industries,
-            coalMarket: MarketSummary(remaining: 7, cheapestPrice: 2, ladder: [1, 2, 3, 4, 5, 6, 7, 8]),
-            ironMarket: MarketSummary(remaining: 5, cheapestPrice: 3, ladder: [1, 2, 3, 4, 5, 6]),
+            coalMarket: MarketSummary(
+                remaining: 13, cheapestPrice: 1,
+                ladder: [1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7],
+                occupancy: [false, true, true, true, true, true, true, true, true, true, true, true, true, true]
+            ),
+            ironMarket: MarketSummary(
+                remaining: 8, cheapestPrice: 2,
+                ladder: [1, 1, 2, 2, 3, 3, 4, 4, 5, 5],
+                occupancy: [false, false, true, true, true, true, true, true, true, true]
+            ),
             hand: hand, locations: locations, routes: routes
         )
     }

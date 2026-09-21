@@ -62,6 +62,8 @@ extension GameCore {
                 }
 
                 let expected = try expectedDocument(manifest: manifest, files: files)
+                // 官方形态数据的评审行数:27 地点 + 39 线路 + 9 商人格 + 29 产业等级
+                // + 31 卡牌定义 + 8 商人定义 + 100 收入格 = 243。
                 if evidence.rowCount != expected.rows.count || evidence.rowCount != 243 {
                     issues.append(issue(.invalidComponentCount, "manifest.verificationEvidence.rowCount", "Expected 243 rows"))
                 }

@@ -110,6 +110,9 @@ final class SessionViewStore {
 
     private(set) var roomID: GameCore.RoomID
     private(set) var localPlayerID: GameCore.PlayerID
+    private(set) var playerNames: [GameCore.PlayerID: String] = [:]
+    private(set) var playerColors: [GameCore.PlayerID: GameCore.PlayerColor] = [:]
+    private(set) var actionLog: [MatchActionLogEntry] = []
     private(set) var hostPlayerID: GameCore.PlayerID
     private(set) var players: [GameCore.PlayerID] = []
     private(set) var readyPlayerIDs: [GameCore.PlayerID] = []
@@ -268,15 +271,15 @@ final class SessionViewStore {
         catalog: GameCore.VerifiedGameDataCatalog
     ) async throws -> SessionViewStore {
         let hostID = GameCore.PlayerID(rawValue: "host")
-#if DEBUG && targetEnvironment(simulator)
-        let transport = LocalNetworkTransport()
-#else
+        // 混玩统一:模拟器与真机同走 NearbyTransport(Bonjour TCP + 点对点)。
         let transport = NearbyTransport()
-#endif
         let coordinator = try await persistenceFactory.makeCoordinator(
             configuration: .init(
                 protocolVersion: 2, rulesetVersion: catalog.catalog.rulesetVersion, roomID: roomID,
-                playerID: hostID, reconnectToken: identity.reconnectToken, hostPlayerID: hostID
+                playerID: hostID, reconnectToken: identity.reconnectToken, hostPlayerID: hostID,
+                // 每个新房随机种子:贸易商布局、发牌与顺位洗牌逐局不同。
+                setupSeed: UInt64.random(in: 1...UInt64.max),
+                displayName: UserDefaults.standard.string(forKey: "playerDisplayName")
             ),
             role: .host,
             transport: transport,
@@ -318,15 +321,13 @@ final class SessionViewStore {
     ) async throws -> SessionViewStore {
         let roomID = GameCore.RoomID(rawValue: room.serviceName)
         let hostID = GameCore.PlayerID(rawValue: "host")
-#if DEBUG && targetEnvironment(simulator)
-        let transport = LocalNetworkTransport(serviceName: room.serviceName)
-#else
+        // 混玩统一:模拟器与真机同走 NearbyTransport(Bonjour TCP + 点对点)。
         let transport = NearbyTransport(serviceName: room.serviceName)
-#endif
         let coordinator = try await persistenceFactory.makeCoordinator(
             configuration: .init(
                 protocolVersion: 2, rulesetVersion: catalog.catalog.rulesetVersion, roomID: roomID,
-                playerID: identity.playerID, reconnectToken: identity.reconnectToken, hostPlayerID: hostID
+                playerID: identity.playerID, reconnectToken: identity.reconnectToken, hostPlayerID: hostID,
+                displayName: UserDefaults.standard.string(forKey: "playerDisplayName")
             ),
             role: .guest,
             transport: transport,
@@ -435,6 +436,38 @@ final class SessionViewStore {
     func setReady(_ value: Bool) async {
         do { try await coordinator.setReady(value) }
         catch { errorMessage = Self.message(for: error) }
+    }
+
+    /// 显示名:优先玩家自命名,缺省回退原始 ID。
+    func displayName(for playerID: GameCore.PlayerID) -> String {
+        if let name = playerNames[playerID], name.isEmpty == false { return name }
+        if playerID == hostPlayerID { return "房主" }
+        return playerID.rawValue
+    }
+
+    /// 设置自己的显示名:落盘并在会话内同步(房主重播大厅,客人发 rename)。
+    func setDisplayName(_ name: String) {
+        let trimmed = String(name.trimmingCharacters(in: .whitespacesAndNewlines).prefix(12))
+        guard trimmed.isEmpty == false else { return }
+        UserDefaults.standard.set(trimmed, forKey: "playerDisplayName")
+        Task { await coordinator.updateDisplayName(trimmed) }
+    }
+
+    /// 时代结算确认:提交后由房主等待全员确认再进入铁路时代。
+    func confirmEraTransition() {
+        Task {
+            do { try await coordinator.submit(.confirmEraIntermission) }
+            catch { errorMessage = Self.message(for: error) }
+        }
+    }
+
+    /// 大厅内选择代表色:记忆偏好并提交给房主(被占用时房主拒绝,保持原色)。
+    func chooseColor(_ color: GameCore.PlayerColor) {
+        guard playerColors[localPlayerID] != color else { return }
+        let takenByOther = playerColors.contains { $0.key != localPlayerID && $0.value == color }
+        guard takenByOther == false else { return }
+        UserDefaults.standard.set(color.rawValue, forKey: "playerColor")
+        Task { await coordinator.chooseColor(color) }
     }
 
     func startGame() async {
@@ -595,6 +628,9 @@ final class SessionViewStore {
         localPlayerID = state.playerID
         hostPlayerID = state.hostPlayerID
         players = state.playerIDs
+        playerNames = state.playerNames
+        playerColors = state.playerColors
+        actionLog = state.actionLog
         readyPlayerIDs = state.readyPlayerIDs
         let previousVersion = snapshot?.authoritativeVersion
 #if DEBUG

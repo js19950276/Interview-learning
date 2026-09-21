@@ -540,6 +540,15 @@ extension GameCore {
                         issue(.missingReference, "merchants[\(index)].acceptedIndustryIDs", "Unknown industry")
                     )
                 }
+                if merchant.linkPoints < 0 || merchant.linkPoints > 4 {
+                    issues.append(
+                        issue(
+                            .invalidComponentCount,
+                            "merchants[\(index)].linkPoints",
+                            "Link points must be between 0 and 4"
+                        )
+                    )
+                }
             }
         }
 

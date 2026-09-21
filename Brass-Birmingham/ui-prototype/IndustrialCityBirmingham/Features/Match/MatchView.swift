@@ -1062,7 +1062,7 @@ private struct PlayerDrawer: View {
         switch color {
         case .amber: BrassColor.brass.color
         case .crimson: BrassColor.danger.color
-        case .teal: Color(red: 0.20, green: 0.67, blue: 0.67)
+        case .teal: Color(red: 0.94, green: 0.94, blue: 0.90)
         case .violet: Color(red: 0.61, green: 0.45, blue: 0.78)
         }
     }

@@ -21,9 +21,24 @@ nonisolated enum SessionProtocol {
         struct LobbyState: Codable, Equatable, Sendable {
             let playerIDs: [GameCore.PlayerID]
             let readyPlayerIDs: [GameCore.PlayerID]
+            /// 玩家显示名(PlayerID rawValue → 名字),缺省时显示原始 ID。
+            var names: [String: String] = [:]
+            /// 座位代表色(PlayerColor rawValue);缺省时由房主按序分配。
+            var colors: [String: String] = [:]
+
+            init(playerIDs: [GameCore.PlayerID], readyPlayerIDs: [GameCore.PlayerID],
+                 names: [String: String] = [:], colors: [String: String] = [:]) {
+                self.playerIDs = playerIDs
+                self.readyPlayerIDs = readyPlayerIDs
+                self.names = names
+                self.colors = colors
+            }
         }
 
-        case hello(reconnectToken: GameCore.ReconnectToken)
+        case hello(reconnectToken: GameCore.ReconnectToken, displayName: String?)
+        case rename(displayName: String)
+        /// 大厅内选择代表色;房主校验唯一性后广播。
+        case chooseColor(GameCore.PlayerColor)
         case createRoom
         case joinRoom
         case ready(Bool)
@@ -362,7 +377,7 @@ nonisolated enum SessionProtocol {
 
         private func reconnectToken(in payload: Payload) -> GameCore.ReconnectToken? {
             switch payload {
-            case let .hello(reconnectToken): reconnectToken
+            case let .hello(reconnectToken, _): reconnectToken
             case let .intent(intent): intent.reconnectToken
             default: nil
             }

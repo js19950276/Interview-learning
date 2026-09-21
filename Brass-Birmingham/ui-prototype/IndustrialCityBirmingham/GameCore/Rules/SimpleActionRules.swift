@@ -35,12 +35,12 @@ extension GameCore {
         let actorID: PlayerID
         let intent: ScoutIntent
         let cards: [CardInstance]
-        let wildLocationCard: CardInstance
-        let wildIndustryCard: CardInstance
+        let wildLocationCard: CardInstance?
+        let wildIndustryCard: CardInstance?
 
         fileprivate init(
             actorID: PlayerID, intent: ScoutIntent, cards: [CardInstance],
-            wildLocationCard: CardInstance, wildIndustryCard: CardInstance
+            wildLocationCard: CardInstance?, wildIndustryCard: CardInstance?
         ) {
             self.actorID = actorID
             self.intent = intent
@@ -48,6 +48,10 @@ extension GameCore {
             self.wildLocationCard = wildLocationCard
             self.wildIndustryCard = wildIndustryCard
         }
+    }
+
+    nonisolated struct ValidatedEraConfirmation: Equatable, Sendable {
+        let actorID: PlayerID
     }
 
     nonisolated enum SimpleActionRuleError: String, Codable, Equatable, Error, Sendable {
@@ -71,6 +75,24 @@ extension GameCore {
             guard let card = player.hand.first(where: { $0.id == intent.cardID })
             else { throw SimpleActionRuleError.missingCard }
             return ValidatedPassTarget(actorID: actorID, intent: intent, card: card)
+        }
+
+        /// 时代结算确认:处于结算暂停阶段、玩家尚未确认过即可确认。
+        static func validateEraConfirmation(
+            actorID: PlayerID,
+            state: GameState,
+            catalog verifiedCatalog: VerifiedGameDataCatalog
+        ) throws -> ValidatedEraConfirmation {
+            guard GameStateAuthorityValidator.isValid(state, catalog: verifiedCatalog) else {
+                throw SimpleActionRuleError.invalidState
+            }
+            guard state.players.contains(where: { $0.id == actorID }) else {
+                throw SimpleActionRuleError.notActivePlayer
+            }
+            guard case .eraIntermission(let intermission) = state.turnPhase,
+                  intermission.confirmedPlayerIDs.contains(actorID) == false
+            else { throw SimpleActionRuleError.invalidState }
+            return ValidatedEraConfirmation(actorID: actorID)
         }
 
         static func validateLoan(
@@ -121,12 +143,11 @@ extension GameCore {
                 guard let kind = definitions[$0.definitionID]?.kind else { return false }
                 return kind == .location || kind == .industry
             }) else { throw SimpleActionRuleError.nonStandardCard }
-            guard let locationWild = state.wildLocationPool.last,
-                  let industryWild = state.wildIndustryPool.last
-            else { throw SimpleActionRuleError.wildPoolEmpty }
+            // 万能堆空时侦察仍可执行,只是拿不到对应堆的牌(官方规则)。
             return ValidatedScoutTarget(
                 actorID: actorID, intent: intent, cards: cards,
-                wildLocationCard: locationWild, wildIndustryCard: industryWild
+                wildLocationCard: state.wildLocationPool.last,
+                wildIndustryCard: state.wildIndustryPool.last
             )
         }
     }

@@ -25,14 +25,14 @@ struct HandView: View {
         GeometryReader { proxy in
             let layout = Self.layout(
                 availableWidth: proxy.size.width,
-                cardCount: min(cards.count, 8),
+                cardCount: cards.count,
                 formFactor: formFactor
             )
 
             VStack {
                 Spacer(minLength: 0)
                 HStack(alignment: .bottom, spacing: layout.spacing) {
-                    ForEach(cards.prefix(8)) { card in
+                    ForEach(cards) { card in
                         cardButton(card, width: layout.cardWidth)
                             .zIndex(card.id == selectedCardID ? 10 : selectedScoutCardIDs.contains(card.id) ? 5 : 0)
                     }

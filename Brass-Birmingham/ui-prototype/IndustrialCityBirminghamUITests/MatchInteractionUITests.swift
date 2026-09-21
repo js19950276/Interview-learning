@@ -539,7 +539,7 @@ final class MatchInteractionUITests: XCTestCase {
                 drawer.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS '标记'")).count,
                 0
             )
-            for colorName in ["琥珀色", "深红色", "青绿色", "紫罗兰色"] {
+            for colorName in ["黄色", "红色", "白色", "紫色"] {
                 XCTAssertEqual(
                     drawer.descendants(matching: .any).matching(
                         NSPredicate(format: "label CONTAINS %@", colorName)

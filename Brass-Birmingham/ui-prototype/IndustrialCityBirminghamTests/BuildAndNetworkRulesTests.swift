@@ -17,7 +17,7 @@ struct BuildAndNetworkRulesTests {
                   draft: .init(action: .pass, cardID: String(repeating: "c", count: 257), selections: [])),
             .init(requestID: "too-many-selections", baseVersion: state.authoritativeVersion,
                   draft: .init(action: .scout, cardID: card.id,
-                               selections: Array(repeating: .card(id: card.id), count: 33))),
+                               selections: Array(repeating: .card(id: card.id), count: 129))),
         ]
         for query in invalidDrafts {
             #expect(throws: GameCore.LegalActionQueryError.malformedQuery) {
@@ -26,6 +26,167 @@ struct BuildAndNetworkRulesTests {
                 )
             }
         }
+    }
+
+    @Test func buildSellableIndustriesDoesNotRequireOrConsumeBeer() throws {
+        // RULES.md §7.1：建造只支付金钱与煤/铁；beerCost 仅用于出售（§7.4）。
+        // 开局没有任何啤酒厂，棉纺厂必须有合法建造目标且不消耗啤酒。
+        let catalog = try verifiedCatalog()
+        var state = try setupState(catalog: catalog)
+        let actor = try #require(state.activePlayerID)
+        let playerIndex = try #require(state.players.firstIndex(where: { $0.id == actor }))
+        #expect(state.boardIndustryPlacements.isEmpty)
+        let beerBefore = state.publicSupply.beer
+
+        state.players[playerIndex].hand = [
+            .init(id: "location-birmingham", definitionID: "location-birmingham"),
+        ]
+        let cottonTile = try #require(state.players[playerIndex].industryStacks.first(where: {
+            $0.industryDefinitionID == "cotton-mill"
+        })?.tiles.first)
+        let target = try #require(GameCore.BuildRules.legalBuildTargets(
+            actorID: actor, cardID: "location-birmingham", tile: cottonTile,
+            state: state, catalog: catalog
+        ).first)
+
+        let intent = GameCore.BuildIntent(
+            cardID: "location-birmingham", locationID: target.locationID,
+            industryDefinitionID: "cotton-mill", slotIndex: target.slotIndex,
+            resourceSources: []
+        )
+        let validated = try GameCore.BuildRules.validate(
+            intent, actorID: actor, state: state, catalog: catalog
+        )
+        #expect(validated.resourceRequests.isEmpty)
+
+        let query = try GameCore.LegalActionQueryEngine.respond(
+            to: .init(requestID: "build-no-beer", baseVersion: state.authoritativeVersion,
+                      draft: .init(action: .build, cardID: "location-birmingham", selections: [
+                        .industryTile(id: cottonTile.id),
+                        .buildTarget(locationID: target.locationID, slotIndex: target.slotIndex),
+                      ])),
+            actorID: actor, state: state, catalog: catalog
+        )
+        #expect(query.completePayload != nil)
+
+        let event = try GameCore.GameRulesEngine.resolveBuild(
+            validated, roomID: .init(rawValue: "build-no-beer-test"),
+            state: &state, catalog: catalog
+        )
+        guard case let .built(_, _, effects) = event.payload else {
+            Issue.record("Expected built event")
+            return
+        }
+        #expect(effects.contains { effect in
+            if case .resourceRemoved(.beer, _, _) = effect { return true }
+            return false
+        } == false)
+        #expect(state.publicSupply.beer == beerBefore)
+        #expect(state.players[playerIndex].spent == 12)
+    }
+
+    @Test func buildingWithInsufficientPublicSupplyUsesSubstitutesAndDoesNotBrickTheHost() throws {
+        // RULES.md §5.1.9：公共供应不足时用替代物。修复前产量把供应扣穿后
+        // 资源守恒被破坏，权威校验会拒绝之后所有行动（internalFailure 卡死对局）。
+        let catalog = try verifiedCatalog()
+        var state = try setupState(catalog: catalog)
+        let actor = try #require(state.activePlayerID)
+        let opponent = try #require(state.players.first(where: { $0.id != actor })?.id)
+
+        // 守恒垫片：对手煤矿 1 煤（dudley#0，同时是同地点免费煤源）+ 对手铁矿 4+3 铁
+        // （coalbrookdale 两个槽），相应扣减供应，使铁供应只剩 3 —— 低于铁矿一级产量 4。
+        state.boardIndustryPlacements = [
+            .init(placementID: "fixture-coal", locationID: "dudley", slotIndex: 0, ownerID: opponent,
+                  tile: .init(id: "fixture-coal-tile", industryDefinitionID: "coal-mine", level: 1),
+                  resourceCount: 1),
+            .init(placementID: "fixture-iron-a", locationID: "coalbrookdale", slotIndex: 0, ownerID: opponent,
+                  tile: .init(id: "fixture-iron-tile-a", industryDefinitionID: "iron-works", level: 1),
+                  resourceCount: 4),
+            .init(placementID: "fixture-iron-b", locationID: "coalbrookdale", slotIndex: 1, ownerID: opponent,
+                  tile: .init(id: "fixture-iron-tile-b", industryDefinitionID: "iron-works", level: 1),
+                  resourceCount: 3),
+        ]
+        state.publicSupply.coal -= 1
+        state.publicSupply.iron -= 7
+
+        // 手牌只保留 dudley 地点牌,其余移入公共弃牌堆以保持卡牌多重集守恒。
+        // seed 7 的发牌不保证手牌里有 dudley:从牌堆取一张换入手牌。
+        let dudleyCard = try #require(state.standardDrawDeck.first(where: { $0.definitionID == "location-dudley" }))
+        state.standardDrawDeck.removeAll { $0.id == dudleyCard.id }
+        let playerIndex = try #require(state.players.firstIndex(where: { $0.id == actor }))
+        let hand = state.players[playerIndex].hand
+        state.players[playerIndex].hand = [dudleyCard]
+        state.publicDiscard.append(contentsOf: hand)
+
+        let roomID = GameCore.RoomID(rawValue: "supply-substitute-test")
+        let tokens = Dictionary(uniqueKeysWithValues: state.players.map {
+            ($0.id, GameCore.ReconnectToken(rawValue: "token-\($0.id.rawValue)"))
+        })
+        var engine = try state.makeHostEngine(roomID: roomID, reconnectTokens: tokens, protocolVersion: 1)
+
+        let build = GameCore.PlayerIntent(
+            protocolVersion: 1, rulesetVersion: state.rulesetVersion, roomID: roomID,
+            senderID: actor, reconnectToken: try #require(tokens[actor]),
+            baseVersion: state.authoritativeVersion,
+            payload: .build(.init(
+                cardID: dudleyCard.id, locationID: "dudley",
+                industryDefinitionID: "iron-works", slotIndex: 1,
+                resourceSources: [.industry(placementID: "fixture-coal")]
+            ))
+        )
+        guard case .accepted(let event) = engine.submit(build, catalog: catalog) else {
+            Issue.record("build with insufficient supply must be accepted")
+            return
+        }
+        guard case .built = event.payload else {
+            Issue.record("Expected built payload")
+            return
+        }
+        // 4 块产量把供应扣成 -1：替代物入场的显式台账。
+        #expect(engine.gameState.publicSupply.iron == -1)
+        #expect(GameCore.GameStateAuthorityValidator.isValid(engine.gameState, catalog: catalog))
+
+        // 关键回归：下一个行动不再被 internalFailure 卡死。
+        let nextActor = try #require(engine.gameState.activePlayerID)
+        let nextCard = try #require(engine.gameState.players.first(where: { $0.id == nextActor })?.hand.first)
+        let pass = GameCore.PlayerIntent(
+            protocolVersion: 1, rulesetVersion: engine.gameState.rulesetVersion, roomID: roomID,
+            senderID: nextActor, reconnectToken: try #require(tokens[nextActor]),
+            baseVersion: engine.gameState.authoritativeVersion,
+            payload: .pass(.init(cardID: nextCard.id))
+        )
+        guard case .accepted = engine.submit(pass, catalog: catalog) else {
+            Issue.record("the next action must not fail with internal failure")
+            return
+        }
+    }
+
+    @Test func railNetworkCountChoiceFiltersInfeasibleDoubleLink() throws {
+        // 双铁路需要 £15 与 2 个连接片：不可行时不应引导玩家选择。
+        let catalog = try verifiedCatalog()
+        var state = try setupState(catalog: catalog)
+        state.era = .rail
+        let actor = try #require(state.activePlayerID)
+        let playerIndex = try #require(state.players.firstIndex(where: { $0.id == actor }))
+        state.players[playerIndex].hand = [
+            .init(id: "rail-count-card", definitionID: "location-birmingham"),
+        ]
+
+        state.players[playerIndex].cash = 10
+        let poor = try GameCore.LegalActionQueryEngine.respond(
+            to: .init(requestID: "rail-count-poor", baseVersion: state.authoritativeVersion,
+                      draft: .init(action: .network, cardID: "rail-count-card", selections: [])),
+            actorID: actor, state: state, catalog: catalog
+        )
+        #expect(poor.nextChoices.map(\.id) == ["network-count:1"])
+
+        state.players[playerIndex].cash = 20
+        let rich = try GameCore.LegalActionQueryEngine.respond(
+            to: .init(requestID: "rail-count-rich", baseVersion: state.authoritativeVersion,
+                      draft: .init(action: .network, cardID: "rail-count-card", selections: [])),
+            actorID: actor, state: state, catalog: catalog
+        )
+        #expect(Set(rich.nextChoices.map(\.id)) == ["network-count:1", "network-count:2"])
     }
 
     @Test func legalQueryRejectsValidChoicesPresentedOutOfGrammarOrder() throws {
@@ -278,7 +439,7 @@ struct BuildAndNetworkRulesTests {
         })
 
         #expect(labelsBySlotID["gloucester-2"] == "格洛斯特 · 棉纺厂 · 开发 1")
-        #expect(labelsBySlotID["oxford-1"] == "牛津 · 任意制成品 · 收入 +2")
+        #expect(labelsBySlotID["oxford-1"] == "牛津 · 任意制成品 · 收入轨 +2 格")
         #expect(labelsBySlotID["gloucester-1"] == nil, "空白商人不能用于出售")
         #expect(labelsBySlotID.values.allSatisfy { !$0.contains("商人市场") })
     }
@@ -333,7 +494,7 @@ struct BuildAndNetworkRulesTests {
             $0.value == .merchant(id: "oxford-1")
         })
 
-        #expect(oxford.label == "牛津 · 任意制成品 · 啤酒已用尽 · 收入 +2（不可用）")
+        #expect(oxford.label == "牛津 · 任意制成品 · 啤酒已用尽 · 收入轨 +2 格（不可用）")
     }
 
     @Test func legalBuildQueryOnlyOffersIndustriesWithAValidTargetForTheSelectedLocationCard() throws {
@@ -578,6 +739,7 @@ struct BuildAndNetworkRulesTests {
         #expect(intent.routeIDs.count == 2)
         #expect(intent.coalSources.count == 2)
         #expect(intent.beerSource != nil)
+        // 官方开局留空一个 £1:两块煤 = £1 + £2(£15 + £3 = £18)。
         #expect(complete.confirmation?.cashDelta == -18)
         #expect(complete.confirmation?.resourceEffects.isEmpty == false)
         #expect(state.placedLinks == linksBeforeQuery)
@@ -805,7 +967,7 @@ struct BuildAndNetworkRulesTests {
         state.players[opponentIndex].incomePosition = 12
         state.players[opponentIndex].victoryPoints = 7
         state.boardIndustryPlacements = [
-            .init(locationID: "dudley", slotIndex: 0, ownerID: opponent.id, tile: oldTile)
+            .init(locationID: "dudley", slotIndex: 0, ownerID: opponent.id, tile: oldTile),
         ]
         state.coalMarket.slots.indices.forEach { state.coalMarket.slots[$0].hasCube = false }
         state.publicSupply.coal = 30
@@ -970,11 +1132,26 @@ struct BuildAndNetworkRulesTests {
                 tile: .init(id: "existing-iron", industryDefinitionID: "iron-works", level: 1)
             )
         ]
+        // 官方例外:运河时代伯明翰每人可建 2 个产业——第 2 个合法
+        // (棉纺厂 L1 无资源需求,避免与资源校验纠缠)。
+        _ = try GameCore.BuildRules.validate(
+            .init(
+                cardID: "birmingham", locationID: "birmingham",
+                industryDefinitionID: "cotton-mill", slotIndex: 0,
+                resourceSources: []
+            ),
+            actorID: canalActor, state: canal, catalog: catalog
+        )
+        // 第 3 个(其他地点)仍受每人 1 个限制。
+        canal.boardIndustryPlacements.append(.init(
+            locationID: "birmingham", slotIndex: 1, ownerID: canalActor,
+            tile: .init(id: "second-man", industryDefinitionID: "manufacturer", level: 1)
+        ))
         #expect(throws: GameCore.BuildRuleError.canalLocationLimit) {
             try GameCore.BuildRules.validate(
                 .init(
                     cardID: "birmingham", locationID: "birmingham",
-                    industryDefinitionID: "manufacturer", slotIndex: 1,
+                    industryDefinitionID: "manufacturer", slotIndex: 3,
                     resourceSources: [.marketSlot(resource: .coal, index: 1), .merchantBeer(slotID: "oxford-1")]
                 ),
                 actorID: canalActor, state: canal, catalog: catalog
@@ -1153,6 +1330,7 @@ struct BuildAndNetworkRulesTests {
             cardID: card.id,
             routeIDs: ["tamworth-walsall", "burton-on-trent-tamworth"],
             coalSources: [
+                // 官方开局留空一个 £1:最便宜两块煤在 index 1(£1)、2(£2)。
                 .marketSlot(resource: .coal, index: 1),
                 .marketSlot(resource: .coal, index: 2),
             ],
@@ -1197,6 +1375,7 @@ struct BuildAndNetworkRulesTests {
             target, roomID: .init(rawValue: "build-network-tests"), state: &state, catalog: catalog
         )
 
+        // 煤 = £1 + £2:£30 - £15 - £3 = £12。
         #expect(state.players[playerIndex].cash == 12)
         #expect(state.players[playerIndex].spent == 18)
         #expect(state.players[playerIndex].linksRemaining == 12)
@@ -1467,23 +1646,26 @@ struct BuildAndNetworkRulesTests {
             target, roomID: .init(rawValue: "build-network-tests"), state: &state, catalog: catalog
         )
         let built = try #require(state.boardIndustryPlacements.first(where: { $0.placementID == "dudley#0" }))
+        // 测试腾空了 12/13(两个 £7):2 块产量全部交付(£7+£7=£14)
+        // → 清空翻面、收入 +4。
         #expect(built.resourceCount == 0)
         #expect(built.marketDeliveryResolved)
         #expect(built.isFlipped)
-        #expect(state.publicSupply.coal == 0)
+        #expect(state.publicSupply.coal == -2)
         #expect(state.coalMarket.slots[12].hasCube)
         #expect(state.coalMarket.slots[13].hasCube)
         #expect(state.players[actorIndex].cash == beforeCash - 5 + 14)
         #expect(state.players[actorIndex].incomePosition == beforeIncome + 4)
         #expect(state.boardIndustryPlacements.filter {
             $0.tile.industryDefinitionID == "coal-mine"
-        }.reduce(0) { $0 + $1.resourceCount } + state.coalMarket.slots.filter(\.hasCube).count + state.publicSupply.coal == 32)
+        }.reduce(0) { $0 + $1.resourceCount } + state.coalMarket.slots.filter(\.hasCube).count + state.publicSupply.coal == 30)
 
         guard case let .built(_, eventPlacement, effects) = event.payload else {
             Issue.record("Expected build event")
             return
         }
         #expect(eventPlacement == built)
+        // 交付从最高价空格起填:两个 £7(index 12 先于 13)。
         #expect(effects == [
             .resourceRemoved(resource: .coal, source: .industry(placementID: "dudley#0"), consumerLocationID: "dudley"),
             .marketDelivered(placementID: "dudley#0", resource: .coal, slotIndex: 12, price: 7),
@@ -1516,16 +1698,20 @@ struct BuildAndNetworkRulesTests {
                 resourceCount: 4
             )
         } + [
+            // 建造炼铁厂需耗 1 煤:同地点的对手煤矿作为免费煤源。
             .init(
                 locationID: "dudley", slotIndex: 0, ownerID: opponent,
                 tile: .init(id: "iron-build-coal", industryDefinitionID: "coal-mine", level: 1),
                 resourceCount: 1
             ),
         ]
+        // 公共供应清零:建造产量全部走替代物(§5.1.9)。
         state.publicSupply.iron = 0
         state.publicSupply.coal -= 1
+        // 腾空 {0,1,8,9}(£1,£1,£5,£5):守恒(12 板上 + 6 市场 + 0 供应 = 18),
+        // 4 块产量全部可交付。
         state.ironMarket.slots.indices.forEach { state.ironMarket.slots[$0].hasCube = true }
-        for index in 6...9 { state.ironMarket.slots[index].hasCube = false }
+        for index in [0, 1, 8, 9] { state.ironMarket.slots[index].hasCube = false }
         repairCardFixture(&state, catalog: catalog)
         let beforeIncome = state.players[actorIndex].incomePosition
         let target = try GameCore.BuildRules.validate(
@@ -1540,21 +1726,39 @@ struct BuildAndNetworkRulesTests {
             target, roomID: .init(rawValue: "build-network-tests"), state: &state, catalog: catalog
         )
         let built = try #require(state.boardIndustryPlacements.first(where: { $0.placementID == "dudley#1" }))
+        // 4 块产量全部交付(£5+£5+£1+£1 = £12)→ 清空翻面、收入 +3。
         #expect(built.resourceCount == 0)
         #expect(built.marketDeliveryResolved)
         #expect(built.isFlipped)
-        #expect(state.publicSupply.iron == 0)
+        #expect(state.publicSupply.iron == -4)
         #expect(state.ironMarket.slots.allSatisfy { $0.hasCube })
         #expect(state.players[actorIndex].incomePosition == beforeIncome + 3)
         #expect(state.boardIndustryPlacements.filter {
             $0.tile.industryDefinitionID == "iron-works"
-        }.reduce(0) { $0 + $1.resourceCount } + state.ironMarket.slots.filter(\.hasCube).count + state.publicSupply.iron == 22)
+        }.reduce(0) { $0 + $1.resourceCount } + state.ironMarket.slots.filter(\.hasCube).count + state.publicSupply.iron == 18)
+
         guard case let .built(_, eventPlacement, effects) = event.payload else {
             Issue.record("Expected build event")
             return
         }
         #expect(eventPlacement == built)
-        #expect(effects.suffix(3) == [
+        // 煤耗尽翻面推进对手收入;4 块铁按(价高→索引低)序交付:8,9(£5)、0,1(£1)。
+        #expect(effects == [
+            .resourceRemoved(resource: .coal, source: .industry(placementID: "dudley#0"), consumerLocationID: "dudley"),
+            .industryFlipped(placementID: "dudley#0"),
+            .incomeAdvanced(playerID: opponent, from: beforeIncome, to: beforeIncome + 4),
+            .resourceRemoved(resource: .iron, source: .industry(placementID: "dudley#1"), consumerLocationID: "dudley"),
+            .marketDelivered(placementID: "dudley#1", resource: .iron, slotIndex: 8, price: 5),
+            .cashReceived(playerID: actor, amount: 5),
+            .resourceRemoved(resource: .iron, source: .industry(placementID: "dudley#1"), consumerLocationID: "dudley"),
+            .marketDelivered(placementID: "dudley#1", resource: .iron, slotIndex: 9, price: 5),
+            .cashReceived(playerID: actor, amount: 5),
+            .resourceRemoved(resource: .iron, source: .industry(placementID: "dudley#1"), consumerLocationID: "dudley"),
+            .marketDelivered(placementID: "dudley#1", resource: .iron, slotIndex: 0, price: 1),
+            .cashReceived(playerID: actor, amount: 1),
+            .resourceRemoved(resource: .iron, source: .industry(placementID: "dudley#1"), consumerLocationID: "dudley"),
+            .marketDelivered(placementID: "dudley#1", resource: .iron, slotIndex: 1, price: 1),
+            .cashReceived(playerID: actor, amount: 1),
             .marketDeliveryResolved(placementID: "dudley#1"),
             .industryFlipped(placementID: "dudley#1"),
             .incomeAdvanced(playerID: actor, from: beforeIncome, to: beforeIncome + 3),

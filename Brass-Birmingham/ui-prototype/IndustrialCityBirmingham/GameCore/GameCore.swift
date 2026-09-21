@@ -44,6 +44,8 @@ nonisolated enum GameCore {
             case loan(LoanIntent)
             case scout(ScoutIntent)
             case forcedSale(ForcedSaleIntent)
+            /// 时代结算界面的确认;全员确认后进入下一时代。
+            case confirmEraIntermission
         }
 
         let protocolVersion: Int
@@ -117,8 +119,9 @@ nonisolated enum GameCore {
         struct ScoutDetails: Codable, Equatable, Sendable {
             let intent: ScoutIntent
             let discardedCards: [CardInstance]
-            let wildLocationCard: CardInstance
-            let wildIndustryCard: CardInstance
+            /// 万能堆空时为 nil:侦察仍可执行,只是拿不到对应牌(官方规则)。
+            let wildLocationCard: CardInstance?
+            let wildIndustryCard: CardInstance?
         }
 
         enum Payload: Codable, Equatable, Sendable {
@@ -146,6 +149,7 @@ nonisolated enum GameCore {
             case loanTaken(intent: LoanIntent, previousIncomePosition: Int, incomePosition: Int)
             case scouted(ScoutDetails?)
             case forcedSaleResolved(ForcedSaleIntent)
+            case eraIntermissionConfirmed(playerID: PlayerID)
         }
 
         let roomID: RoomID
@@ -245,6 +249,7 @@ nonisolated enum GameCore {
         case forcedSaleRequiredMarker(PlayerID)
         case roundEnded(RoundEndedDetails)
         case eraScored(EraScoredDetails)
+        case eraIntermissionConfirmed(playerID: PlayerID)
         case railPrepared(RailPreparedDetails)
         case gameEnded(GameEndedDetails)
     }
@@ -288,6 +293,7 @@ nonisolated enum GameCore {
         let id: PlayerID
         let handCount: Int
         let hand: [String]?
+        var name: String? = nil
     }
 
     struct ViewSnapshot: Codable, Equatable, Sendable {
@@ -300,6 +306,8 @@ nonisolated enum GameCore {
         let authoritativeVersion: AuthoritativeVersion
         let discardPile: [String]
         let forcedSale: ForcedSaleProjection?
+        let eraIntermission: EraIntermissionState?
+        let gameEnded: GameTransitionEvent.GameEndedDetails?
         let match: MatchProjection?
         let checksum: String
 
@@ -308,6 +316,8 @@ nonisolated enum GameCore {
             activePlayerID: PlayerID, turn: Int, actionNumber: Int,
             authoritativeVersion: AuthoritativeVersion, discardPile: [String],
             forcedSale: ForcedSaleProjection? = nil,
+            eraIntermission: EraIntermissionState? = nil,
+            gameEnded: GameTransitionEvent.GameEndedDetails? = nil,
             match: MatchProjection? = nil,
             checksum: String
         ) {
@@ -320,13 +330,15 @@ nonisolated enum GameCore {
             self.authoritativeVersion = authoritativeVersion
             self.discardPile = discardPile
             self.forcedSale = forcedSale
+            self.eraIntermission = eraIntermission
+            self.gameEnded = gameEnded
             self.match = match
             self.checksum = checksum
         }
 
         private enum CodingKeys: String, CodingKey {
             case roomID, recipient, players, activePlayerID, turn, actionNumber
-            case authoritativeVersion, discardPile, forcedSale, match, checksum
+            case authoritativeVersion, discardPile, forcedSale, eraIntermission, gameEnded, match, checksum
         }
 
         init(from decoder: Decoder) throws {
@@ -340,6 +352,8 @@ nonisolated enum GameCore {
             authoritativeVersion = try values.decode(AuthoritativeVersion.self, forKey: .authoritativeVersion)
             discardPile = try values.decode([String].self, forKey: .discardPile)
             forcedSale = try values.decodeIfPresent(ForcedSaleProjection.self, forKey: .forcedSale)
+            eraIntermission = try values.decodeIfPresent(EraIntermissionState.self, forKey: .eraIntermission)
+            gameEnded = try values.decodeIfPresent(GameTransitionEvent.GameEndedDetails.self, forKey: .gameEnded)
             match = try values.decodeIfPresent(MatchProjection.self, forKey: .match)
             checksum = try values.decode(String.self, forKey: .checksum)
         }
@@ -465,6 +479,13 @@ nonisolated enum GameCore {
                         forcedSaleIntent, actorID: intent.senderID,
                         roomID: roomID, state: &gameState, catalog: catalog
                     )
+                case .confirmEraIntermission:
+                    let target = try SimpleActionRules.validateEraConfirmation(
+                        actorID: intent.senderID, state: gameState, catalog: catalog
+                    )
+                    event = try GameRulesEngine.resolveEraConfirmation(
+                        target, roomID: roomID, state: &gameState, catalog: catalog
+                    )
                 }
                 return .accepted(event)
             } catch let error as GameRulesEngine.GameRulesInternalError {
@@ -490,19 +511,28 @@ nonisolated enum GameCore {
         }
 
         func snapshot(for recipient: PlayerID) throws -> ViewSnapshot {
-            try snapshot(for: recipient, catalog: nil)
+            try snapshotImpl(for: recipient, catalog: nil, playerNames: nil)
         }
 
         func snapshot(
             for recipient: PlayerID,
             catalog: VerifiedGameDataCatalog
         ) throws -> ViewSnapshot {
-            try snapshot(for: recipient, catalog: Optional(catalog))
+            try snapshotImpl(for: recipient, catalog: Optional(catalog), playerNames: nil)
         }
 
-        private func snapshot(
+        func snapshot(
             for recipient: PlayerID,
-            catalog: VerifiedGameDataCatalog?
+            catalog: VerifiedGameDataCatalog?,
+            playerNames: [PlayerID: String]?
+        ) throws -> ViewSnapshot {
+            try snapshotImpl(for: recipient, catalog: catalog, playerNames: playerNames)
+        }
+
+        private func snapshotImpl(
+            for recipient: PlayerID,
+            catalog: VerifiedGameDataCatalog?,
+            playerNames: [PlayerID: String]?
         ) throws -> ViewSnapshot {
             guard gameState.players.contains(where: { $0.id == recipient }) else {
                 throw ProjectionError.unknownRecipient
@@ -512,7 +542,8 @@ nonisolated enum GameCore {
                 VisiblePlayer(
                     id: player.id,
                     handCount: player.hand.count,
-                    hand: player.id == recipient ? player.hand.map(\.id) : nil
+                    hand: player.id == recipient ? player.hand.map(\.id) : nil,
+                    name: playerNames?[player.id]
                 )
             }
             guard let activePlayerID = gameState.activePlayerID else {
@@ -543,7 +574,9 @@ nonisolated enum GameCore {
                 )
                 var projection = try MatchProjection.make(
                     state: gameState, recipient: recipient,
-                    actionOptions: availability.trivialOptions
+                    actionOptions: availability.trivialOptions,
+                    playerNames: playerNames ?? [:],
+                    incomeTrack: catalog?.catalog.incomeTrack.entries ?? []
                 )
                 projection.availableActions = availability.kinds
                 projection.availableActionsByCardID = availability.byCardID
@@ -572,6 +605,15 @@ nonisolated enum GameCore {
                 authoritativeVersion: gameState.authoritativeVersion,
                 discardPile: gameState.publicDiscard.map(\.id),
                 forcedSale: forcedSale,
+                eraIntermission: {
+                    if case .eraIntermission(let intermission) = gameState.turnPhase {
+                        return intermission
+                    }
+                    return nil
+                }(),
+                gameEnded: gameState.finalStandings.map {
+                    GameTransitionEvent.GameEndedDetails(standings: $0)
+                },
                 match: match,
                 checksum: checksum
             )
@@ -581,21 +623,23 @@ nonisolated enum GameCore {
             _ event: AuthoritativeGameEvent,
             for recipient: PlayerID
         ) throws -> ClientEvent {
-            try clientEvent(event, for: recipient, catalog: nil)
+            try clientEvent(event, for: recipient, catalog: nil, playerNames: nil)
         }
 
         func clientEvent(
             _ event: AuthoritativeGameEvent,
             for recipient: PlayerID,
-            catalog: VerifiedGameDataCatalog
+            catalog: VerifiedGameDataCatalog?,
+            playerNames: [PlayerID: String]? = nil
         ) throws -> ClientEvent {
-            try clientEvent(event, for: recipient, catalog: Optional(catalog))
+            try clientEventImpl(event, for: recipient, catalog: catalog, playerNames: playerNames)
         }
 
-        private func clientEvent(
+        private func clientEventImpl(
             _ event: AuthoritativeGameEvent,
             for recipient: PlayerID,
-            catalog: VerifiedGameDataCatalog?
+            catalog: VerifiedGameDataCatalog?,
+            playerNames: [PlayerID: String]?
         ) throws -> ClientEvent {
             let payload: AuthoritativeGameEvent.Payload = if recipient != event.actor, case .scouted = event.payload {
                 .scouted(nil)
@@ -614,9 +658,9 @@ nonisolated enum GameCore {
                 transitions: transitions
             )
             let projectedSnapshot = if let catalog {
-                try snapshot(for: recipient, catalog: catalog)
+                try snapshotImpl(for: recipient, catalog: catalog, playerNames: playerNames)
             } else {
-                try snapshot(for: recipient)
+                try snapshotImpl(for: recipient, catalog: nil, playerNames: playerNames)
             }
             return ClientEvent(event: projectedEvent, snapshot: projectedSnapshot)
         }
@@ -639,6 +683,18 @@ nonisolated enum GameCore {
             }
             guard reconnectTokens[player.id] == intent.reconnectToken else {
                 return rejection(.invalidReconnectToken)
+            }
+            // 时代结算确认:任何座位都可以确认,不受当前行动座位限制。
+            if case .confirmEraIntermission = intent.payload {
+                if case .eraIntermission = gameState.turnPhase {
+                    return nil
+                }
+                return rejection(.invalidAction)
+            }
+            // 结算暂停期间拒绝一切普通行动:此时 advanceAction 会破坏
+            // intermission 不变量,导致之后所有行动(含确认)永久被拒。
+            if case .eraIntermission = gameState.turnPhase {
+                return rejection(.invalidAction)
             }
             guard intent.senderID == gameState.activePlayerID else {
                 return rejection(.notActivePlayer)
@@ -683,6 +739,9 @@ nonisolated enum GameCore {
                     player.hand.contains(where: { $0.id == cardID })
                 }) else { return rejection(.missingDiscardCard) }
             case .forcedSale:
+                break
+            case .confirmEraIntermission:
+                // 时代确认无持牌要求;阶段合法性由校验规则把关。
                 break
             }
             return nil

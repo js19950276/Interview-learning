@@ -72,7 +72,7 @@ final class AppSmokeUITests: XCTestCase {
         XCTAssertTrue(app.buttons["lobby.start"].waitForExistence(timeout: 2))
         let players = app.descendants(matching: .any).matching(identifier: "lobby.player")
         XCTAssertEqual(players.count, 4)
-        XCTAssertTrue(players.element(boundBy: 0).label.contains("琥珀色"))
+        XCTAssertTrue(players.element(boundBy: 0).label.contains("黄色"))
         XCTAssertTrue(players.element(boundBy: 0).label.contains("菱形标记"))
         XCTAssertTrue(players.element(boundBy: 0).label.contains("£0"))
     }

@@ -185,9 +185,8 @@ struct PersistenceRecoveryTests {
 
         #expect(try await factory.recoverableFixtureOnlyHostRooms().isEmpty)
         #expect(try await factory.recoverableFixtureOnlyHostRooms().isEmpty)
-        await #expect(throws: RecoveryError.returnToLobby("recovery-material-invalid")) {
-            _ = try await factory.recoverableFixtureOnlyHostRooms()
-        }
+        // 第 3 次失败后清档;损坏房间静默退出可恢复列表,不再中断其余房间的枚举。
+        #expect(try await factory.recoverableFixtureOnlyHostRooms().isEmpty)
         #expect(!FileManager.default.fileExists(atPath: store.committedFileURL.path))
         #expect(try await tokenStore.load(roomID: roomID, playerID: hostID) == credential)
     }
@@ -214,7 +213,7 @@ struct PersistenceRecoveryTests {
 
         let store = try await NearbyHostRecoveryRoute.makeStore(
             reference: reference,
-            identity: .init(deviceID: UUID(uuidString: "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE")!),
+            identity: .init(deviceID: UUID(uuidString: "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE")!, roomID: roomID.rawValue),
             persistenceFactory: factory,
             transport: LoopbackTransportHub().makeTransport(peerID: hostID),
             catalog: catalog
@@ -247,7 +246,7 @@ struct PersistenceRecoveryTests {
         #expect(reference.rulesetVersion == "v2018.11")
         let store = try await NearbyHostRecoveryRoute.makeStore(
             reference: reference,
-            identity: .init(deviceID: UUID(uuidString: "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE")!),
+            identity: .init(deviceID: UUID(uuidString: "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE")!, roomID: roomID.rawValue),
             persistenceFactory: factory,
             transport: LoopbackTransportHub().makeTransport(peerID: hostID),
             catalog: catalog
@@ -342,7 +341,10 @@ struct PersistenceRecoveryTests {
                     resourceCount: Int.max
                 ))
             }),
-            ("completeness", { $0.authorityCompleteness = nil }),
+            // "completeness = nil" 变异已移除:JSON 中缺字段与显式 nil 不可区分,
+            // 读档侧为兼容旧档会把缺失的 completeness 回填为 complete(见
+            // SnapshotStore.migratingLegacyAuthorityFields);写入边界仍拒绝 nil,
+            // 因此该变异在新格式下无法表达为可写盘的畸形态。
         ]
 
         func archive(_ state: GameCore.GameState, sequence: UInt64) throws -> SessionArchive {
@@ -713,8 +715,11 @@ struct PersistenceRecoveryTests {
 
         #expect(firstEntry.persistenceTrackerIdentity == factory.recoveryTrackerIdentity)
         #expect(secondEntry.persistenceTrackerIdentity == firstEntry.persistenceTrackerIdentity)
-        await #expect(throws: RecoveryError.returnToLobby("recovery-material-invalid")) {
-            _ = try await state.persistenceFactory.recoverableFixtureOnlyHostRooms()
+        // 单个损坏存档只跳过该房间并累计失败;连续三次后清除其恢复材料(fail-closed),
+        // 不再中断整个大厅枚举。
+        for _ in 0..<3 {
+            let rooms = try await state.persistenceFactory.recoverableFixtureOnlyHostRooms()
+            #expect(rooms.isEmpty)
         }
         #expect(!FileManager.default.fileExists(atPath: corruptedURL.path))
     }
@@ -2648,6 +2653,39 @@ struct PersistenceRecoveryTests {
         )
     }
 
+    @Test func hostArchiveEncodingIsByteStableAcrossDecodeReencode() throws {
+        // Set/复合键字典的无序 JSON 编码曾让"重编码校验和"跨启动随机失败并清档。
+        let catalog = try verifiedCatalog()
+        var rules = GameCore.SetupRules(seed: 11)
+        let players = [GameCore.PlayerID(rawValue: "p1"), GameCore.PlayerID(rawValue: "p2")]
+        let state = try rules.makeGame(catalog: catalog, playerIDs: players).state
+        var engine = try state.makeHostEngine(
+            roomID: GameCore.RoomID(rawValue: "STABLE-ARCHIVE"),
+            reconnectTokens: [
+                players[0]: GameCore.ReconnectToken(rawValue: "t1"),
+                players[1]: GameCore.ReconnectToken(rawValue: "t2"),
+            ],
+            protocolVersion: 2
+        )
+        let archive = SessionArchive.host(
+            protocolVersion: 2, rulesetVersion: "v2018.11",
+            recipientID: players[0], state: engine.state, gameState: engine.gameState,
+            eventWindows: [players[0]: [], players[1]: []],
+            tokenReferences: players.map {
+                .init(roomID: GameCore.RoomID(rawValue: "STABLE-ARCHIVE"), playerID: $0)
+            },
+            peersNeedingRecovery: [players[1]],
+            commitSequence: 7
+        )
+        let data = try JSONEncoder.canonical.encode(archive)
+        let decoded = try JSONDecoder().decode(SessionArchive.self, from: data)
+        let reencoded = try JSONEncoder.canonical.encode(decoded)
+        #expect(reencoded == data)
+        let originalChecksum = try SnapshotEnvelope.checksum(for: archive)
+        let decodedChecksum = try SnapshotEnvelope.checksum(for: decoded)
+        #expect(decodedChecksum == originalChecksum)
+    }
+
     private func resourceSources(
         level: GameCore.IndustryDefinition.Level,
         locationID: String,
@@ -2656,7 +2694,6 @@ struct PersistenceRecoveryTests {
     ) throws -> [GameCore.ResourceSource] {
         let requirements = Array(repeating: GameCore.ResourceKind.coal, count: level.coalCost)
             + Array(repeating: .iron, count: level.ironCost)
-            + Array(repeating: .beer, count: level.beerCost)
         return try requirements.map { resource in
             try #require(GameCore.GameRulesEngine.legalResourceSources(
                 resource: resource, consumerLocationID: locationID, context: .standard,

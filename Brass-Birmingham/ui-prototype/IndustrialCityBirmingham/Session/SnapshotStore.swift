@@ -72,6 +72,18 @@ nonisolated struct HostSessionArchive: Codable, Equatable, Sendable {
     let tokenReferences: [RoomTokenReference]
     let peersNeedingRecovery: Set<GameCore.PlayerID>
 
+    // 字典与 Set 在 JSON 里编码为顺序依赖进程随机种子的数组，而存档校验和
+    // 是对"解码后重编码的字节"计算的——不排序就会跨启动随机校验失败。
+    // 因此编码为排序后的稳定形状，保证同一逻辑状态总是同一字节。
+    private struct StableEventWindow: Codable, Equatable, Sendable {
+        let playerID: GameCore.PlayerID
+        let envelopes: [SessionProtocol.SessionEnvelope]
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case authoritativeState, gameState, eventWindows, tokenReferences, peersNeedingRecovery
+    }
+
     init(
         authoritativeState: PersistedAuthoritativeGameState,
         gameState: GameCore.GameState,
@@ -84,6 +96,40 @@ nonisolated struct HostSessionArchive: Codable, Equatable, Sendable {
         self.eventWindows = eventWindows
         self.tokenReferences = tokenReferences
         self.peersNeedingRecovery = peersNeedingRecovery
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        authoritativeState = try container.decode(
+            PersistedAuthoritativeGameState.self, forKey: .authoritativeState
+        )
+        gameState = try container.decodeIfPresent(GameCore.GameState.self, forKey: .gameState)
+        eventWindows = Dictionary(
+            try container.decode([StableEventWindow].self, forKey: .eventWindows)
+                .map { ($0.playerID, $0.envelopes) },
+            uniquingKeysWith: { current, _ in current }
+        )
+        tokenReferences = try container.decode([RoomTokenReference].self, forKey: .tokenReferences)
+        peersNeedingRecovery = Set(
+            try container.decode([GameCore.PlayerID].self, forKey: .peersNeedingRecovery)
+        )
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(authoritativeState, forKey: .authoritativeState)
+        try container.encodeIfPresent(gameState, forKey: .gameState)
+        try container.encode(
+            eventWindows
+                .sorted { $0.key.rawValue < $1.key.rawValue }
+                .map { StableEventWindow(playerID: $0.key, envelopes: $0.value) },
+            forKey: .eventWindows
+        )
+        try container.encode(tokenReferences, forKey: .tokenReferences)
+        try container.encode(
+            peersNeedingRecovery.sorted { $0.rawValue < $1.rawValue },
+            forKey: .peersNeedingRecovery
+        )
     }
 }
 
@@ -382,6 +428,35 @@ actor SnapshotStore {
         return archive
     }
 
+    /// 旧 schema 存档缺少 authorityCompleteness/appliedResourceActionIDs 字段。
+    /// 其余不变量在存档时已满足,回填为完整权威状态,避免旧档被误判损坏销毁。
+    private static func migratingLegacyAuthorityFields(
+        _ archive: SessionArchive
+    ) -> SessionArchive {
+        guard case let .host(host) = archive.payload,
+              var gameState = host.gameState,
+              gameState.authorityCompleteness == nil
+        else { return archive }
+        gameState.authorityCompleteness = .complete
+        if gameState.appliedResourceActionIDs == nil { gameState.appliedResourceActionIDs = [] }
+        return SessionArchive(
+            protocolVersion: archive.protocolVersion,
+            rulesetVersion: archive.rulesetVersion,
+            roomID: archive.roomID,
+            recipientID: archive.recipientID,
+            role: archive.role,
+            authoritativeVersion: archive.authoritativeVersion,
+            commitSequence: archive.commitSequence,
+            payload: .host(.init(
+                authoritativeState: host.authoritativeState,
+                gameState: gameState,
+                eventWindows: host.eventWindows,
+                tokenReferences: host.tokenReferences,
+                peersNeedingRecovery: host.peersNeedingRecovery
+            ))
+        )
+    }
+
     private func decodeCommittedArchive(requiresCurrentSchema: Bool = false) throws -> SessionArchive {
         let encrypted: Data
         do { encrypted = try Data(contentsOf: committedFileURL) }
@@ -396,10 +471,10 @@ actor SnapshotStore {
         guard !requiresCurrentSchema || envelope.schemaVersion == SnapshotEnvelope.currentSchemaVersion else {
             throw SnapshotStoreError.incompleteAuthorityState
         }
-        let archive = envelope.archive
-        guard envelope.checksum == (try SnapshotEnvelope.checksum(for: archive)) else {
+        guard envelope.checksum == (try SnapshotEnvelope.checksum(for: envelope.archive)) else {
             throw SnapshotStoreError.checksumMismatch
         }
+        let archive = Self.migratingLegacyAuthorityFields(envelope.archive)
         guard archive.authoritativeVersion.rawValue >= 0 else { throw SnapshotStoreError.versionMismatch }
         guard try validatePrivacy(
             archive,
@@ -678,7 +753,11 @@ nonisolated struct SessionPersistenceFactory: Sendable {
             roomID: proposed.roomID,
             playerID: proposed.playerID,
             reconnectToken: credential.reconnectToken,
-            hostPlayerID: proposed.hostPlayerID
+            hostPlayerID: proposed.hostPlayerID,
+            // 透传随机开局种子与显示名:此前被丢弃导致每局种子固定为 1,
+            // 贸易商布局/发牌/顺位每局完全相同。
+            setupSeed: proposed.setupSeed,
+            displayName: proposed.displayName
         )
         let snapshotStore = SnapshotStore(
             directory: directory(roomID: configuration.roomID, playerID: configuration.playerID),
@@ -877,9 +956,10 @@ nonisolated struct SessionPersistenceFactory: Sendable {
             } catch {
                 let count = await failureTracker.recordFailure(for: reference)
                 if count >= 3 {
-                    try await store.clearRecoveryMaterial()
-                    throw RecoveryError.returnToLobby("recovery-material-invalid")
+                    try? await store.clearRecoveryMaterial()
                 }
+                // 单个房间存档损坏只跳过该房间并计数,不中断其余房间的枚举。
+                continue
             }
         }
         return recoverable

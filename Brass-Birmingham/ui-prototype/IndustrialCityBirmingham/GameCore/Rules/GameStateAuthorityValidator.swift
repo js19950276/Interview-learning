@@ -104,13 +104,18 @@ extension GameCore {
                   state.coalMarket.resource == .coal,
                   state.ironMarket.resource == .iron,
                   state.publicSupply.mayUseSubstitutes,
+                  // 官方市场:煤 14 可放格 = £1×2 + £2~£7×2(开局留空一个 £1),
+                  // 铁 10 可放格 = £1×2 + £2~£5×2(开局两个 £1 空置);
+                  // £8/£6 是无限供应标记价,不是格子。
                   state.coalMarket.slots.map(\.price) == (1...7).flatMap({ Array(repeating: $0, count: 2) }),
-                  state.ironMarket.slots.map(\.price) == [1, 1, 1, 2, 2, 2, 3, 3, 4, 4],
-                  state.publicSupply.coal >= 0,
+                  state.ironMarket.slots.map(\.price) == [1, 1] + (2...5).flatMap({ Array(repeating: $0, count: 2) }),
+                  // 供应台账允许为负：负值 = 已投入使用的替代物数量（RULES.md §5.1.9），
+                  // 下界为实体总数；守恒检查（coalTotal/ironTotal/beerTotal）继续拦截真实损坏。
+                  state.publicSupply.coal >= -30,
                   state.publicSupply.coal <= 30,
-                  state.publicSupply.iron >= 0,
+                  state.publicSupply.iron >= -18,
                   state.publicSupply.iron <= 18,
-                  state.publicSupply.beer >= 0,
+                  state.publicSupply.beer >= -15,
                   state.publicSupply.beer <= 15,
                   coalTotal >= 30,
                   ironTotal >= 18,
@@ -128,7 +133,7 @@ extension GameCore {
             let actualMerchantCounts = state.merchants.reduce(into: [String: Int]()) {
                 $0[$1.merchantDefinitionID, default: 0] += 1
             }
-            return state.merchants.count == activeMerchantSlots.count
+            let merchantsOK = state.merchants.count == activeMerchantSlots.count
                 && Set(state.merchants.map(\.slotID)) == Set(activeMerchantSlots.map(\.id))
                 && actualMerchantCounts == expectedMerchantCounts
                 && state.merchants.allSatisfy { placement in
@@ -137,6 +142,7 @@ extension GameCore {
                     else { return false }
                     return merchant.acceptedIndustryIDs.isEmpty == false || placement.hasBeer == false
                 }
+            return merchantsOK
         }
 
         private static func validTurnPhase(_ state: GameState) -> Bool {
@@ -166,6 +172,20 @@ extension GameCore {
                     && pending.shortfall > 0
                     && pending.eligiblePlacementIDs.isEmpty == false
                     && pending.eligiblePlacementIDs == ownedPlacementIDs
+            case .eraIntermission(let intermission):
+                // 结算暂停:处于运河最后一轮收尾,等待全员确认。
+                guard intermission.settledEra == .canal, state.era == .canal,
+                      state.roundNumber == state.canalRoundCapacity,
+                      Set(intermission.confirmedPlayerIDs).count == intermission.confirmedPlayerIDs.count,
+                      intermission.confirmedPlayerIDs.allSatisfy({ confirmed in
+                          state.players.contains(where: { $0.id == confirmed })
+                      }),
+                      intermission.awards.count == state.players.count,
+                      Set(intermission.awards.map(\.playerID)) == Set(state.players.map(\.id))
+                else { return false }
+                return state.actionsRemaining == 0
+                    && state.turnsCompletedInRound == 0
+                    && state.roundIncomeCursor == nil
             case .ended:
                 return state.actionsRemaining == 0
                     && state.turnsCompletedInRound == 0

@@ -65,7 +65,7 @@ struct IndustryRailView: View {
     }
 
     private var railContent: some View {
-        VStack(spacing: metrics.formFactor == .tablet ? 8 : 3) {
+        VStack(spacing: metrics.formFactor == .tablet ? 8 : 4) {
             if metrics.formFactor == .tablet {
                 HStack {
                     Text("产业板块")
@@ -78,25 +78,44 @@ struct IndustryRailView: View {
                 selectionCount
             }
 
-            ForEach(industries) { industry in
-                if selectableIndustryIDs.contains(industry.id), let onSelectIndustry {
-                    Button {
-                        onSelectIndustry(industry.id)
-                    } label: {
-                        industryContent(industry)
-                            .frame(maxWidth: .infinity)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .frame(minWidth: 44, minHeight: 44)
-                    .accessibilityLabel("选择产业，\(industryAccessibilityLabel(industry))")
-                    .accessibilityIdentifier(accessibilityEnabled ? "industry.select.\(industry.id)" : "")
-                    .accessibilityAddTraits(selectedIndustryIDs.contains(industry.id) ? .isSelected : [])
-                    .accessibilityHidden(!accessibilityEnabled)
-                } else {
-                    industryContent(industry)
+            if metrics.formFactor == .tablet {
+                ForEach(industries) { industry in
+                    industryRow(industry)
                 }
+            } else {
+                // 手机端竖条高度有限:瓦片用紧凑定高布局并允许条内滚动,
+                // 保证任意屏高下内容都不会互相压叠。
+                ScrollView(showsIndicators: false) {
+                    VStack(spacing: 4) {
+                        ForEach(industries) { industry in
+                            industryRow(industry)
+                        }
+                    }
+                    .padding(.vertical, 1)
+                }
+                .scrollBounceBehavior(.basedOnSize)
             }
+        }
+    }
+
+    @ViewBuilder
+    private func industryRow(_ industry: IndustrySummary) -> some View {
+        if selectableIndustryIDs.contains(industry.id), let onSelectIndustry {
+            Button {
+                onSelectIndustry(industry.id)
+            } label: {
+                industryContent(industry)
+                    .frame(maxWidth: .infinity)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .frame(minWidth: 44, minHeight: 44)
+            .accessibilityLabel("选择产业，\(industryAccessibilityLabel(industry))")
+            .accessibilityIdentifier(accessibilityEnabled ? "industry.select.\(industry.id)" : "")
+            .accessibilityAddTraits(selectedIndustryIDs.contains(industry.id) ? .isSelected : [])
+            .accessibilityHidden(!accessibilityEnabled)
+        } else {
+            industryContent(industry)
         }
     }
 
@@ -151,8 +170,13 @@ struct IndustryRailView: View {
                         .monospacedDigit()
                 }
                 HStack(spacing: 8) {
+                    if let remain = industry.remainingTotal {
+                        resource("剩", value: remain, icon: "square.stack.fill")
+                    }
                     resource("煤", value: industry.coalCost, icon: "seal.fill")
                     resource("铁", value: industry.ironCost, icon: "cube.fill")
+                    resource("VP", value: industry.victoryPoints ?? 0, icon: "shield.fill")
+                    resource("路", value: industry.linkPoints ?? 0, icon: "arrow.triangle.turn.up.right.diamond.fill")
                     Spacer()
                     Label(industry.isAvailable ? "可用" : "已用", systemImage: industry.isAvailable ? "checkmark.circle.fill" : "xmark.circle.fill")
                         .font(.caption2)
@@ -167,21 +191,71 @@ struct IndustryRailView: View {
     }
 
     private func phoneIndustry(_ industry: IndustrySummary) -> some View {
-        VStack(spacing: 1) {
-            industryMedallion(industry, size: 22)
-            Text("L\(industry.level)")
-                .font(.system(size: 9, weight: .bold, design: .monospaced))
-            Image(systemName: industry.isAvailable ? "checkmark.circle.fill" : "xmark.circle.fill")
-                .font(.system(size: 9, weight: .bold))
-                .foregroundStyle(industry.isAvailable ? BrassColor.paper.color : BrassColor.unavailableRed.color)
+        // 垫板式紧凑卡:左列费用+材料,中间徽章,右列 VP/路分(参照实体玩家垫板)。
+        VStack(spacing: 2) {
+            HStack(spacing: 0) {
+                costCoin(industry.cost)
+                Spacer(minLength: 2)
+                industryMedallion(industry, size: 22)
+                Spacer(minLength: 2)
+                statBadge("VP", industry.victoryPoints, tint: BrassColor.paper.color)
+            }
+            HStack(spacing: 3) {
+                materialChip("煤", industry.coalCost, icon: "seal.fill")
+                materialChip("铁", industry.ironCost, icon: "cube.fill")
+                Spacer(minLength: 2)
+                statBadge("路", industry.linkPoints, tint: BrassColor.brass.color)
+            }
         }
+        .padding(.horizontal, 2)
         .frame(
-            minHeight: selectableIndustryIDs.contains(industry.id) ? 44 : 32,
-            maxHeight: .infinity
+            maxWidth: .infinity,
+            minHeight: selectableIndustryIDs.contains(industry.id) ? 54 : 46,
+            maxHeight: selectableIndustryIDs.contains(industry.id) ? 54 : 46
         )
         .foregroundStyle(BrassColor.paper.color)
         .accessibilityElement(children: .contain)
-        .accessibilityLabel(industryAccessibilityLabel(industry))
+        .accessibilityLabel(industryAccessibilityLabel(industry) + industrialValueLabel(industry))
+    }
+
+    /// 建造费用:黄铜圆底钱币数字。
+    private func costCoin(_ cost: Int) -> some View {
+        Text("\(cost)")
+            .font(.system(size: 9, weight: .heavy, design: .rounded))
+            .monospacedDigit()
+            .foregroundStyle(BrassColor.coal.color)
+            .frame(width: 14, height: 14)
+            .background(Circle().fill(BrassColor.brass.color))
+            .overlay(Circle().stroke(BrassColor.paper.color.opacity(0.4), lineWidth: 0.5))
+    }
+
+    /// 材料(煤/铁)用量:图标 + 数字,无需求时置灰显示 0。
+    private func materialChip(_ name: String, _ value: Int, icon: String) -> some View {
+        HStack(spacing: 1) {
+            Image(systemName: icon)
+                .font(.system(size: 7))
+            Text("\(value)")
+                .font(.system(size: 8, weight: .semibold, design: .monospaced))
+                .monospacedDigit()
+        }
+        .foregroundStyle(value > 0 ? BrassColor.paper.color : BrassColor.paper.color.opacity(0.4))
+    }
+
+    /// VP/路分徽章:数值加标签缩写。
+    private func statBadge(_ label: String, _ value: Int?, tint: Color) -> some View {
+        HStack(spacing: 1) {
+            Text(label)
+                .font(.system(size: 7, weight: .bold))
+                .foregroundStyle(tint.opacity(0.7))
+            Text("\(value ?? 0)")
+                .font(.system(size: 10, weight: .heavy, design: .rounded))
+                .monospacedDigit()
+                .foregroundStyle(tint)
+        }
+    }
+
+    private func industrialValueLabel(_ industry: IndustrySummary) -> String {
+        "，结算 \(industry.victoryPoints ?? 0) 分，路分 \(industry.linkPoints ?? 0)"
     }
 
     private func industryMedallion(_ industry: IndustrySummary, size: CGFloat) -> some View {

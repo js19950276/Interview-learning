@@ -54,6 +54,9 @@ actor SessionCoordinator {
         let recoveryError: RecoveryError?
         let lastLegalResponse: GameCore.LegalActionResponse?
         let lastClientEvent: GameCore.ClientEvent?
+        let playerNames: [GameCore.PlayerID: String]
+        let actionLog: [MatchActionLogEntry]
+        let playerColors: [GameCore.PlayerID: GameCore.PlayerColor]
     }
 
     struct Configuration: Sendable {
@@ -62,6 +65,7 @@ actor SessionCoordinator {
         let roomID: GameCore.RoomID
         let playerID: GameCore.PlayerID
         let reconnectToken: GameCore.ReconnectToken
+        var displayName: String? = nil
         let hostPlayerID: GameCore.PlayerID
         let setupSeed: UInt64
 
@@ -72,7 +76,8 @@ actor SessionCoordinator {
             playerID: GameCore.PlayerID,
             reconnectToken: GameCore.ReconnectToken,
             hostPlayerID: GameCore.PlayerID,
-            setupSeed: UInt64 = 1
+            setupSeed: UInt64 = 1,
+            displayName: String? = nil
         ) {
             self.protocolVersion = protocolVersion
             self.rulesetVersion = rulesetVersion
@@ -81,6 +86,7 @@ actor SessionCoordinator {
             self.reconnectToken = reconnectToken
             self.hostPlayerID = hostPlayerID
             self.setupSeed = setupSeed
+            self.displayName = displayName
         }
     }
 
@@ -141,9 +147,13 @@ actor SessionCoordinator {
     private var engine: GameCore.HostEngine?
     private var eventWindows: [GameCore.PlayerID: [SessionProtocol.SessionEnvelope]] = [:]
     private var joinOutcome: JoinOutcome = .pending
+    /// 玩家显示名(含房主),随大厅广播与投影下发。
+    private var playerNames: [GameCore.PlayerID: String] = [:]
     private var startPhase: StartPhase = .notStarted
     private var stateContinuations: [UUID: AsyncStream<State>.Continuation] = [:]
     private(set) var snapshot: GameCore.ViewSnapshot?
+    /// 缺初始快照时只发一次恢复请求,防止每个到达的事件都触发 catchUp。
+    private var didRequestInitialRecovery = false
     private(set) var processedMessageCount = 0
     private(set) var peersNeedingRecovery: Set<GameCore.PlayerID> = []
     private(set) var lastDeliveryError: TransportError?
@@ -288,6 +298,10 @@ actor SessionCoordinator {
         startProcessingIfNeeded()
         tokens[configuration.playerID] = configuration.reconnectToken
         peerByPlayer[configuration.playerID] = configuration.playerID
+        if let ownName = configuration.displayName, ownName.isEmpty == false {
+            playerNames[configuration.playerID] = String(ownName.prefix(12))
+        }
+        playerColors[configuration.playerID] = lowestFreeColor()
         try await tokenStore?.save(.init(
             roomID: configuration.roomID,
             playerID: configuration.playerID,
@@ -303,17 +317,18 @@ actor SessionCoordinator {
         startProcessingIfNeeded()
         try await transport.browse()
         try await transport.connect(to: configuration.hostPlayerID)
-        try await send(.hello(reconnectToken: configuration.reconnectToken), to: configuration.hostPlayerID)
-        let clock = ContinuousClock()
-        let deadline = clock.now.advanced(by: .seconds(2))
-        while clock.now < deadline {
+        // 复位上一次加入的结论,避免同实例二次加入立即假成功。
+        joinOutcome = .pending
+        try await send(.hello(reconnectToken: configuration.reconnectToken, displayName: configuration.displayName), to: configuration.hostPlayerID)
+        let deadline = ContinuousClock.now.advanced(by: .seconds(2))
+        while ContinuousClock.now < deadline {
             switch joinOutcome {
             case .accepted:
                 publishState()
                 print("INDUSTRIALCITY_LOCAL joined room=\(configuration.roomID.rawValue)")
                 return
             case let .rejected(error): throw error
-            case .pending: try await Task.sleep(for: .milliseconds(10))
+            case .pending: try await Task.sleep(for: .milliseconds(50))
             }
         }
         throw Error.joinTimedOut
@@ -335,14 +350,28 @@ actor SessionCoordinator {
         guard tokens.count >= 2, ready == Set(tokens.keys) else { throw Error.notAllPlayersReady }
         startPhase = .starting
         let ordered = [configuration.hostPlayerID] + playerIDs.filter { $0 != configuration.hostPlayerID }
+        // 座位颜色:房主与未入座的座位用默认分配兜底。
+        var seatColors = playerColors
+        if seatColors[configuration.playerID] == nil {
+            seatColors[configuration.playerID] = lowestFreeColor()
+        }
         if let verifiedCatalog {
-            var setup = GameCore.SetupRules(seed: configuration.setupSeed)
-            let game = try setup.makeGame(catalog: verifiedCatalog, playerIDs: ordered)
-            engine = try game.state.makeHostEngine(
-                roomID: configuration.roomID,
-                reconnectTokens: tokens,
-                protocolVersion: configuration.protocolVersion
-            )
+            do {
+                var setup = GameCore.SetupRules(seed: configuration.setupSeed)
+                let game = try setup.makeGame(
+                    catalog: verifiedCatalog, playerIDs: ordered, colors: seatColors
+                )
+                engine = try game.state.makeHostEngine(
+                    roomID: configuration.roomID,
+                    reconnectTokens: tokens,
+                    protocolVersion: configuration.protocolVersion
+                )
+            } catch {
+                // 开局失败回滚到未开始,否则重试永远 gameAlreadyStarted 且新座位被拒。
+                startPhase = .notStarted
+                engine = nil
+                throw error
+            }
             authorityCompleteness = .complete
             startPhase = .started
             try await distributeInitialSnapshots()
@@ -428,6 +457,27 @@ actor SessionCoordinator {
         await transport.disconnect()
     }
 
+    /// 更新自己的显示名:房主本地登记并重播大厅;客人发送 rename 给房主。
+    func updateDisplayName(_ name: String) async {
+        let trimmed = String(name.prefix(12))
+        guard trimmed.isEmpty == false else { return }
+        if isHost {
+            playerNames[configuration.playerID] = trimmed
+            publishState()
+            await broadcastLobbyState()
+        } else {
+            do {
+                try await send(
+                    .rename(displayName: trimmed),
+                    to: configuration.hostPlayerID,
+                    version: snapshot?.authoritativeVersion ?? .init(rawValue: 0)
+                )
+            } catch {
+                recordDeliveryFailure(for: configuration.playerID, error: error)
+            }
+        }
+    }
+
     func persistForBackground() async throws {
         await acquireResolveGate()
         do {
@@ -471,10 +521,13 @@ actor SessionCoordinator {
     private func handle(_ event: TransportEvent) async {
         switch event {
         case let .received(data, peer):
-            guard let envelope = try? JSONDecoder().decode(SessionProtocol.SessionEnvelope.self, from: data),
-                  envelope.messageID.isValid else { return }
-            if isHost { await handleAsHost(envelope, peer: peer) }
-            else { await handleAsGuest(envelope, peer: peer) }
+            if let envelope = try? JSONDecoder().decode(SessionProtocol.SessionEnvelope.self, from: data),
+               envelope.messageID.isValid {
+                if isHost { await handleAsHost(envelope, peer: peer) }
+                else { await handleAsGuest(envelope, peer: peer) }
+            } else {
+                print("INDUSTRIALCITY_LOCAL discarded undecodable frame peer=\(peer.rawValue)")
+            }
         case let .disconnected(peer, _):
             if !isHost, peer == configuration.hostPlayerID {
                 pauseReason = .hostDisconnected
@@ -501,11 +554,26 @@ actor SessionCoordinator {
             return
         }
         switch envelope.payload {
-        case let .hello(token):
+        case let .hello(token, displayName):
             guard envelope.recipientID == configuration.playerID else { return }
             if let existing = tokens[envelope.senderID], existing != token {
                 try? await send(.rejection(.init(reasonCode: .invalidReconnectToken,
                     recoverySuggestion: "Reauthenticate the seat with its reconnect token.")),
+                    toTransportPeer: peer, recipient: envelope.senderID)
+                return
+            }
+            // 对局已开始后拒绝新座位：权威引擎的玩家集合已固定，新座位会让
+            // finishResolution 的投影对未知接收者抛错，卡死之后所有行动。
+            if tokens[envelope.senderID] == nil, startPhase != .notStarted {
+                try? await send(.rejection(.init(reasonCode: .unknownSender,
+                    recoverySuggestion: "The match has already started; the room accepts no new seats.")),
+                    toTransportPeer: peer, recipient: envelope.senderID)
+                return
+            }
+            // 一条连接只能绑定一个座位，防止同一设备声明多个身份。
+            if let bound = peerByPlayer.first(where: { $0.value == peer })?.key, bound != envelope.senderID {
+                try? await send(.rejection(.init(reasonCode: .invalidReconnectToken,
+                    recoverySuggestion: "This connection is already bound to another seat.")),
                     toTransportPeer: peer, recipient: envelope.senderID)
                 return
             }
@@ -516,8 +584,17 @@ actor SessionCoordinator {
                 return
             }
             guard acceptUnique(envelope, peer: peer) else { return }
+            let previousToken = tokens[envelope.senderID]
             tokens[envelope.senderID] = token
             peerByPlayer[envelope.senderID] = peer
+            if let name = displayName, name.isEmpty == false {
+                playerNames[envelope.senderID] = String(name.prefix(12))
+            } else if playerNames[envelope.senderID] == nil {
+                playerNames[envelope.senderID] = "玩家-\(String(envelope.senderID.rawValue.suffix(4)))"
+            }
+            if playerColors[envelope.senderID] == nil {
+                playerColors[envelope.senderID] = lowestFreeColor()
+            }
             do {
                 try await tokenStore?.save(.init(
                     roomID: configuration.roomID,
@@ -525,7 +602,8 @@ actor SessionCoordinator {
                     reconnectToken: token
                 ))
             } catch {
-                tokens[envelope.senderID] = nil
+                // 回滚恢复原值而非抹除:已知座位不能因 keychain 瞬时失败永久失联。
+                tokens[envelope.senderID] = previousToken
                 peerByPlayer[envelope.senderID] = nil
                 try? await send(.rejection(.init(
                     reasonCode: .persistenceUnavailable,
@@ -534,6 +612,11 @@ actor SessionCoordinator {
                 return
             }
             publishState()
+            if startPhase == .notStarted {
+                // 大厅阶段座位重新归队即视为已同步:恢复标记只对已开局的对局有意义。
+                peersNeedingRecovery.remove(envelope.senderID)
+                if peersNeedingRecovery.isEmpty { lastDeliveryError = nil }
+            }
             do {
                 try await send(
                     .createRoom,
@@ -548,6 +631,8 @@ actor SessionCoordinator {
             guard envelope.recipientID == configuration.playerID,
                   tokens[envelope.senderID] != nil, peerByPlayer[envelope.senderID] == peer else { return }
             guard acceptUnique(envelope, peer: peer) else { return }
+            // 开局后的准备状态没有意义,忽略以避免改写对局中的名册。
+            guard startPhase == .notStarted else { return }
             if value { ready.insert(envelope.senderID) } else { ready.remove(envelope.senderID) }
             publishState()
             await broadcastLobbyState()
@@ -566,7 +651,39 @@ actor SessionCoordinator {
             do { try await resolve(intent) }
             catch Error.persistenceUnavailable { return }
             catch Error.sessionPaused { return }
-            catch { recordDeliveryFailure(for: intent.senderID, error: error) }
+            catch {
+                // 规则/状态级失败不是投递失败:回 rejected 而不是把发送者
+                // 标记为需要恢复(那会让房主 UI 无端进入恢复态)。
+                try? await send(.rejection(.init(
+                    reasonCode: .invalidAction,
+                    recoverySuggestion: "Refresh the authoritative state and choose a legal action target."
+                )), to: intent.senderID)
+            }
+        case let .rename(displayName):
+            guard envelope.recipientID == configuration.playerID,
+                  tokens[envelope.senderID] != nil,
+                  peerByPlayer[envelope.senderID] == peer,
+                  acceptUnique(envelope, peer: peer, countsAsProcessedMessage: false) else { return }
+            let trimmed = String(displayName.prefix(12))
+            guard trimmed.isEmpty == false else { return }
+            playerNames[envelope.senderID] = trimmed
+            publishState()
+            await broadcastLobbyState()
+        case let .chooseColor(color):
+            guard envelope.recipientID == configuration.playerID,
+                  tokens[envelope.senderID] != nil,
+                  peerByPlayer[envelope.senderID] == peer,
+                  acceptUnique(envelope, peer: peer, countsAsProcessedMessage: false) else { return }
+            guard startPhase == .notStarted else { return }
+            if assignColor(color, to: envelope.senderID) {
+                publishState()
+                await broadcastLobbyState()
+            } else {
+                try? await send(.rejection(.init(
+                    reasonCode: .invalidAction,
+                    recoverySuggestion: "That color is already taken by another player."
+                )), toTransportPeer: peer, recipient: envelope.senderID)
+            }
         case let .legalQuery(query):
             guard envelope.recipientID == configuration.playerID,
                   peerByPlayer[envelope.senderID] == peer,
@@ -606,8 +723,16 @@ actor SessionCoordinator {
             guard envelope.recipientID == configuration.playerID,
                   tokens[envelope.senderID] != nil, peerByPlayer[envelope.senderID] == peer else { return }
             guard acceptUnique(envelope, peer: peer, countsAsProcessedMessage: false) else { return }
-            do { try await sendRecovery(to: envelope.senderID, fromVersion: fromVersion) }
-            catch { recordDeliveryFailure(for: envelope.senderID, error: error) }
+            // 恢复重放与行动扇出串行：避免窗口补发与新事件在同一条连接上交错，
+            // 否则 guest 端会把"版本超前"的合法消息误判为无效恢复材料并累计 strike。
+            await acquireResolveGate()
+            do {
+                try await sendRecovery(to: envelope.senderID, fromVersion: fromVersion)
+                releaseResolveGate()
+            } catch {
+                releaseResolveGate()
+                recordDeliveryFailure(for: envelope.senderID, error: error)
+            }
         default: break
         }
     }
@@ -622,6 +747,14 @@ actor SessionCoordinator {
             guard acceptUnique(envelope, peer: peer) else { return }
             joinOutcome = .accepted
             recoveryTargetVersion = envelope.authoritativeVersion
+            // 跨生命周期防御:本地存档版本高于新房间的权威版本,说明是上一局残留,
+            // 弃用旧快照与事件窗,重新走完整的恢复流程。
+            if let current = snapshot,
+               current.authoritativeVersion.rawValue > envelope.authoritativeVersion.rawValue {
+                snapshot = nil
+                eventWindows[configuration.playerID] = nil
+                lastClientEvent = nil
+            }
             pauseReason = recoveryIsComplete(at: snapshot?.authoritativeVersion) ? nil : .stateRecovery
             if pauseReason == nil { await guestRecoveryFailureHandler?.recoverySucceeded() }
             let fromVersion = snapshot?.authoritativeVersion ?? .init(rawValue: -1)
@@ -647,6 +780,13 @@ actor SessionCoordinator {
                   validatedLobbyState(lobby), acceptUnique(envelope, peer: peer) else { return }
             tokens = Dictionary(uniqueKeysWithValues: lobby.playerIDs.map { ($0, .init(rawValue: "host-authoritative-roster")) })
             ready = Set(lobby.readyPlayerIDs)
+            for (rawName, name) in lobby.names {
+                playerNames[GameCore.PlayerID(rawValue: rawName)] = name
+            }
+            playerColors = Dictionary(uniqueKeysWithValues: lobby.colors.compactMap { rawID, rawColor in
+                guard let color = GameCore.PlayerColor(rawValue: rawColor) else { return nil }
+                return (GameCore.PlayerID(rawValue: rawID), color)
+            })
             publishState()
         case let .legalResponse(response):
             guard let current = snapshot else { return }
@@ -684,6 +824,7 @@ actor SessionCoordinator {
             }
             guard acceptUnique(envelope, peer: peer) else { return }
             snapshot = value
+            didRequestInitialRecovery = false
             eventWindows[configuration.playerID] = []
             lastClientEvent = nil
             lastLegalResponse = nil
@@ -693,10 +834,25 @@ actor SessionCoordinator {
             lastIntentRejection = nil
             lastInternalFailure = nil
             publishState()
-            do { try await persistGuestState(newEvent: nil) }
-            catch { return }
+            do {
+                await acquireResolveGate()
+                do { try await persistGuestState(newEvent: nil); releaseResolveGate() }
+                catch { releaseResolveGate(); return }
+            }
         case .clientEvent:
-            guard let current = snapshot else { return }
+            guard let current = snapshot else {
+                // 缺初始快照时无法应用增量事件:向房主请求一次完整恢复,
+                // 而不是静默丢弃后续所有事件。
+                if !didRequestInitialRecovery {
+                    didRequestInitialRecovery = true
+                    try? await send(
+                        .catchUp(fromVersion: .init(rawValue: -1)),
+                        to: configuration.hostPlayerID,
+                        version: .init(rawValue: -1)
+                    )
+                }
+                return
+            }
             let playerIDs = Set(current.players.map(\.id))
             let context = SessionProtocol.SessionContext(
                 protocolVersion: configuration.protocolVersion, rulesetVersion: configuration.rulesetVersion,
@@ -723,9 +879,20 @@ actor SessionCoordinator {
             if pauseReason == nil { await guestRecoveryFailureHandler?.recoverySucceeded() }
             recoveryError = nil
             lastIntentRejection = nil
+            // 恢复重放会按版本序重发历史事件,去重后正好重建完整行动日志。
+            if let match = value.snapshot.match {
+                appendActionLog(
+                    event: value.event,
+                    era: match.era,
+                    roundNumber: match.roundNumber
+                )
+            }
             publishState()
-            do { try await persistGuestState(newEvent: envelope) }
-            catch { return }
+            do {
+                await acquireResolveGate()
+                do { try await persistGuestState(newEvent: envelope); releaseResolveGate() }
+                catch { releaseResolveGate(); return }
+            }
             print("INDUSTRIALCITY_LOCAL converged version=\(value.event.version.rawValue) actor=\(value.event.actor.rawValue)")
         default: break
         }
@@ -849,16 +1016,19 @@ actor SessionCoordinator {
         switch result {
         case let .accepted(event):
             var projections: [GameCore.PlayerID: GameCore.ClientEvent] = [:]
-            for player in playerIDs {
+            // 只为权威引擎已知的座位投影；容错防御任何未知座位混入 tokens 的路径。
+            let enginePlayerIDs = Set(candidateEngine.gameState.players.map(\.id))
+            let recipients = playerIDs.filter { enginePlayerIDs.contains($0) }
+            for player in recipients {
                 projections[player] = if let verifiedCatalog {
-                    try candidateEngine.clientEvent(event, for: player, catalog: verifiedCatalog)
+                    try candidateEngine.clientEvent(event, for: player, catalog: verifiedCatalog, playerNames: playerNames)
                 } else {
-                    try candidateEngine.clientEvent(event, for: player)
+                    try candidateEngine.clientEvent(event, for: player, catalog: nil, playerNames: playerNames)
                 }
             }
             var candidateEventWindows = eventWindows
             var outgoing: [GameCore.PlayerID: SessionProtocol.SessionEnvelope] = [:]
-            for player in playerIDs {
+            for player in recipients {
                 guard let clientEvent = projections[player] else { continue }
                 let envelope = makeEnvelope(.clientEvent(clientEvent), recipient: player, version: event.version)
                 var values = candidateEventWindows[player, default: []]
@@ -914,9 +1084,14 @@ actor SessionCoordinator {
             lastIntentRejection = nil
             lastDeliveryError = nil
             persistenceError = nil
+            appendActionLog(
+                event: event,
+                era: candidateEngine.gameState.era,
+                roundNumber: candidateEngine.gameState.roundNumber
+            )
             publishState()
 
-            for player in playerIDs where remoteRecipients.contains(player) {
+            for player in recipients where remoteRecipients.contains(player) {
                 guard let envelope = outgoing[player] else { continue }
                 do {
                     try await send(envelope, to: player)
@@ -964,12 +1139,13 @@ actor SessionCoordinator {
         publishState()
 
         for player in playerIDs where player != configuration.playerID {
+            guard Set(engine.gameState.players.map(\.id)).contains(player) else { continue }
             let value = if let verifiedCatalog {
-                try engine.snapshot(for: player, catalog: verifiedCatalog)
+                try engine.snapshot(for: player, catalog: verifiedCatalog, playerNames: playerNames)
             } else {
                 try engine.snapshot(for: player)
             }
-            do { try await send(.viewSnapshot(value), to: player) }
+            do { try await send(.viewSnapshot(value), to: player, version: value.authoritativeVersion) }
             catch { recordDeliveryFailure(for: player, error: error) }
         }
     }
@@ -1092,13 +1268,21 @@ actor SessionCoordinator {
     }
 
     private func broadcastLobbyState() async {
-        let lobby = SessionProtocol.Payload.LobbyState(playerIDs: playerIDs, readyPlayerIDs: readyPlayerIDs)
+        let lobby = SessionProtocol.Payload.LobbyState(
+            playerIDs: playerIDs, readyPlayerIDs: readyPlayerIDs,
+            names: Dictionary(uniqueKeysWithValues: playerNames.map { ($0.key.rawValue, $0.value) }),
+            colors: Dictionary(uniqueKeysWithValues: playerColors.map { ($0.key.rawValue, $0.value.rawValue) })
+        )
         for player in playerIDs where player != configuration.playerID {
             do {
                 try await send(.lobbyState(lobby), to: player)
-                peersNeedingRecovery.remove(player)
-                if peersNeedingRecovery.isEmpty { lastDeliveryError = nil }
-                publishState()
+                // 大厅名册是幂等全量状态:投递成功即代表该座位已同步。
+                // 开局后 ready/hello 广播已被守卫,不会误清对局中的恢复标记。
+                if startPhase == .notStarted {
+                    peersNeedingRecovery.remove(player)
+                    if peersNeedingRecovery.isEmpty { lastDeliveryError = nil }
+                    publishState()
+                }
             }
             catch { recordDeliveryFailure(for: player, error: error) }
         }
@@ -1249,8 +1433,76 @@ actor SessionCoordinator {
             pauseReason: pauseReason,
             recoveryError: recoveryError,
             lastLegalResponse: lastLegalResponse,
-            lastClientEvent: lastClientEvent
+            lastClientEvent: lastClientEvent,
+            playerNames: playerNames,
+            actionLog: matchActionLog,
+            playerColors: playerColors
         )
+    }
+
+    // MARK: - 座位代表色
+
+    private var playerColors: [GameCore.PlayerID: GameCore.PlayerColor] = [:]
+
+    /// 尚未被任何座位占用的最低顺位颜色。
+    private func lowestFreeColor() -> GameCore.PlayerColor {
+        GameCore.PlayerColor.allCases.first(where: { color in
+            playerColors.values.contains(color) == false
+        }) ?? .red
+    }
+
+    /// 大厅内选择代表色:房主本地登记,客人发送 chooseColor 给房主。
+    /// 颜色被其他座位占用时房主会拒绝,UI 也会禁用被占颜色。
+    func chooseColor(_ color: GameCore.PlayerColor) async {
+        if isHost {
+            assignColor(color, to: configuration.playerID)
+            publishState()
+            await broadcastLobbyState()
+        } else {
+            do {
+                try await send(
+                    .chooseColor(color),
+                    to: configuration.hostPlayerID,
+                    version: snapshot?.authoritativeVersion ?? .init(rawValue: 0)
+                )
+            } catch {
+                recordDeliveryFailure(for: configuration.playerID, error: error)
+            }
+        }
+    }
+
+    /// 房主侧登记:占用校验失败返回 false(不改动现有颜色)。
+    @discardableResult
+    private func assignColor(_ color: GameCore.PlayerColor, to playerID: GameCore.PlayerID) -> Bool {
+        if let owner = playerColors.first(where: { $0.value == color })?.key, owner != playerID {
+            return false
+        }
+        playerColors[playerID] = color
+        return true
+    }
+
+    // MARK: - 行动日志
+
+    private var matchActionLog: [MatchActionLogEntry] = []
+    private var loggedActionVersions: Set<Int> = []
+
+    /// 追加一条行动日志;按事件版本去重(恢复重放会重发历史事件),
+    /// 上限 500 条避免长局内存增长。
+    private func appendActionLog(
+        event: GameCore.AuthoritativeGameEvent,
+        era: GameCore.Era,
+        roundNumber: Int
+    ) {
+        guard loggedActionVersions.insert(event.version.rawValue).inserted else { return }
+        matchActionLog.append(
+            MatchActionLog.makeEntry(
+                event: event, era: era, roundNumber: roundNumber,
+                playerNames: playerNames
+            )
+        )
+        if matchActionLog.count > 500 {
+            matchActionLog.removeFirst(matchActionLog.count - 500)
+        }
     }
 
     private func publishState() {

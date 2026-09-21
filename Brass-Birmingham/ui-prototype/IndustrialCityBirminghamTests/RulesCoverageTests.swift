@@ -153,7 +153,7 @@ struct RulesCoverageTests {
                     "firstCanalRoundGivesEachSeatOneActionThenTwoAndRefillsToEight",
                     "forcedSaleSubmittedThroughHostIncrementsVersionAndReplaysExactly",
                 ],
-                "scoring": ["eraScoringCountsEveryHyperedgeAdjacentFlippedIndustryAndRemovesOnlyEraLinks"],
+                "scoring": ["eraScoringCountsEveryHyperedgeAdjacentFlippedIndustryAndKeepsAllLinks"],
             ]
         )
     }
@@ -184,7 +184,7 @@ struct RulesCoverageTests {
             ExecutableTest(name: "catalogAwarePassReturnsWildCardToPoolAndReplaysExactly", run: DevelopSellSimpleActionTests().catalogAwarePassReturnsWildCardToPoolAndReplaysExactly),
             ExecutableTest(name: "firstCanalRoundGivesEachSeatOneActionThenTwoAndRefillsToEight", run: { try TurnScoringRulesTests().firstCanalRoundGivesEachSeatOneActionThenTwoAndRefillsToEight(playerCount: 2) }),
             ExecutableTest(name: "forcedSaleSubmittedThroughHostIncrementsVersionAndReplaysExactly", run: GameRulesEngineTests().forcedSaleSubmittedThroughHostIncrementsVersionAndReplaysExactly),
-            ExecutableTest(name: "eraScoringCountsEveryHyperedgeAdjacentFlippedIndustryAndRemovesOnlyEraLinks", run: TurnScoringRulesTests().eraScoringCountsEveryHyperedgeAdjacentFlippedIndustryAndRemovesOnlyEraLinks),
+            ExecutableTest(name: "eraScoringCountsEveryHyperedgeAdjacentFlippedIndustryAndKeepsAllLinks", run: TurnScoringRulesTests().eraScoringCountsEveryHyperedgeAdjacentFlippedIndustryAndKeepsAllLinks),
         ]
         return Dictionary(uniqueKeysWithValues: tests.map { ($0.name, $0) })
     }

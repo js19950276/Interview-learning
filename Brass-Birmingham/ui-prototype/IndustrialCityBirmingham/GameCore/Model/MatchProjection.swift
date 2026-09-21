@@ -33,6 +33,7 @@ extension GameCore {
         case networkLinkCount(Int)
         case developTileCount(Int)
         case sellDisposition(continueSelling: Bool)
+        /// 铁路时代:确认以当前已铺线路完成铺设(地图点选流)。
     }
 
     nonisolated struct LegalChoice: Codable, Equatable, Sendable {
@@ -80,6 +81,9 @@ extension GameCore {
         var spent: Int
         var linksRemaining: Int
         var industryStacks: [IndustryStack]?
+        var name: String? = nil
+        /// 收入等级 = 每轮收入阶段实际收/付的金额(区别于收入轨位置)。
+        var incomeLevel: Int = 0
     }
 
     nonisolated struct MatchProjection: Codable, Equatable, Sendable {
@@ -104,14 +108,24 @@ extension GameCore {
         static func make(
             state: GameState,
             recipient: PlayerID,
-            actionOptions: [ActionOption]
+            actionOptions: [ActionOption],
+            playerNames: [PlayerID: String] = [:],
+            incomeTrack: [IncomeTrack.Entry] = []
         ) throws -> MatchProjection {
+            // 玩家顺序 = 当前回合顺位(回合末按花费重排,§6.2),
+            // 左侧玩家列表因此随重排同步更新。
+            let incomeByPosition = Dictionary(
+                uniqueKeysWithValues: incomeTrack.map { ($0.position, $0.income) }
+            )
             var projection = MatchProjection(
                 era: state.era,
                 roundNumber: state.roundNumber,
                 deckCount: state.standardDrawDeck.count,
                 actionsRemaining: state.actionsRemaining,
-                players: state.players.map { player in
+                players: state.players
+                    .sorted { (state.playerOrder.firstIndex(of: $0.id) ?? 0)
+                        < (state.playerOrder.firstIndex(of: $1.id) ?? 0) }
+                    .map { player in
                     MatchPlayerProjection(
                         id: player.id,
                         color: player.color,
@@ -121,7 +135,9 @@ extension GameCore {
                         victoryPoints: player.victoryPoints,
                         spent: player.spent,
                         linksRemaining: player.linksRemaining,
-                        industryStacks: player.id == recipient ? player.industryStacks : nil
+                        industryStacks: player.id == recipient ? player.industryStacks : nil,
+                        name: playerNames[player.id],
+                        incomeLevel: incomeByPosition[player.incomePosition] ?? 0
                     )
                 },
                 boardIndustryPlacements: state.boardIndustryPlacements,

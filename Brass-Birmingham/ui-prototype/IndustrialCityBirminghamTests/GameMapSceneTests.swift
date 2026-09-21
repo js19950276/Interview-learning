@@ -97,10 +97,17 @@ struct GameMapSceneTests {
     @Test func configureRendersPublicIndustryAndOwnedLinkMarkers() throws {
         var state = DemoFixture.match(playerCount: 4)
         let locationID = try #require(state.locations.first?.id)
-        state.locations[0].industryPlacements = [.init(
-            placementID: "placed-coal", ownerID: "player-amber", tileID: "coal-1",
-            kind: .coal, level: 1, resourceCount: 2, isFlipped: true, ownerColor: .amber
-        )]
+        state.locations[0].industryPlacements = [
+            .init(
+                placementID: "placed-coal", ownerID: "player-amber", tileID: "coal-1",
+                kind: .coal, level: 1, resourceCount: 2, isFlipped: true, ownerColor: .amber,
+                victoryPoints: 2, linkPoints: 1
+            ),
+            .init(
+                placementID: "live-iron", ownerID: "player-crimson", tileID: "iron-1",
+                kind: .iron, level: 1, resourceCount: 3, isFlipped: false, ownerColor: .crimson
+            ),
+        ]
         state.routes[0].placedLink = .init(ownerID: "player-crimson", ownerColor: .crimson, era: .rail)
         let scene = GameMapScene()
         scene.configure(state: state, highlightedIDs: [])
@@ -108,16 +115,33 @@ struct GameMapSceneTests {
         let industry = try #require(
             scene.childNode(withName: "//location:\(locationID)/industry:placed-coal")
         )
-        let medallion = try #require(industry.childNode(withName: "industry-medallion") as? SKSpriteNode)
+        let glyph = try #require(industry.childNode(withName: "industry-glyph"))
         let ownerStrip = try #require(industry.childNode(withName: "industry-owner-strip") as? SKShapeNode)
         let detailLabel = try #require(industry.childNode(withName: "industry-detail") as? SKLabelNode)
         #expect(industry.childNode(withName: "industry-kind") == nil)
-        #expect(medallion.userData?["assetName"] as? String == IndustrialMatchAsset.coal.name)
-        #expect(medallion.isUserInteractionEnabled == false)
+        #expect(glyph.userData?["industryKind"] as? String == IndustryKind.coal.rawValue)
+        #expect(glyph.isUserInteractionEnabled == false)
         #expect(ownerStrip.isUserInteractionEnabled == false)
-        #expect(detailLabel.text == "L1·2")
+        // 翻面板块:斜杠条纹标识翻面,文字展示该板块的结算 VP 与路分。
+        #expect(detailLabel.text == "VP2·路1")
+        #expect(industry.childNode(withName: "industry-flipped-band") != nil)
+        #expect(industry.childNode(withName: "industry-resource-badge") == nil)
         #expect(industry.userData?["industryKind"] as? String == IndustryKind.coal.rawValue)
         #expect(industry.userData?["industryName"] as? String == "煤矿")
+        #expect(industry.userData?["victoryPoints"] as? Int == 2)
+        #expect(industry.userData?["linkPoints"] as? Int == 1)
+
+        // 未翻面的资源板块:右上角剩余数量徽章。
+        let liveIron = try #require(
+            scene.childNode(withName: "//location:\(locationID)/industry:live-iron")
+        )
+        #expect((liveIron.childNode(withName: "industry-detail") as? SKLabelNode)?.text == "L1")
+        #expect(liveIron.childNode(withName: "industry-flipped-band") == nil)
+        let badge = try #require(liveIron.childNode(withName: "industry-resource-badge"))
+        let badgeCount = try #require(liveIron.childNode(withName: "industry-resource-count") as? SKLabelNode)
+        #expect(badgeCount.text == "3")
+        #expect(badge.isUserInteractionEnabled == false)
+
         let route = try #require(scene.childNode(withName: "//route:\(state.routes[0].id)"))
         #expect(route.userData?["ownerID"] as? String == "player-crimson")
         #expect(route.userData?["era"] as? String == "rail")

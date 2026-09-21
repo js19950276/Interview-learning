@@ -736,7 +736,7 @@ extension GameCore {
                 return .init(
                     consumerLocationID: locationID,
                     requestContext: .standard,
-                    requirements: requirements(coal: level.coalCost, iron: level.ironCost, beer: level.beerCost)
+                    requirements: requirements(coal: level.coalCost, iron: level.ironCost, beer: 0)
                 )
 
             case let .network(routeIDs, consumerLocationID):

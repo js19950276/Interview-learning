@@ -1,6 +1,4 @@
 {
-  "rulesetVersion": "v2018.11",
-  "verificationStatus": "draft",
   "files": [
     {
       "path": "map.json",
@@ -8,7 +6,7 @@
     },
     {
       "path": "industries.json",
-      "sha256": "78180db6b01a6c4d53fb1c9c4f301f4c36bc9b1a303ebdae4f75de4cfc82dea6"
+      "sha256": "c2d365d8063b2bddfdb72bce8f3832f617e31486cbfe84a18ea1c9d76db800c6"
     },
     {
       "path": "cards.json",
@@ -16,53 +14,55 @@
     },
     {
       "path": "merchants.json",
-      "sha256": "0b2b50997f8777e97c48d8d3b4b4243b8159f603032c0cecc99db4f7b3f788e2"
+      "sha256": "f79662daa62d97fcebd3dd8c12d118d9c1f92f776bb7391c119d605d68466d4b"
     },
     {
       "path": "income-track.json",
       "sha256": "69bf4c379c176cf0fd8cfa5cdd229fef87dca5763c92bb8d2b546604628b7975"
     }
   ],
+  "rulesetVersion": "v2018.11",
   "sources": [
     {
-      "id": "roxley-rulebook-v2018.11",
-      "url": "https://cdn.shopify.com/s/files/1/0246/2190/8043/files/Brass-Birmingham-Rulebook.pdf?v=1758826281",
       "component": "official rules, setup, component totals and era constraints",
-      "version": "2018.11 / PDF SHA-256 bb627a11c769957fbb5f26a210e3957ae27a2bad054ba9cb3b4fadc6c2ba73e5",
+      "id": "roxley-rulebook-v2018.11",
       "page": "printed pages 1-12",
+      "transcribedOn": "2026-08-17",
       "transcriber": "Codex",
       "transcriberID": "codex-agent",
-      "transcribedOn": "2026-08-17"
+      "url": "https://cdn.shopify.com/s/files/1/0246/2190/8043/files/Brass-Birmingham-Rulebook.pdf?v=1758826281",
+      "version": "2018.11 / PDF SHA-256 bb627a11c769957fbb5f26a210e3957ae27a2bad054ba9cb3b4fadc6c2ba73e5"
     },
     {
-      "id": "bge-brass-birmingham-d11d438",
-      "url": "https://github.com/a-whitehouse/bge-brass-birmingham/tree/d11d438c7c22b87c3b10f52116bf2b59bacfcc18/src/data",
       "component": "MIT-licensed map slots, routes, card distribution, industry values, merchant slots and income track",
-      "version": "d11d438c7c22b87c3b10f52116bf2b59bacfcc18",
+      "id": "bge-brass-birmingham-d11d438",
       "page": "src/data/*.ts",
+      "transcribedOn": "2026-08-17",
       "transcriber": "Codex",
       "transcriberID": "codex-agent",
-      "transcribedOn": "2026-08-17"
+      "url": "https://github.com/a-whitehouse/bge-brass-birmingham/tree/d11d438c7c22b87c3b10f52116bf2b59bacfcc18/src/data",
+      "version": "d11d438c7c22b87c3b10f52116bf2b59bacfcc18"
     },
     {
-      "id": "brassrl-457519c",
-      "url": "https://github.com/LahavBarak/BrassRL/tree/457519c5c8a7b709969e62279923acde99d043ea/Resources",
       "component": "MIT-licensed independent cross-check for map topology, city slots, markets and industry values",
-      "version": "457519c5c8a7b709969e62279923acde99d043ea",
+      "id": "brassrl-457519c",
       "page": "Resources/cities.csv, Resources/markets.csv, Resources/tiles.csv",
+      "transcribedOn": "2026-08-17",
       "transcriber": "Codex",
       "transcriberID": "codex-agent",
-      "transcribedOn": "2026-08-17"
+      "url": "https://github.com/LahavBarak/BrassRL/tree/457519c5c8a7b709969e62279923acde99d043ea/Resources",
+      "version": "457519c5c8a7b709969e62279923acde99d043ea"
     },
     {
-      "id": "npow-brass-birmingham-2b1da2d",
-      "url": "https://github.com/npow/brass-birmingham/blob/2b1da2d41036f2afaafcab320b2175ba3fd9f877/js/gameData.js",
       "component": "third implementation cross-check for route eras, card masks, merchant mix and disputed industry rows",
-      "version": "2b1da2d41036f2afaafcab320b2175ba3fd9f877",
+      "id": "npow-brass-birmingham-2b1da2d",
       "page": "js/gameData.js",
+      "transcribedOn": "2026-08-17",
       "transcriber": "Codex",
       "transcriberID": "codex-agent",
-      "transcribedOn": "2026-08-17"
+      "url": "https://github.com/npow/brass-birmingham/blob/2b1da2d41036f2afaafcab320b2175ba3fd9f877/js/gameData.js",
+      "version": "2b1da2d41036f2afaafcab320b2175ba3fd9f877"
     }
-  ]
+  ],
+  "verificationStatus": "draft"
 }

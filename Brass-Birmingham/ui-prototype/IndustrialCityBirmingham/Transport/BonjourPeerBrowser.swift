@@ -161,11 +161,9 @@ actor BonjourPeerBrowser {
 
 nonisolated final class NetworkBonjourBrowserDriver: BonjourBrowserDriving, @unchecked Sendable {
     static var runtimeServiceType: String {
-#if DEBUG && targetEnvironment(simulator)
-        LocalNetworkTransport.serviceType
-#else
+        // 混玩统一:模拟器与真机共用同一发现协议与传输,
+        // 真机才能发现 Mac 模拟器创建的房间(需同一 Wi-Fi)。
         NearbyTransport.serviceType
-#endif
     }
 
     nonisolated let updates: AsyncStream<BonjourBrowserUpdate>
@@ -189,11 +187,7 @@ nonisolated final class NetworkBonjourBrowserDriver: BonjourBrowserDriving, @unc
     }
 
     private static func makeRuntimeParameters() -> NWParameters {
-#if DEBUG && targetEnvironment(simulator)
-        LocalNetworkTransport.makeParameters()
-#else
         NearbyTransport.makeParameters()
-#endif
     }
 
     func start() {

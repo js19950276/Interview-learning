@@ -21,7 +21,7 @@ struct ActiveTurnIndicatorTests {
         #expect(value.headerText == "轮到你 · host")
         #expect(value.noticeText == "轮到你了")
         #expect(value.isLocalPlayer)
-        #expect(value.accessibilityLabel.contains("深红色"))
+        #expect(value.accessibilityLabel.contains("红色"))
         #expect(value.accessibilityLabel.contains("三角形标记"))
     }
 
@@ -70,9 +70,9 @@ struct ActiveTurnIndicatorTests {
             localPlayerID: "guest"
         )
 
-        #expect(label.contains("host，深红色，三角形标记"))
+        #expect(label.contains("host，红色，三角形标记"))
         #expect(label.contains("当前玩家"))
-        #expect(label.contains("guest，青绿色，圆形标记"))
+        #expect(label.contains("guest，白色，圆形标记"))
         #expect(label.contains("，你"))
     }
 

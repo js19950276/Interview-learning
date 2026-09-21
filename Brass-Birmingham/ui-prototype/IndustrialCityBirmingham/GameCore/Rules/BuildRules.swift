@@ -100,11 +100,13 @@ extension GameCore {
                       cardDefinition.kind == .industry || cardDefinition.kind == .wildIndustry
                 else { throw BuildRuleError.farmRestricted }
             }
+            // 运河时代每人同地点限 1 个产业;伯明翰是官方例外,可建 2 个。
+            let canalPerLocationLimit = intent.locationID == "birmingham" ? 2 : 1
             if state.era == .canal,
-               state.boardIndustryPlacements.contains(where: {
+               state.boardIndustryPlacements.filter({
                    $0.ownerID == actorID && $0.locationID == intent.locationID
                         && $0.slotIndex != intent.slotIndex
-               }) {
+               }).count >= canalPerLocationLimit {
                 throw BuildRuleError.canalLocationLimit
             }
 
@@ -138,10 +140,10 @@ extension GameCore {
                 }
             }
 
+            // 建造只支付金钱与煤/铁；beerCost 是出售所需啤酒，不进入建造成本。
             let requirements: [ResourceKind] =
                 Array(repeating: .coal, count: level.coalCost)
                 + Array(repeating: .iron, count: level.ironCost)
-                + Array(repeating: .beer, count: level.beerCost)
             guard requirements.count == intent.resourceSources.count else {
                 throw BuildRuleError.illegalResourcePlan
             }
@@ -251,7 +253,6 @@ extension GameCore {
             else { return [] }
             let requirements = Array(repeating: ResourceKind.coal, count: level.coalCost)
                 + Array(repeating: .iron, count: level.ironCost)
-                + Array(repeating: .beer, count: level.beerCost)
             var result: [BuildTarget] = []
             for location in verifiedCatalog.catalog.board.locations
                 .filter({ location in

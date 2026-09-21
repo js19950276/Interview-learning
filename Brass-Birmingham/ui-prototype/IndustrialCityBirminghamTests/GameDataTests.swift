@@ -267,8 +267,8 @@ struct GameDataTests {
             try GameCore.StrictJSON.object(from: Data(headerLine.utf8)) as? [String: Any]
         )
 
-        #expect(header["baseDataDigest"] as? String == "6ded83d62d817c484bac91cb6c043673ab7b10ab8ab332af8f21db126b19fc48")
-        #expect(GameCore.GameDataLoader.sha256(artifact) == "b16befc9879439cc7f0585883c93d262ffc7e96173f0273abff50d31a493be06")
+        #expect(header["baseDataDigest"] as? String == "ad558574bcb91346895fc824950b32e077e62b2ba72b29d24618e3cd88cbf522")
+        #expect(GameCore.GameDataLoader.sha256(artifact) == "28abba0a6d025a4982bbd610bf28db74aef43a7f973d704db780dbb947ea5c8d")
     }
 
     @Test func committedDraftDecodesMatchesItsManifestAndContainsNoReferenceArtwork() throws {

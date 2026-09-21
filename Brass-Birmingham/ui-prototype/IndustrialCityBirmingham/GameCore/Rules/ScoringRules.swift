@@ -17,6 +17,12 @@ extension GameCore {
             var linkPoints = Dictionary(uniqueKeysWithValues: state.players.map { ($0.id, 0) })
             var industryPoints = linkPoints
             let flipped = state.boardIndustryPlacements.filter(\.isFlipped)
+            let merchantDefinitions = Dictionary(uniqueKeysWithValues: catalog.catalog.merchants.map { ($0.id, $0) })
+            let merchantLinkPoints = state.merchants.reduce(into: [String: Int]()) { totals, merchant in
+                guard let slot = catalog.catalog.board.merchantSlots.first(where: { $0.id == merchant.slotID }),
+                      let definition = merchantDefinitions[merchant.merchantDefinitionID] else { return }
+                totals[slot.locationID, default: 0] += definition.linkPoints
+            }
 
             for placement in flipped {
                 guard let level = definitions[placement.tile.industryDefinitionID]?
@@ -27,7 +33,9 @@ extension GameCore {
                 )
             }
 
-            let eraLinks = state.placedLinks.filter { $0.era == era }
+            // 官方规则:每个时代结束时,自己的"所有"连线都计分
+            // (运河连线保留到铁路时代,铁路末再次计分)。
+            let eraLinks = state.placedLinks
             for link in eraLinks {
                 guard let adjacent = routes[link.routeID]?.adjacentLocationIDs else {
                     throw ScoringRuleError.missingDefinition
@@ -37,6 +45,11 @@ extension GameCore {
                         .levels.first(where: { $0.level == placement.tile.level })?.linkPoints
                     else { throw ScoringRuleError.missingDefinition }
                     linkPoints[link.ownerID] = try checkedAdd(linkPoints[link.ownerID, default: 0], points)
+                }
+                // 贸易商板块的连接图标同样计入相邻连接片（RULES.md §10.1）。
+                let merchantPoints = adjacent.reduce(0) { $0 + (merchantLinkPoints[$1] ?? 0) }
+                if merchantPoints > 0 {
+                    linkPoints[link.ownerID] = try checkedAdd(linkPoints[link.ownerID, default: 0], merchantPoints)
                 }
             }
 
@@ -53,9 +66,9 @@ extension GameCore {
                     playerID: playerID, linkPoints: links, industryPoints: industries
                 )
             }
-            state.placedLinks.removeAll { $0.era == era }
+            // 官方规则:连线永久保留,时代结算不移除任何线路。
             return .eraScored(.init(
-                era: era, awards: awards, removedRouteIDs: eraLinks.map(\.routeID)
+                era: era, awards: awards, removedRouteIDs: []
             ))
         }
 
@@ -74,6 +87,16 @@ extension GameCore {
             }
             let removedIDs = Set(removed.map(\.placementID))
             state.boardIndustryPlacements.removeAll { removedIDs.contains($0.placementID) }
+            // 官方规则(End of Canal Era 步骤 3):一级板块从板上移除并退回游戏盒,
+            // 不回玩家垫板、铁路时代不可重建(垫板上未建的一级板块不受影响)。
+
+            // 官方规则(End of Era 步骤 1):连接片计分后全部从板上撤下,
+            // 连线片(双面:运河面/铁路面)退回各自主人,铁路时代可再次使用。
+            for link in state.placedLinks {
+                if let index = state.players.firstIndex(where: { $0.id == link.ownerID }) {
+                    state.players[index].linksRemaining += 1
+                }
+            }
             state.placedLinks.removeAll()
 
             let merchantDefinitions = Dictionary(uniqueKeysWithValues: catalog.catalog.merchants.map {
@@ -85,13 +108,28 @@ extension GameCore {
                         .acceptedIndustryIDs.isEmpty == false
                 else { continue }
                 state.merchants[index].hasBeer = true
-                if state.publicSupply.beer > 0 { state.publicSupply.beer -= 1 }
+                // 无条件扣减：库存不足时以替代物顶上，保持资源守恒（RULES.md §5.1.9）。
+                state.publicSupply.beer -= 1
             }
 
             let legalDefinitions = Set(catalog.catalog.cards.filter {
                 $0.playerCounts.contains(state.playerCount)
                     && $0.kind != .wildLocation && $0.kind != .wildIndustry
             }.map(\.id))
+            // 手牌中的万能牌是可复用组件:回到各自奖池供铁路时代再次侦察,
+            // 不进入重组后的铁路牌库(官方规则:铁路抽牌堆不含万能牌)。
+            let cardKinds = Dictionary(uniqueKeysWithValues: catalog.catalog.cards.map { ($0.id, $0.kind) })
+            for index in state.players.indices {
+                var retained: [CardInstance] = []
+                for card in state.players[index].hand {
+                    switch cardKinds[card.definitionID] {
+                    case .wildLocation: state.wildLocationPool.append(card)
+                    case .wildIndustry: state.wildIndustryPool.append(card)
+                    default: retained.append(card)
+                    }
+                }
+                state.players[index].hand = retained
+            }
             var deck = state.players.flatMap(\.hand)
                 + state.players.compactMap(\.privateBottomDiscard)
                 + state.standardDrawDeck + state.publicDiscard
@@ -104,7 +142,6 @@ extension GameCore {
             for index in state.players.indices {
                 state.players[index].hand.removeAll()
                 state.players[index].privateBottomDiscard = nil
-                state.players[index].linksRemaining = 14
             }
             state.publicDiscard.removeAll()
             for _ in 0..<8 {
@@ -136,8 +173,9 @@ extension GameCore {
             })
             let sorted = state.playerOrder.sorted { leftID, rightID in
                 guard let left = playersByID[leftID], let right = playersByID[rightID] else { return false }
-                let leftVP = left.victoryPoints - left.victoryPointDebt
-                let rightVP = right.victoryPoints - right.victoryPointDebt
+                // 债务在发生时已即时扣减(上限为当期 VP),排名直接比较 VP。
+                let leftVP = left.victoryPoints
+                let rightVP = right.victoryPoints
                 if leftVP != rightVP { return leftVP > rightVP }
                 if left.incomePosition != right.incomePosition { return left.incomePosition > right.incomePosition }
                 if left.cash != right.cash { return left.cash > right.cash }
@@ -148,7 +186,7 @@ extension GameCore {
                 guard let player = playersByID[playerID] else { continue }
                 if let lastID = standings.last?.first,
                    let last = playersByID[lastID],
-                   player.victoryPoints - player.victoryPointDebt == last.victoryPoints - last.victoryPointDebt,
+                   player.victoryPoints == last.victoryPoints,
                    player.incomePosition == last.incomePosition,
                    player.cash == last.cash {
                     standings[standings.count - 1].append(playerID)
@@ -159,6 +197,8 @@ extension GameCore {
             state.turnPhase = .ended
             state.actionsRemaining = 0
             state.roundIncomeCursor = nil
+            state.turnsCompletedInRound = 0
+            state.finalStandings = standings
             state.activePlayerID = standings.first?.first ?? state.playerOrder.first
             return .gameEnded(.init(standings: standings))
         }

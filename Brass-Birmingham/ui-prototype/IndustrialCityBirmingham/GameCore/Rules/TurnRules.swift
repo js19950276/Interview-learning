@@ -104,8 +104,11 @@ extension GameCore {
                     state.players[playerIndex].cash, proceeds - pending.shortfall
                 )
             } else {
+                // 官方规则:每缺 £1 立即失去 1 VP,最多失去现有 VP(超额豁免)。
+                let absorbed = min(pending.shortfall - proceeds, state.players[playerIndex].victoryPoints)
+                state.players[playerIndex].victoryPoints -= absorbed
                 state.players[playerIndex].victoryPointDebt = try checkedAdd(
-                    state.players[playerIndex].victoryPointDebt, pending.shortfall - proceeds
+                    state.players[playerIndex].victoryPointDebt, absorbed
                 )
             }
             state.turnPhase = .active
@@ -139,8 +142,12 @@ extension GameCore {
                             .map(\.placementID)
                             .sorted()
                         if eligible.isEmpty {
+                            // 官方规则:每缺 £1 立即失去 1 VP,最多失去现有 VP
+                            // (超额部分豁免,不结转到铁路时代)。
+                            let absorbed = min(shortfall, state.players[playerIndex].victoryPoints)
+                            state.players[playerIndex].victoryPoints -= absorbed
                             state.players[playerIndex].victoryPointDebt = try checkedAdd(
-                                state.players[playerIndex].victoryPointDebt, shortfall
+                                state.players[playerIndex].victoryPointDebt, absorbed
                             )
                         } else {
                             let pending = PendingForcedSale(
@@ -180,11 +187,43 @@ extension GameCore {
             let scoring = try ScoringRules.scoreEra(state.era, state: &state, catalog: catalog)
             events.append(scoring)
             if state.era == .canal {
-                events.append(try ScoringRules.prepareRailEra(state: &state, catalog: catalog))
+                // 两阶段过渡:先进入“时代结算确认”暂停,全员确认后再 prepareRailEra。
+                try enterEraIntermission(scoring: scoring, state: &state, catalog: catalog)
             } else {
                 events.append(ScoringRules.resolveWinner(state: &state))
             }
             return events
+        }
+
+        /// 进入时代结算确认:记录每人 VP 构成与收入等级,等待全员确认。
+        private static func enterEraIntermission(
+            scoring: GameTransitionEvent,
+            state: inout GameState,
+            catalog: VerifiedGameDataCatalog
+        ) throws {
+            guard case .eraScored(let details) = scoring else {
+                throw GameRulesEngine.GameRulesInternalError.invariantViolation
+            }
+            let incomeByPosition = Dictionary(
+                uniqueKeysWithValues: catalog.catalog.incomeTrack.entries.map { ($0.position, $0.income) }
+            )
+            let awards: [EraAward] = details.awards.map { award in
+                let incomeLevel = state.players.first(where: { $0.id == award.playerID }).map {
+                    incomeByPosition[$0.incomePosition] ?? 0
+                } ?? 0
+                return EraAward(
+                    playerID: award.playerID,
+                    linkPoints: award.linkPoints,
+                    industryPoints: award.industryPoints,
+                    incomeLevel: incomeLevel
+                )
+            }
+            state.turnPhase = .eraIntermission(.init(
+                settledEra: details.era,
+                awards: awards,
+                confirmedPlayerIDs: []
+            ))
+            state.turnsCompletedInRound = 0
         }
 
         static func liquidationValue(

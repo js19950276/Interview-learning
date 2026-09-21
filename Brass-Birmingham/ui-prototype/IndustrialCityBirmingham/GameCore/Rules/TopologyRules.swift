@@ -145,6 +145,7 @@ extension GameCore {
             let occupiedRouteIDs = Set(topology.placedLinks.map(\.routeID))
             let availableRoutes = topology.activeRoutes.filter { route in
                 occupiedRouteIDs.contains(route.id) == false
+                    && route.eras.contains(BoardDefinition.Era(state.era))
             }
 
             let hasNetwork = state.boardIndustryPlacements.contains(where: {
@@ -237,9 +238,11 @@ extension GameCore {
             let locationIDs = activeLocationIDs(state: state, board: board)
             return ValidatedTopology(
                 activeLocationIDs: locationIDs,
+                // 线路集合不再按时代过滤:连线永久保留,运河连线在铁路时代
+                // 仍提供连通。新连线的时代合法性由 legalNetworkRoutes 与
+                // NetworkRules 各自按当前时代校验。
                 activeRoutes: board.routes.filter { route in
                     route.playerCounts.contains(state.playerCount)
-                        && route.eras.contains(BoardDefinition.Era(state.era))
                         && activeAdjacentLocationIDs(
                             for: route,
                             activeLocationIDs: locationIDs
@@ -257,7 +260,6 @@ extension GameCore {
             let locationIDs = activeLocationIDs(state: state, board: board)
             let playerIDs = Set(state.players.map(\.id))
             let routeIDs = Set(board.routes.map(\.id))
-            let boardEra = BoardDefinition.Era(state.era)
             let placementCounts = state.placedLinks.reduce(into: [String: Int]()) { counts, link in
                 counts[link.routeID, default: 0] += 1
             }
@@ -281,18 +283,20 @@ extension GameCore {
                 if playerIDs.contains(link.ownerID) == false {
                     issues.insert(.unknownOwner)
                 }
-                if link.era != state.era {
-                    issues.insert(.linkEraMismatch)
-                }
                 guard let route = board.routes.first(where: { $0.id == link.routeID }) else {
                     continue
+                }
+                // 连线永久保留:合法性按"线路本身支持该时代"判定,
+                // 运河连线带入铁路时代依然有效。
+                if route.eras.contains(BoardDefinition.Era(link.era)) == false {
+                    issues.insert(.linkEraMismatch)
                 }
                 if route.playerCounts.contains(state.playerCount) == false {
                     issues.insert(.routeUnavailableForPlayerCount)
                 }
-                if route.eras.contains(boardEra) == false {
-                    issues.insert(.routeUnavailableInEra)
-                }
+                // 旧"线路不支持当前时代"检查已并入上面的 linkEraMismatch:
+                // 连线合法性只看线路是否支持"该连线的时代",与当前时代无关
+                // (运河连线保留到铁路时代依然有效)。
             }
             return issues.sorted { $0.rawValue < $1.rawValue }
         }

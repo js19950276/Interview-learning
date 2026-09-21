@@ -173,7 +173,8 @@ struct ResourceRulesTests {
             state: &ironState,
             catalog: catalog
         )
-        #expect(ironState.players[0].cash == 34)
+        // 唯一空格是 £5(index 9):1 块交付收 £5 → £35,清空翻面、收入 +3。
+        #expect(ironState.players[0].cash == 35)
         #expect(ironState.boardIndustryPlacements[0].isFlipped)
         #expect(ironState.boardIndustryPlacements[0].marketDeliveryResolved)
         #expect(ironState.players[0].incomePosition == 13)
@@ -455,6 +456,7 @@ struct ResourceRulesTests {
             .init(resource: .iron, consumerLocationID: "", context: .standard, source: .marketSlot(resource: .iron, index: 0)),
         ], tileIDs: ["develop-1", "develop-2"])
         _ = try applyPlan(ironPlan, to: &ironMixed, catalog: catalog)
+        // 该场景市场 index 0(£1)有人为放置的币:£30 - £1 = £29。
         #expect(ironMixed.players[0].cash == 29)
         #expect(componentTotals(ironMixed) == ironBefore)
 
@@ -956,8 +958,6 @@ struct ResourceRulesTests {
     @Test func authorityDerivesRequirementsFromConcreteActionTargetsAndRoom() throws {
         let catalog = try verifiedCatalog()
         var state = makeState()
-        state.boardIndustryPlacements = [industry("build-beer", at: "walsall", owner: player, kind: "brewery", resource: 1)]
-        rebalanceResources(&state)
         let context = GameCore.ResourceActionContext(
             roomID: .init(rawValue: "room"),
             actionID: "build-cotton-2",
@@ -969,9 +969,9 @@ struct ResourceRulesTests {
                 level: 2
             )
         )
+        // 建造需求只有煤/铁；棉纺厂的 beerCost 只约束出售。
         let requests: [GameCore.ResourceRequest] = [
             .init(resource: .coal, consumerLocationID: "birmingham", context: .standard, source: .marketSlot(resource: .coal, index: 0)),
-            .init(resource: .beer, consumerLocationID: "birmingham", context: .standard, source: .industry(placementID: "build-beer")),
         ]
         state.placedLinks = [link("birmingham-oxford")]
         let proposal = GameCore.ResourcePlan(context: context, baseVersion: state.authoritativeVersion, requests: requests)
@@ -1222,13 +1222,16 @@ struct ResourceRulesTests {
     }
 
     private func coalMarket(filledIndices: Set<Int>) -> GameCore.ResourceMarket {
-        .init(resource: .coal, slots: (1...7).flatMap { price in
+        let prices = (1...7).flatMap { price in
             Array(repeating: price, count: 2)
-        }.enumerated().map { .init(price: $0.element, hasCube: filledIndices.contains($0.offset)) })
+        }
+        return .init(resource: .coal, slots: prices.enumerated().map {
+            .init(price: $0.element, hasCube: filledIndices.contains($0.offset))
+        })
     }
 
     private func ironMarket(filledIndices: Set<Int>) -> GameCore.ResourceMarket {
-        let prices = [1, 1, 1, 2, 2, 2, 3, 3, 4, 4]
+        let prices = [1, 1, 2, 2, 3, 3, 4, 4, 5, 5]
         return .init(resource: .iron, slots: prices.enumerated().map {
             .init(price: $0.element, hasCube: filledIndices.contains($0.offset))
         })

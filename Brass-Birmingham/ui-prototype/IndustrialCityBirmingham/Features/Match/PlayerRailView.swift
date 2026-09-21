@@ -7,6 +7,8 @@ struct PlayerRailView: View {
     let showsColorAssistSymbols: Bool
     let accessibilityEnabled: Bool
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     init(
         players: [PlayerSummary],
         metrics: MatchLayoutMetrics,
@@ -74,7 +76,8 @@ struct PlayerRailView: View {
                             .font(BrassTypography.number)
                             .monospacedDigit()
                         Text("£\(player.spent)")
-                            .font(.system(size: 8, weight: .bold, design: .monospaced))
+                            .font(.system(size: 11, weight: .bold, design: .monospaced))
+                            .foregroundStyle(player.spent > 0 ? BrassColor.brass.color : BrassColor.paper.color.opacity(0.75))
                         phoneStatusBadges(player)
                     }
                     .frame(maxWidth: .infinity)
@@ -88,19 +91,22 @@ struct PlayerRailView: View {
                 }
                 .foregroundStyle(BrassColor.paper.color)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(player.isCurrent ? BrassColor.legalGreen.color.opacity(0.16) : Color.clear)
+                .background(player.isCurrent
+                    ? playerTint(player.color).opacity(0.26)
+                    : Color.clear)
                 .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
                 .overlay {
                     RoundedRectangle(cornerRadius: 7, style: .continuous)
                         .stroke(
-                            player.isCurrent ? BrassColor.brass.color : BrassColor.fog.color.opacity(0.2),
-                            lineWidth: player.isCurrent ? 3 : 1
+                            player.isCurrent ? playerTint(player.color) : BrassColor.fog.color.opacity(0.2),
+                            lineWidth: player.isCurrent ? 2.5 : 1
                         )
                 }
                 .shadow(
-                    color: player.isCurrent ? BrassColor.legalGreen.color.opacity(0.58) : Color.clear,
-                    radius: 8
+                    color: player.isCurrent ? playerTint(player.color).opacity(0.65) : Color.clear,
+                    radius: 9
                 )
+                .animation(reduceMotion ? nil : .easeInOut(duration: 0.25), value: player.isCurrent)
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel(Self.playerAccessibilityLabel(
                     player,
@@ -117,47 +123,53 @@ struct PlayerRailView: View {
 
     private func tabletPlayer(_ player: PlayerSummary) -> some View {
         HStack(spacing: 7) {
-            Image(systemName: playerSymbol(player.color))
-                .foregroundStyle(playerTint(player.color))
-                .frame(width: 22)
+            industryAvatar(player)
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 4) {
                     Text(displayName(player))
                         .font(BrassTypography.label)
                         .lineLimit(1)
                     if player.isHost { status("主机", icon: "crown.fill") }
+                    if player.isConnected == false { status("离线", icon: "wifi.slash") }
                 }
+                HStack(spacing: 8) {
+                    Label("£\(player.cash)", systemImage: "sterlingsign.circle.fill")
+                    Label("收入 £\(player.incomeLevel)", systemImage: "chart.line.uptrend.xyaxis")
+                    Label("VP \(player.victoryPoints)", systemImage: "shield.fill")
+                }
+                .font(BrassTypography.number)
+                .monospacedDigit()
                 HStack(spacing: 6) {
-                    Text("已花 £\(player.spent)")
-                        .font(BrassTypography.number)
-                        .monospacedDigit()
-                    status(player.isReady ? "就绪" : "未就绪", icon: player.isReady ? "checkmark.circle.fill" : "clock")
-                    status(player.isConnected ? "在线" : "离线", icon: player.isConnected ? "wifi" : "wifi.slash")
+                    Text("本轮 £\(player.spent)")
+                    if player.isCurrent {
+                        status("行动", icon: "play.fill")
+                            .foregroundStyle(BrassColor.brass.color)
+                            .modifier(ActionBadgePulse(active: true))
+                    }
                 }
                 .font(.caption2)
             }
             Spacer(minLength: 0)
-            if player.isCurrent {
-                status("行动", icon: "play.fill")
-                    .foregroundStyle(BrassColor.brass.color)
-            }
         }
         .foregroundStyle(BrassColor.paper.color)
         .padding(7)
-        .frame(minHeight: 44)
-        .background(player.isCurrent ? BrassColor.legalGreen.color.opacity(0.16) : Color.clear)
+        .frame(minHeight: 56)
+        .background(player.isCurrent
+            ? playerTint(player.color).opacity(0.20)
+            : Color.clear)
         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .stroke(
-                    player.isCurrent ? BrassColor.brass.color : BrassColor.fog.color.opacity(0.25),
-                    lineWidth: player.isCurrent ? 3 : 1
+                    player.isCurrent ? playerTint(player.color) : BrassColor.fog.color.opacity(0.25),
+                    lineWidth: player.isCurrent ? 2.5 : 1
                 )
         }
         .shadow(
-            color: player.isCurrent ? BrassColor.legalGreen.color.opacity(0.58) : Color.clear,
+            color: player.isCurrent ? playerTint(player.color).opacity(0.60) : Color.clear,
             radius: 9
         )
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.25), value: player.isCurrent)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Self.playerAccessibilityLabel(
             player,
@@ -179,6 +191,7 @@ struct PlayerRailView: View {
         HStack(spacing: 2) {
             if player.isCurrent {
                 phoneBadge("行动", emphasized: true)
+                    .modifier(ActionBadgePulse(active: true))
             }
             if isLocal(player) {
                 phoneBadge("你", emphasized: false)
@@ -196,6 +209,36 @@ struct PlayerRailView: View {
             .clipShape(Capsule())
     }
 
+    /// “行动”徽章呼吸闪烁,让轮到谁一目了然;开启减弱动态效果时保持常亮。
+    private struct ActionBadgePulse: ViewModifier {
+        let active: Bool
+        @Environment(\.accessibilityReduceMotion) private var reduceMotion
+        @State private var dimmed = false
+
+        func body(content: Content) -> some View {
+            content
+                .opacity(active && reduceMotion ? 1 : (dimmed ? 0.45 : 1))
+                .onAppear {
+                    guard active, !reduceMotion else { return }
+                    withAnimation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true)) {
+                        dimmed = true
+                    }
+                }
+                .onChange(of: reduceMotion) { _, isReduced in
+                    guard active else { return }
+                    if isReduced {
+                        var transaction = Transaction()
+                        transaction.disablesAnimations = true
+                        withTransaction(transaction) { dimmed = false }
+                    } else {
+                        withAnimation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true)) {
+                            dimmed = true
+                        }
+                    }
+                }
+        }
+    }
+
     private func isLocal(_ player: PlayerSummary) -> Bool {
         player.id == localPlayerID
     }
@@ -208,7 +251,7 @@ struct PlayerRailView: View {
         switch color {
         case .amber: BrassColor.brass.color
         case .crimson: BrassColor.danger.color
-        case .teal: Color(red: 0.20, green: 0.67, blue: 0.67)
+        case .teal: Color(red: 0.94, green: 0.94, blue: 0.90)
         case .violet: Color(red: 0.61, green: 0.45, blue: 0.78)
         }
     }
@@ -251,6 +294,21 @@ struct PlayerRailView: View {
         let connected = player.isConnected ? "在线" : "离线"
         let shape = showsColorAssistSymbols ? "，\(player.color.localizedShapeName)" : ""
         return "顺序 \(player.order)，\(player.name)，\(player.color.localizedName)\(shape)，已花 \(player.spent) 英镑，\(ready)，\(connected)\(current)\(host)\(local)"
+    }
+
+    /// 玩家头像:颜色圆环 + 名字首字(参照数字版玩家卡)。
+    private func industryAvatar(_ player: PlayerSummary) -> some View {
+        ZStack {
+            Circle()
+                .fill(playerTint(player.color).opacity(0.18))
+                .frame(width: 40, height: 40)
+            Circle()
+                .stroke(playerTint(player.color), lineWidth: 2)
+                .frame(width: 40, height: 40)
+            Text(String(player.name.prefix(1)))
+                .font(.system(size: 16, weight: .bold, design: .serif))
+                .foregroundStyle(playerTint(player.color))
+        }
     }
 
     private func playerSymbol(_ color: PlayerColor) -> String {

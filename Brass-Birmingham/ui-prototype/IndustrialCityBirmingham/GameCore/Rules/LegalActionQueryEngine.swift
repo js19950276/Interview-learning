@@ -64,7 +64,8 @@ extension GameCore {
 
         private static func validateStructure(_ query: LegalActionQuery) throws {
             guard (1...128).contains(query.requestID.utf8.count),
-                  query.draft.selections.count <= 32,
+                  // 出售可连续任意数量(RULES.md §7.4),上限只做 DoS 防护,配合 16KB JSON 界。
+                  query.draft.selections.count <= 128,
                   query.draft.cardID.map({ (1...256).contains($0.utf8.count) }) ?? true,
                   query.draft.selections.allSatisfy(selectionIsBounded),
                   try JSONEncoder.canonical.encode(query).count <= 16_384
@@ -116,7 +117,10 @@ extension GameCore {
                 else { throw LegalActionQueryError.invalidPrefix }
                 return partial + value
             }
-            if total >= pending.shortfall {
+            // 与 TurnRules.validateForcedSale 对齐："刚够即停"，或卖光全部 eligible
+            // （ proceeds < shortfall 时差额转 VP 债，RULES.md §6.3）。
+            let soldEverything = placementIDs.count == pending.eligiblePlacementIDs.count
+            if total >= pending.shortfall || soldEverything {
                 return try complete(
                     .forcedSale(.init(placementIDs: placementIDs)),
                     actorID: actorID, state: state, catalog: catalog
@@ -198,7 +202,6 @@ extension GameCore {
             else { throw LegalActionQueryError.invalidPrefix }
             let requirements = Array(repeating: ResourceKind.coal, count: level.coalCost)
                 + Array(repeating: .iron, count: level.ironCost)
-                + Array(repeating: .beer, count: level.beerCost)
             guard sources.count <= requirements.count else { throw LegalActionQueryError.invalidPrefix }
             var candidate = state
             for (resource, source) in zip(requirements, sources) {
@@ -215,7 +218,7 @@ extension GameCore {
                 return (GameRulesEngine.legalResourceSources(
                     resource: next, consumerLocationID: targets[0].locationID,
                     context: .standard, state: candidate, catalog: catalog
-                ).map { sourceChoice(next, $0) }, nil)
+                ).map { sourceChoice(next, $0, actorID: actorID, state: candidate, catalog: catalog) }, nil)
             }
             let intent = BuildIntent(
                 cardID: cardID, locationID: targets[0].locationID,
@@ -259,13 +262,19 @@ extension GameCore {
             }
             let desiredCount: Int
             if state.era == .rail {
-                if counts.isEmpty {
-                    guard routes.isEmpty, sources.isEmpty else { throw LegalActionQueryError.invalidPrefix }
-                    return ([
-                        choice("network-count:1", "1 条铁路", .networkLinkCount(1)),
-                        choice("network-count:2", "2 条铁路", .networkLinkCount(2)),
-                    ], nil)
+            if counts.isEmpty {
+                guard routes.isEmpty, sources.isEmpty else { throw LegalActionQueryError.invalidPrefix }
+                guard let player = state.players.first(where: { $0.id == actorID }) else {
+                    throw LegalActionQueryError.notActivePlayer
                 }
+                // 双铁路前置可行性：£15 且消耗 2 个连接片（啤酒可达性由后续步骤校验）。
+                var choices = [choice("network-count:1", "1 条铁路", .networkLinkCount(1))]
+                if player.cash >= 15, player.linksRemaining >= 2 {
+                    choices.append(choice("network-count:2", "2 条铁路", .networkLinkCount(2)))
+                }
+                guard choices.isEmpty == false else { throw LegalActionQueryError.invalidPrefix }
+                return (choices, nil)
+            }
                 guard counts.count == 1, [1, 2].contains(counts[0]) else {
                     throw LegalActionQueryError.invalidPrefix
                 }
@@ -285,10 +294,10 @@ extension GameCore {
                 guard TopologyRules.legalNetworkRoutes(
                     playerID: actorID, state: candidate, board: catalog.catalog.board
                 ).contains(routeID) else { throw LegalActionQueryError.invalidPrefix }
-                guard state.era == .rail else {
-                    candidate.placedLinks.append(.init(routeID: routeID, ownerID: actorID, era: .canal))
-                    continue
-                }
+                // 与 NetworkRules.validate 同序：先落线，再在新拓扑上找该线的煤源
+                //（RULES.md §8.1“放置完成后必须连通煤源”）。
+                candidate.placedLinks.append(.init(routeID: routeID, ownerID: actorID, era: state.era))
+                guard state.era == .rail else { continue }
                 guard let route = catalog.catalog.board.routes.first(where: { $0.id == routeID }),
                       let location = route.adjacentLocationIDs.first(where: {
                           GameRulesEngine.legalResourceSources(
@@ -303,7 +312,6 @@ extension GameCore {
                 guard (try? ResourceRules.consumeValidatedRequests(
                     [request], actorID: actorID, state: &candidate, catalog: catalog
                 )) != nil else { throw LegalActionQueryError.invalidPrefix }
-                candidate.placedLinks.append(.init(routeID: routeID, ownerID: actorID, era: .rail))
             }
 
             if state.era == .rail, coalSources.count < routes.count,
@@ -312,21 +320,39 @@ extension GameCore {
                 guard TopologyRules.legalNetworkRoutes(
                     playerID: actorID, state: candidate, board: catalog.catalog.board
                 ).contains(route.id) else { throw LegalActionQueryError.invalidPrefix }
-                let choices = route.adjacentLocationIDs.flatMap {
-                    GameRulesEngine.legalResourceSources(
-                        resource: .coal, consumerLocationID: $0, context: .network,
-                        state: candidate, catalog: catalog
-                    )
-                }
-                return (uniqueSources(.coal, choices), nil)
+                // 待放线路先进入候选拓扑再找煤源，避免漏掉仅因这条线路才连通的来源。
+                candidate.placedLinks.append(.init(routeID: route.id, ownerID: actorID, era: state.era))
+                let options = uniqueSources(
+                    .coal,
+                    route.adjacentLocationIDs.flatMap {
+                        GameRulesEngine.legalResourceSources(
+                            resource: .coal, consumerLocationID: $0, context: .network,
+                            state: candidate, catalog: catalog
+                        )
+                    },
+                    actorID: actorID, state: candidate, catalog: catalog
+                )
+                guard options.isEmpty == false else { throw LegalActionQueryError.invalidPrefix }
+                return (options, nil)
             }
             guard coalSources.count == routes.count || state.era == .canal else {
                 throw LegalActionQueryError.invalidPrefix
             }
             if routes.count < desiredCount {
-                return (TopologyRules.legalNetworkRoutes(
+                let routeOptions = TopologyRules.legalNetworkRoutes(
                     playerID: actorID, state: candidate, board: catalog.catalog.board
-                ).map { choice("route:\($0)", "可建线路", .route(id: $0)) }, nil)
+                ).map { routeID -> GameCore.LegalChoice in
+                    // 用起终点地名区分线路,避免按钮行出现无法分辨的同名选项。
+                    let endpoints = catalog.catalog.board.routes
+                        .first(where: { $0.id == routeID })?
+                        .adjacentLocationIDs.map { locationLabel($0) } ?? []
+                    let label = endpoints.isEmpty
+                        ? "可建线路"
+                        : "可建线路 · " + endpoints.joined(separator: "–")
+                    return choice("route:\(routeID)", label, .route(id: routeID))
+                }
+                guard routeOptions.isEmpty == false else { throw LegalActionQueryError.invalidPrefix }
+                return (routeOptions, nil)
             }
             if state.era == .canal || desiredCount == 1 {
                 return try complete(.network(.init(
@@ -336,13 +362,18 @@ extension GameCore {
             }
             let beerSources = Array(sources.dropFirst(desiredCount))
             if beerSources.isEmpty, let route = catalog.catalog.board.routes.first(where: { $0.id == routes[1] }) {
-                let choices = route.adjacentLocationIDs.flatMap {
-                    GameRulesEngine.legalResourceSources(
-                        resource: .beer, consumerLocationID: $0, context: .network,
-                        state: candidate, catalog: catalog
-                    )
-                }.filter { if case .merchantBeer = $0 { false } else { true } }
-                return (uniqueSources(.beer, choices), nil)
+                let options = uniqueSources(
+                    .beer,
+                    route.adjacentLocationIDs.flatMap {
+                        GameRulesEngine.legalResourceSources(
+                            resource: .beer, consumerLocationID: $0, context: .network,
+                            state: candidate, catalog: catalog
+                        )
+                    }.filter { if case .merchantBeer = $0 { false } else { true } },
+                    actorID: actorID, state: candidate, catalog: catalog
+                )
+                guard options.isEmpty == false else { throw LegalActionQueryError.invalidPrefix }
+                return (options, nil)
             }
             guard beerSources.count == 1 else { throw LegalActionQueryError.invalidPrefix }
             return try complete(.network(.init(
@@ -407,10 +438,27 @@ extension GameCore {
                 candidate.players[playerIndex].industryStacks[stackIndex].tiles.removeFirst()
             }
             if sources.count < tileIDs.count {
-                return (GameRulesEngine.legalResourceSources(
+                // 用 candidate 的现金:前一块付费铁已在 candidate 上扣除。
+                guard let developingPlayer = candidate.players.first(where: { $0.id == actorID }) else {
+                    throw LegalActionQueryError.notActivePlayer
+                }
+                // 铁来源选项按当前现金过滤，买不起的市场/无限供应来源不提供。
+                let options = GameRulesEngine.legalResourceSources(
                     resource: .iron, consumerLocationID: "", context: .standard,
                     state: candidate, catalog: catalog
-                ).map { sourceChoice(.iron, $0) }, nil)
+                ).filter { source in
+                    switch source {
+                    case .marketSlot(_, let index):
+                        return candidate.ironMarket.slots.indices.contains(index)
+                            && developingPlayer.cash >= candidate.ironMarket.slots[index].price
+                    case .unlimitedMarket(_, let price):
+                        return developingPlayer.cash >= price
+                    case .industry, .merchantBeer:
+                        return true
+                    }
+                }
+                guard options.isEmpty == false else { throw LegalActionQueryError.invalidPrefix }
+                return (options.map { sourceChoice(.iron, $0, actorID: actorID, state: candidate, catalog: catalog) }, nil)
             }
             if tileIDs.count < desiredCount {
                 guard let current = candidate.players.first(where: { $0.id == actorID }) else {
@@ -472,11 +520,13 @@ extension GameCore {
                 var resourceCandidate = candidate
                 while beerSources.count < level.beerCost {
                     if cursor == draft.selections.count {
-                        return (GameRulesEngine.legalResourceSources(
+                        let options = GameRulesEngine.legalResourceSources(
                             resource: .beer, consumerLocationID: placement.locationID,
                             context: .selling(merchantSlotID: merchantID),
                             state: resourceCandidate, catalog: catalog
-                        ).map { sourceChoice(.beer, $0) }, nil)
+                        ).map { sourceChoice(.beer, $0, actorID: actorID, state: resourceCandidate, catalog: catalog) }
+                        guard options.isEmpty == false else { throw LegalActionQueryError.invalidPrefix }
+                        return (options, nil)
                     }
                     guard case .resourceSource(let source) = draft.selections[cursor] else {
                         throw LegalActionQueryError.invalidPrefix
@@ -530,11 +580,18 @@ extension GameCore {
                     guard (try? SellRules.apply(target, state: &afterSale, catalog: catalog)) != nil else {
                         throw LegalActionQueryError.invalidPrefix
                     }
-                    var choices = [choice("sell:finish", "完成出售", .sellDisposition(continueSelling: false))]
-                    if sellablePlacements(actorID: actorID, state: afterSale, catalog: catalog).isEmpty == false {
-                        choices.append(choice("sell:continue", "继续出售", .sellDisposition(continueSelling: true)))
+                    let remaining = sellablePlacements(actorID: actorID, state: afterSale, catalog: catalog)
+                    // 引导多笔出售:继续卖放首位并标明剩余可卖数,避免误以为只能卖一笔。
+                    if remaining.isEmpty {
+                        return ([choice("sell:finish", "结束出售（已选\(proposed.count)笔）",
+                                        .sellDisposition(continueSelling: false))], nil)
                     }
-                    return (choices, nil)
+                    return ([
+                        choice("sell:continue", "继续出售（还可卖\(remaining.count)处）",
+                               .sellDisposition(continueSelling: true)),
+                        choice("sell:finish", "结束出售（已选\(proposed.count)笔）",
+                               .sellDisposition(continueSelling: false)),
+                    ], nil)
                 }
                 guard case .sellDisposition(let continueSelling) = draft.selections[cursor] else {
                     throw LegalActionQueryError.invalidPrefix
@@ -560,6 +617,14 @@ extension GameCore {
             let cardID = try requiredCardID(in: draft)
             guard let player = state.players.first(where: { $0.id == actorID }) else {
                 throw LegalActionQueryError.notActivePlayer
+            }
+            // 手持任意万能牌时不能侦察(RULES.md §7.6),入口即拒绝而非走完选择再失败。
+            let definitions = Dictionary(uniqueKeysWithValues: catalog.catalog.cards.map { ($0.id, $0) })
+            if player.hand.contains(where: { card in
+                let kind = definitions[card.definitionID]?.kind
+                return kind == .wildLocation || kind == .wildIndustry
+            }) {
+                throw LegalActionQueryError.invalidPrefix
             }
             let selected = draft.selections.compactMap { if case .card(let id) = $0 { id } else { nil } }
             guard selected.count == draft.selections.count else { throw LegalActionQueryError.invalidPrefix }
@@ -624,6 +689,10 @@ extension GameCore {
                 (try? TurnRules.validateForcedSale(
                     intent, actorID: actorID, state: state, catalog: catalog
                 )) != nil
+            case .confirmEraIntermission:
+                (try? SimpleActionRules.validateEraConfirmation(
+                    actorID: actorID, state: state, catalog: catalog
+                )) != nil
             }
             guard valid else { throw LegalActionQueryError.invalidPrefix }
             return ([], payload)
@@ -686,13 +755,15 @@ extension GameCore {
                         roomID: .init(rawValue: "legal-query-dry-run"),
                         state: &candidate, catalog: catalog
                     )
+                case .confirmEraIntermission:
+                    return nil
                 }
             } catch { return nil }
             guard let after = candidate.players.first(where: { $0.id == actorID }) else { return nil }
             let effects: [ResourceEffect] = switch event.payload {
             case .built(_, _, let value), .networkBuilt(_, _, let value),
                  .developed(_, _, let value), .sold(_, _, let value): value
-            case .passed, .loanTaken, .scouted, .forcedSaleResolved: []
+            case .passed, .loanTaken, .scouted, .forcedSaleResolved, .eraIntermissionConfirmed: []
             }
             return .init(
                 cashDelta: after.cash - before.cash,
@@ -708,6 +779,43 @@ extension GameCore {
 
         private static func sourceChoice(_ resource: ResourceKind, _ source: ResourceSource) -> LegalChoice {
             choice("source:\(resource.rawValue):\(stableSourceID(source))", stableSourceLabel(source), .resourceSource(source))
+        }
+
+        /// 带上下文的来源标签:标明自家/对手、产业类型与地名,
+        /// 让“用自家酒厂/对手煤矿”这类选择一眼可辨。
+        private static func sourceChoice(
+            _ resource: ResourceKind,
+            _ source: ResourceSource,
+            actorID: PlayerID,
+            state: GameState,
+            catalog: VerifiedGameDataCatalog
+        ) -> LegalChoice {
+            choice(
+                "source:\(resource.rawValue):\(stableSourceID(source))",
+                detailedSourceLabel(source, actorID: actorID, state: state, catalog: catalog),
+                .resourceSource(source)
+            )
+        }
+
+        private static func detailedSourceLabel(
+            _ source: ResourceSource,
+            actorID: PlayerID,
+            state: GameState,
+            catalog: VerifiedGameDataCatalog
+        ) -> String {
+            switch source {
+            case .industry(let placementID):
+                guard let placement = state.boardIndustryPlacements.first(where: {
+                    $0.placementID == placementID
+                }) else { return stableSourceLabel(source) }
+                let owner = placement.ownerID == actorID ? "自家" : "对手"
+                return "\(owner)\(industryLabel(placement.tile.industryDefinitionID)) · \(locationLabel(placement.locationID))"
+            case .merchantBeer(let slotID):
+                let location = catalog.catalog.board.merchantSlots.first(where: { $0.id == slotID })?.locationID
+                return "商人啤酒 · \(location.map { locationLabel($0) } ?? slotID)"
+            default:
+                return stableSourceLabel(source)
+            }
         }
 
         private static func stableSourceID(_ source: ResourceSource) -> String {
@@ -779,7 +887,7 @@ extension GameCore {
         private static func merchantBonusLabel(_ bonus: BoardDefinition.MerchantSlot.Bonus) -> String {
             switch bonus.kind {
             case .develop: "开发 \(bonus.amount)"
-            case .income: "收入 +\(bonus.amount)"
+            case .income: "收入轨 +\(bonus.amount) 格"
             case .money: "£\(bonus.amount)"
             case .victoryPoints: "胜利点 +\(bonus.amount)"
             }
@@ -789,9 +897,17 @@ extension GameCore {
             RealMatchViewModel.cardTitle(definitionID)
         }
 
-        private static func uniqueSources(_ resource: ResourceKind, _ sources: [ResourceSource]) -> [LegalChoice] {
+        private static func uniqueSources(
+            _ resource: ResourceKind,
+            _ sources: [ResourceSource],
+            actorID: PlayerID,
+            state: GameState,
+            catalog: VerifiedGameDataCatalog
+        ) -> [LegalChoice] {
             var seen: Set<ResourceSource> = []
-            return sources.filter { seen.insert($0).inserted }.map { sourceChoice(resource, $0) }
+            return sources.filter { seen.insert($0).inserted }.map {
+                sourceChoice(resource, $0, actorID: actorID, state: state, catalog: catalog)
+            }
         }
     }
 }

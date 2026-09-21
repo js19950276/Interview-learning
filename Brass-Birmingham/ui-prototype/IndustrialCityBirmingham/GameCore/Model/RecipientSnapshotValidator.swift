@@ -27,7 +27,7 @@ extension GameCore {
             _ snapshot: ViewSnapshot,
             context: RecipientSnapshotValidationContext
         ) throws {
-            guard context.protocolVersion == 2 else {
+            guard context.protocolVersion >= 2 else {
                 throw RecipientSnapshotValidationError.protocolMismatch
             }
             guard !context.rulesetVersion.isEmpty else {

@@ -111,10 +111,27 @@ struct TurnScoringRulesTests {
         #expect(state.boardIndustryPlacements.contains { $0.placementID == sale.placementID } == false)
         #expect(state.publicSupply.beer == 15)
         #expect(debtorAfter.cash == 0)
-        #expect(debtorAfter.victoryPointDebt == max(0, 10 - saleCost / 2))
+        // 官方规则:每缺 £1 立即失去 1 VP,最多失去现有 VP(此处 4)。
+        #expect(debtorAfter.victoryPointDebt == min(4, max(0, 10 - saleCost / 2)))
+        #expect(debtorAfter.victoryPoints == 0)
         #expect(state.authoritativeVersion.rawValue == previousVersion.rawValue + 1)
         #expect(state.actionNumber == previousActionNumber + 1)
         #expect(event.payload == .forcedSaleResolved(.init(placementIDs: [sale.placementID])))
+    }
+
+    @Test func roundEndResortsTurnOrderByAscendingSpentStably() throws {
+        let catalog = try verifiedCatalog()
+        var state = try setup(playerCount: 2, catalog: catalog)
+        let first = state.playerOrder[0]
+        let second = state.playerOrder[1]
+        // RULES.md §6.2:回合末按本回合花费从少到多重排下回合顺位,平手保持相对顺序。
+        mutatePlayer(first, in: &state) { $0.spent = 5 }
+        state.turnsCompletedInRound = state.playerCount
+        state.actionsRemaining = 0
+        _ = try GameCore.GameRulesEngine.resolveRoundEnd(state: &state, catalog: catalog)
+        #expect(state.playerOrder == [second, first])
+        #expect(state.players.allSatisfy { $0.spent == 0 })
+        #expect(state.activePlayerID == second)
     }
 
     @Test(arguments: [GameCore.Era.canal, .rail])
@@ -127,10 +144,31 @@ struct TurnScoringRulesTests {
         let before = source
         let events = try GameCore.GameRulesEngine.resolveRoundEnd(state: &source, catalog: catalog)
 
-        #expect(events.count == 3)
+        // 运河:roundEnded + eraScored 后进入结算确认,railPrepared 延后到全员确认;
+        // 铁路:roundEnded + eraScored + gameEnded。
+        #expect(events.count == (era == .canal ? 2 : 3))
         var replayed = before
         try GameCore.GameRulesEngine.replay(events, to: &replayed, catalog: catalog)
         #expect(replayed == source)
+
+        if era == .canal {
+            // 逐个确认;最后一家的确认事件携带 railPrepared 并切换时代。
+            var confirmEvents: [GameCore.AuthoritativeGameEvent] = []
+            for player in before.players.map(\.id) {
+                let target = try GameCore.SimpleActionRules.validateEraConfirmation(
+                    actorID: player, state: source, catalog: catalog
+                )
+                confirmEvents.append(try GameCore.GameRulesEngine.resolveEraConfirmation(
+                    target, roomID: .init(rawValue: "era-batch"), state: &source, catalog: catalog
+                ))
+            }
+            #expect(source.era == .rail)
+            #expect(source.turnPhase == .active)
+            #expect(confirmEvents.last?.transitions.contains { transition in
+                if case .railPrepared = transition { return true }
+                return false
+            } == true)
+        }
 
         for index in events.indices {
             var tampered = events
@@ -143,7 +181,7 @@ struct TurnScoringRulesTests {
         }
     }
 
-    @Test func eraScoringCountsEveryHyperedgeAdjacentFlippedIndustryAndRemovesOnlyEraLinks() throws {
+    @Test func eraScoringCountsEveryHyperedgeAdjacentFlippedIndustryAndKeepsAllLinks() throws {
         let catalog = try verifiedCatalog()
         var state = try setup(playerCount: 2, catalog: catalog)
         let owner = state.playerOrder[0]
@@ -177,13 +215,48 @@ struct TurnScoringRulesTests {
             total + (catalog.catalog.industries.first { $0.id == placement.tile.industryDefinitionID }?
                 .levels.first { $0.level == placement.tile.level }?.victoryPoints ?? 0)
         }
-        #expect(player.victoryPoints == expectedLinkPoints + ownIndustryPoints)
-        #expect(state.placedLinks.map(\.era) == [.rail])
+        // 官方规则:每个时代末"所有"己方连线各计一次分(本场景同一线放了两条,
+        // 物理上不可能,但引擎按连线逐条计分 → 线分×2)。
+        #expect(player.victoryPoints == expectedLinkPoints * 2 + ownIndustryPoints)
+        // 官方规则:连线永久保留,时代结算不移除。
+        #expect(state.placedLinks.map(\.era) == [.canal, .rail])
         guard case .eraScored(let details) = event else {
             Issue.record("expected era scoring event")
             return
         }
-        #expect(details.removedRouteIDs == [route.id])
+        #expect(details.removedRouteIDs.isEmpty)
+    }
+
+    @Test func eraScoringCountsAdjacentMerchantTileLinkIcons() throws {
+        // RULES.md §10.1：连接图标可来自已翻面的产业和贸易商板块。
+        let catalog = try verifiedCatalog()
+        var state = try setup(playerCount: 2, catalog: catalog)
+        let owner = state.playerOrder[0]
+        // 2 人局的 5 个贸易商摆在 gloucester×2 / oxford×2 / shrewsbury×1。
+        let route = try #require(catalog.catalog.board.routes.first { $0.id == "gloucester-worcester" })
+        let locationBySlotID = Dictionary(uniqueKeysWithValues:
+            catalog.catalog.board.merchantSlots.map { ($0.id, $0.locationID) }
+        )
+        let expectedMerchantPoints = state.merchants.reduce(0) { total, merchant in
+            guard locationBySlotID[merchant.slotID] == "gloucester",
+                  let definition = catalog.catalog.merchants.first(where: { $0.id == merchant.merchantDefinitionID })
+            else { return total }
+            return total + definition.linkPoints
+        }
+        #expect(expectedMerchantPoints > 0)
+        #expect(state.boardIndustryPlacements.isEmpty)
+        state.placedLinks = [.init(routeID: route.id, ownerID: owner, era: .canal)]
+
+        let event = try GameCore.GameRulesEngine.scoreEra(.canal, state: &state, catalog: catalog)
+
+        let player = try #require(state.players.first { $0.id == owner })
+        #expect(player.victoryPoints == expectedMerchantPoints)
+        guard case .eraScored(let details) = event else {
+            Issue.record("expected era scoring event")
+            return
+        }
+        // 连线永久保留:时代结算不再移除线路。
+        #expect(details.removedRouteIDs.isEmpty)
     }
 
     @Test func pendingForcedSaleRejectsOtherActionsAndIncompletePrefixesWithoutConsumingAHandAction() throws {
@@ -342,6 +415,17 @@ struct TurnScoringRulesTests {
         )
         let beerBefore = state.publicSupply.beer
         mutatePlayer(owner, in: &state) { $0.cash = 41; $0.incomePosition = 19; $0.victoryPoints = 12 }
+        // 运河连线计分后撤下并退回主人:先各放 1 条线并扣减余量,过渡后应清空并回补。
+        let otherOwner = try #require(state.playerOrder.dropFirst().first)
+        let canalRoutes = catalog.catalog.board.routes.filter {
+            $0.eras.contains(.canal) && $0.playerCounts.contains(3)
+        }
+        let ownerRoute = try #require(canalRoutes.first)
+        let otherRoute = try #require(canalRoutes.dropFirst().first)
+        state.placedLinks.append(.init(routeID: ownerRoute.id, ownerID: owner, era: .canal))
+        state.placedLinks.append(.init(routeID: otherRoute.id, ownerID: otherOwner, era: .canal))
+        mutatePlayer(owner, in: &state) { $0.linksRemaining = 13 }
+        mutatePlayer(otherOwner, in: &state) { $0.linksRemaining = 12 }
 
         let event = try GameCore.GameRulesEngine.prepareRailEra(state: &state, catalog: catalog)
 
@@ -349,6 +433,10 @@ struct TurnScoringRulesTests {
         #expect(state.era == .rail)
         #expect(state.boardIndustryPlacements.map(\.placementID) == ["level-2"])
         #expect(state.placedLinks.isEmpty)
+        // 官方规则:连线片撤下退回主人,余量回补(不超过 14)。
+        #expect(preserved.linksRemaining == 14)
+        let otherPreserved = try #require(state.players.first { $0.id == otherOwner })
+        #expect(otherPreserved.linksRemaining == 13)
         #expect(state.coalMarket == coalBefore)
         #expect(state.ironMarket == ironBefore)
         #expect(state.merchants.allSatisfy {
@@ -360,6 +448,7 @@ struct TurnScoringRulesTests {
         #expect(Set(state.players.flatMap(\.hand).map(\.id) + state.standardDrawDeck.map(\.id)) == activeCardIDsBefore)
         #expect(state.publicDiscard.isEmpty)
         #expect(preserved.cash == 41 && preserved.incomePosition == 19 && preserved.victoryPoints == 12)
+        // 官方规则:被移除的一级板块退回游戏盒(移出游戏),垫板块堆保持不变。
         let originalStacks = try setup(playerCount: 3, catalog: catalog).players.first { $0.id == owner }?.industryStacks
         #expect(preserved.industryStacks == originalStacks)
         guard case .railPrepared(let details) = event else {
@@ -435,6 +524,79 @@ struct TurnScoringRulesTests {
             return
         }
         #expect(rejection.reasonCode == .invalidAction)
+    }
+
+    @Test func winnerFloorsVictoryPointDebtAtZero() throws {
+        // RULES.md §6.3：每缺 £1 失去 1 VP，VP 最低降到 0。
+        let catalog = try verifiedCatalog()
+        var state = try setup(playerCount: 2, catalog: catalog)
+        let debtor = state.playerOrder[0]
+        let clean = state.playerOrder[1]
+        mutatePlayer(debtor, in: &state) { $0.victoryPoints = 0; $0.victoryPointDebt = 5 }
+        mutatePlayer(clean, in: &state) { $0.victoryPoints = 0 }
+
+        let event = try GameCore.GameRulesEngine.resolveWinner(state: &state)
+
+        guard case .gameEnded(let details) = event else {
+            Issue.record("expected game end event")
+            return
+        }
+        // 债务不得把有效 VP 压到 0 以下：两人应并列，而不是债务人垫底。
+        #expect(details.standings.count == 1)
+        #expect(Set(details.standings[0]) == Set([debtor, clean]))
+    }
+
+    @Test func forcedSaleQueryCompletesWhenEverythingIsSoldButProceedsFallShort() throws {
+        // RULES.md §6.3：全卖仍不足时差额转 VP 债。这条合法路径必须产出可提交意图，
+        // 否则负债人会卡死在选择界面并暂停整局。
+        let catalog = try verifiedCatalog()
+        var state = try setup(playerCount: 2, catalog: catalog)
+        let debtor = state.playerOrder[0]
+        let first = try placement(
+            ownerID: debtor, industryID: "manufacturer", level: 1,
+            placementID: "short-a", catalog: catalog.catalog
+        )
+        var second = try placement(
+            ownerID: debtor, industryID: "manufacturer", level: 1,
+            placementID: "short-b", catalog: catalog.catalog
+        )
+        let otherLocation = try #require(catalog.catalog.board.locations.first { location in
+            location.id != first.locationID && location.industrySlots.contains {
+                $0.contains("manufacturer")
+            }
+        })
+        second.locationID = otherLocation.id
+        second.slotIndex = try #require(otherLocation.industrySlots.firstIndex {
+            $0.contains("manufacturer")
+        })
+        state.boardIndustryPlacements = [first, second]
+        // 制造厂一级清算价 £4/块，两块 £8 < £10：全卖也补不上缺口。
+        state.turnPhase = .forcedSale(.init(
+            playerID: debtor, shortfall: 10,
+            eligiblePlacementIDs: ["short-a", "short-b"]
+        ))
+
+        let complete = try GameCore.LegalActionQueryEngine.respond(
+            to: .init(requestID: "short-all", baseVersion: state.authoritativeVersion,
+                      draft: .init(action: .forcedSale, cardID: nil, selections: [
+                        .industryPlacement(id: "short-a"), .industryPlacement(id: "short-b"),
+                      ])),
+            actorID: debtor, state: state, catalog: catalog
+        )
+        guard case .forcedSale(let intent) = complete.completePayload else {
+            Issue.record("selling everything must complete even when proceeds fall short")
+            return
+        }
+        #expect(intent.placementIDs == ["short-a", "short-b"])
+
+        let partial = try GameCore.LegalActionQueryEngine.respond(
+            to: .init(requestID: "short-one", baseVersion: state.authoritativeVersion,
+                      draft: .init(action: .forcedSale, cardID: nil,
+                                   selections: [.industryPlacement(id: "short-a")])),
+            actorID: debtor, state: state, catalog: catalog
+        )
+        #expect(partial.completePayload == nil)
+        #expect(partial.nextChoices.isEmpty == false)
     }
 
     @Test func pendingPhasePersistsInHostArchiveAndLegacyStateDefaultsNewFields() throws {
@@ -799,9 +961,32 @@ struct TurnScoringRulesTests {
         }
         #expect(event.transitions.contains { if case .roundEnded = $0 { true } else { false } })
         #expect(event.transitions.contains { if case .eraScored = $0 { true } else { false } })
+        let postEventState = engine.gameState
         if era == .canal {
-            #expect(event.transitions.contains { if case .railPrepared = $0 { true } else { false } })
+            #expect(engine.gameState.era == .canal)
+            guard case .eraIntermission(let intermission) = engine.gameState.turnPhase else {
+                Issue.record("canal end should pause at the era intermission, got \(engine.gameState.turnPhase)")
+                return
+            }
+            #expect(intermission.awards.count == state.players.count)
+            // 全员确认后进入铁路时代;最后一家的确认事件携带 railPrepared。
+            var lastConfirmEvent: GameCore.AuthoritativeGameEvent?
+            for player in state.players.map(\.id) {
+                let confirmResult = engine.submit(.init(
+                    protocolVersion: 1, rulesetVersion: state.rulesetVersion, roomID: roomID,
+                    senderID: player, reconnectToken: try #require(tokens[player]),
+                    baseVersion: engine.gameState.authoritativeVersion,
+                    payload: .confirmEraIntermission
+                ), catalog: catalog)
+                guard case .accepted(let confirmEvent) = confirmResult else {
+                    Issue.record("era confirmation rejected for \(player.rawValue): \(confirmResult)")
+                    return
+                }
+                lastConfirmEvent = confirmEvent
+            }
             #expect(engine.gameState.era == .rail)
+            #expect(engine.gameState.turnPhase == .active)
+            #expect(lastConfirmEvent?.transitions.contains { if case .railPrepared = $0 { true } else { false } } == true)
         } else {
             #expect(event.transitions.contains { if case .gameEnded = $0 { true } else { false } })
             #expect(engine.gameState.turnPhase == .ended)
@@ -811,7 +996,7 @@ struct TurnScoringRulesTests {
         try GameCore.GameRulesEngine.replay(
             event, expectedRoomID: roomID, to: &replayed, catalog: catalog
         )
-        #expect(replayed == engine.gameState)
+        #expect(replayed == postEventState)
     }
 
     private func setup(playerCount: Int, catalog: GameCore.VerifiedGameDataCatalog) throws -> GameCore.GameState {

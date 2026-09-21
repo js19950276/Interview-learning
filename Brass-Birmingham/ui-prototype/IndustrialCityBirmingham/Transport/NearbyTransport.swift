@@ -94,6 +94,10 @@ actor NearbyTransport: Transport {
     private let queue: DispatchQueue
     private let serviceName: String?
     private var listener: NWListener?
+    private var hostingRoomID: GameCore.RoomID?
+    private var hostingPort: UInt16?
+    private var listenerRestartAttempts = 0
+    private var didShutDown = false
     private var browser: NWBrowser?
     private var connections: [GameCore.PlayerID: NWConnection] = [:]
     private var decoders: [GameCore.PlayerID: LengthPrefixedFrameCodec.Decoder] = [:]
@@ -119,6 +123,15 @@ actor NearbyTransport: Transport {
     }
 
     func startHosting(roomID: GameCore.RoomID, port: UInt16?) async throws {
+        guard !didShutDown else { throw TransportError.connectionFailed }
+        hostingRoomID = roomID
+        hostingPort = port
+        try await startListener()
+    }
+
+    private func startListener() async throws {
+        guard let roomID = hostingRoomID else { throw TransportError.connectionFailed }
+        let port = hostingPort
         let parameters = Self.makeParameters()
         let listener: NWListener
         if let port {
@@ -148,12 +161,32 @@ actor NearbyTransport: Transport {
                 listener.newConnectionHandler = nil
                 listener.cancel()
             })
-            listener.stateUpdateHandler = nil
+            // 就绪后保留状态回调:监听器死亡(接口切换等)时原地重建,
+            // 保持房间"可被发现",否则房主 UI 毫无感知。
+            listener.stateUpdateHandler = { [weak self] state in
+                guard let self, case .failed = state else { return }
+                Task { await self.restartListenerAfterFailure() }
+            }
+            listenerRestartAttempts = 0
         } catch {
             listener.stateUpdateHandler = nil
             listener.newConnectionHandler = nil
             if self.listener === listener { self.listener = nil }
             throw error
+        }
+    }
+
+    private func restartListenerAfterFailure() {
+        guard listenerRestartAttempts < 3, hostingRoomID != nil else {
+            print("INDUSTRIALCITY_LOCAL host listener restart abandoned")
+            return
+        }
+        listenerRestartAttempts += 1
+        listener?.cancel()
+        listener = nil
+        Task { [weak self] in
+            do { try await self?.startListener() }
+            catch { print("INDUSTRIALCITY_LOCAL host listener restart failed") }
         }
     }
 
@@ -174,6 +207,14 @@ actor NearbyTransport: Transport {
     }
 
     func connect(to peer: GameCore.PlayerID) async throws {
+        guard !didShutDown else { throw TransportError.notConnected }
+        // 重入防御:同一 peer 的旧连接先终止,避免泄漏与事件串扰。
+        if let existing = connections[peer] {
+            _ = terminationRegistry.terminate(existing, for: peer)
+            existing.cancel()
+            connections[peer] = nil
+            decoders[peer] = nil
+        }
         let name = serviceName ?? NearbyServiceName.sanitize(peer.rawValue)
         let endpoint = NWEndpoint.service(name: name, type: Self.serviceType, domain: "local", interface: nil)
         let connection = NWConnection(to: endpoint, using: Self.makeParameters())
@@ -203,9 +244,18 @@ actor NearbyTransport: Transport {
             _ = terminationRegistry.terminate(connection, for: peer)
             connections[peer] = nil
             decoders[peer] = nil
+            connection.cancel()
             throw error
         }
         installStateHandler(connection, peer: peer)
+        // 就绪与状态回调交接之间的失败不能再被吞掉。
+        guard connection.state == .ready else {
+            _ = terminationRegistry.terminate(connection, for: peer)
+            connections[peer] = nil
+            decoders[peer] = nil
+            connection.cancel()
+            throw TransportError.connectionFailed
+        }
         connectionReady(peer: peer, connection: connection)
     }
 
@@ -231,6 +281,9 @@ actor NearbyTransport: Transport {
         connections.values.forEach { $0.stateUpdateHandler = nil; $0.cancel() }
         connections.removeAll()
         decoders.removeAll()
+        terminationRegistry = ConnectionTerminationRegistry()
+        didShutDown = true
+        hostingRoomID = nil
         continuation.finish()
     }
 
