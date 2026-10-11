@@ -11,6 +11,7 @@ class Solution:
     def isSymmetric(self, root: Optional[TreeNode]) -> bool:
         if not root:
             return True
+        return self.isSame(root.left, root.right)
 
     def isSame(self, left: Optional[TreeNode], right: Optional[TreeNode]):
         if not left or not right:
