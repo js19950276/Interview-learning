@@ -23,7 +23,9 @@ extension GameCore {
             state: inout GameState,
             catalog: VerifiedGameDataCatalog
         ) throws -> [GameTransitionEvent] {
-            guard state.turnPhase == .active else { throw ForcedSaleRuleError.noPendingSale }
+            // 活跃(强卖恢复链路)或回合结束待确认(正常过轮)都允许结算回合末。
+            guard state.turnPhase == .active || state.turnPhase == .awaitingTurnEndConfirmation
+            else { throw ForcedSaleRuleError.noPendingSale }
             let oldIndex = Dictionary(uniqueKeysWithValues: state.playerOrder.enumerated().map {
                 ($0.element, $0.offset)
             })

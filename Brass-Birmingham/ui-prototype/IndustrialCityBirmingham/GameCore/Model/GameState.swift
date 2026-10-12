@@ -121,6 +121,9 @@ extension GameCore {
         var slotID: String
         var merchantDefinitionID: String
         var hasBeer: Bool
+        /// 该槽位已售出的货物(官方:每次出售占用一个空槽,整局限一次);nil=空槽。
+        /// 可选字段,旧存档缺省解码为 nil。
+        var soldIndustryDefinitionID: String? = nil
     }
 
     nonisolated struct BoardIndustryPlacement: Codable, Equatable, Sendable {
@@ -192,6 +195,9 @@ extension GameCore {
         case forcedSale(PendingForcedSale)
         /// 时代结算确认:运河时代结束后的暂停界面,全员确认后才进入铁路时代。
         case eraIntermission(EraIntermissionState)
+        /// 回合结束待确认:两个行动落地后不自动过轮,行动玩家确认后才交给
+        /// 下一位(补牌/回合末结算/强卖都发生在确认时);期间仍可整回合撤回。
+        case awaitingTurnEndConfirmation
         case ended
     }
 

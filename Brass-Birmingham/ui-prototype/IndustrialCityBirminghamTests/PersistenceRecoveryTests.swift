@@ -1531,6 +1531,10 @@ struct PersistenceRecoveryTests {
         }
         #expect(buildArchive.gameState?.boardIndustryPlacements.count == 1)
 
+        // 新流程:第 1 轮每人 1 行动,建造者确认过轮后对手才能行动。
+        try await buildCoordinator.submit(.confirmTurnEnd)
+        try await Task.sleep(for: .milliseconds(150))
+
         let networkActor = buildActor == hostID ? player : hostID
         let networkCoordinator = networkActor == hostID ? pair.host : pair.guest
         let networkCard = try #require(await networkCoordinator.snapshot?.players.first(where: { $0.id == networkActor })?.hand?.first)
@@ -1541,14 +1545,15 @@ struct PersistenceRecoveryTests {
             cardID: networkCard, routeIDs: [route.id], coalSources: [], beerSource: nil
         )))
         try await Task.sleep(for: .milliseconds(150))
-        #expect(await pair.host.snapshot?.authoritativeVersion == .init(rawValue: 2))
-        #expect(await pair.persistence.savedArchives.last?.authoritativeVersion == .init(rawValue: 2))
+        // 建造 v1 + 过轮确认 v2 + 网络 v3。
+        #expect(await pair.host.snapshot?.authoritativeVersion == .init(rawValue: 3))
+        #expect(await pair.persistence.savedArchives.last?.authoritativeVersion == .init(rawValue: 3))
         guard case let .host(networkArchive) = try #require(await pair.persistence.savedArchives.last).payload else {
             Issue.record("Expected host network archive")
             return
         }
         #expect(networkArchive.gameState?.placedLinks.map(\.routeID) == [route.id])
-        #expect(networkArchive.gameState?.actionNumber == 2)
+        #expect(networkArchive.gameState?.actionNumber == 3)
     }
 
     @Test func partialFanoutKeepsThePrecommitRecoveryEvidenceWithoutAdvancingProgressSequence() async throws {
@@ -1872,6 +1877,9 @@ struct PersistenceRecoveryTests {
         )
         try await guest.pass(discardCardID: guestPassCard)
         try await eventually { await host.snapshot?.authoritativeVersion == .init(rawValue: 1) }
+        // 新流程:确认过轮后才轮到房主。
+        try await guest.submit(.confirmTurnEnd)
+        try await eventually { await host.snapshot?.authoritativeVersion == .init(rawValue: 2) }
         #expect(await host.snapshot?.activePlayerID == hostID)
         let hostPlayer = try #require(initial.players.first(where: { $0.id == hostID }))
         let scoutCards = Array(hostPlayer.hand.prefix(3)).map(\.id)
@@ -1880,9 +1888,9 @@ struct PersistenceRecoveryTests {
         let industryWildID = try #require(initial.wildIndustryPool.last?.id)
 
         try await host.submit(.scout(.init(cardIDs: scoutCards)))
-        try await eventually { await guest.snapshot?.authoritativeVersion == .init(rawValue: 2) }
+        try await eventually { await guest.snapshot?.authoritativeVersion == .init(rawValue: 3) }
         #expect(await host.lastIntentRejection == nil)
-        #expect(await host.snapshot?.authoritativeVersion == .init(rawValue: 2))
+        #expect(await host.snapshot?.authoritativeVersion == .init(rawValue: 3))
 
         let hostArchive = try #require(await hostPersistence.savedArchives.last)
         guard case let .host(hostPayload) = hostArchive.payload,

@@ -863,6 +863,15 @@ actor SessionCoordinator {
                 reconnectTokens: [configuration.hostPlayerID: .init(rawValue: "transport-authenticated-host")]
             )
             guard case let .clientEvent(value) = try? SessionProtocol.EnvelopeValidator().validate(envelope, against: context) else {
+                // 持久诊断:被拒的合法事件曾让客机静默丢弃、对局冻结(2026-10-11),
+                // 落盘一行便于事后从设备拉日志定位。
+                do { _ = try SessionProtocol.EnvelopeValidator().validate(envelope, against: context) }
+                catch {
+                    SessionDiagnostics.log(
+                        "CLIENT-EVENT-REJECTED seat=\(configuration.playerID.rawValue)"
+                        + " v=\(envelope.authoritativeVersion.rawValue) err=\(error)"
+                    )
+                }
                 if invalidRecoveryReplayCache.insert(
                     envelope.messageID,
                     authenticatedHostID: configuration.hostPlayerID
@@ -873,6 +882,7 @@ actor SessionCoordinator {
             }
             guard acceptUnique(envelope, peer: peer) else { return }
             snapshot = value.snapshot
+            SessionDiagnostics.log("EVENT-APPLIED seat=\(configuration.playerID.rawValue) v\(value.event.version.rawValue) actor=\(value.event.actor.rawValue) \(SessionDiagnostics.describe(value.event.payload))")
             lastClientEvent = value
             lastLegalResponse = nil
             pauseReason = recoveryIsComplete(at: value.snapshot.authoritativeVersion) ? nil : .stateRecovery
@@ -929,6 +939,7 @@ actor SessionCoordinator {
 
     private func resolveSerially(_ intent: GameCore.PlayerIntent) async throws {
         guard persistenceError == nil else { throw Error.persistenceUnavailable }
+        SessionDiagnostics.log("INTENT seat=\(configuration.playerID.rawValue) sender=\(intent.senderID.rawValue) base=v\(intent.baseVersion.rawValue) \(SessionDiagnostics.describe(intent.payload))")
         guard pauseReason == nil else {
             if intent.senderID != configuration.playerID {
                 try? await send(.rejection(.init(
@@ -1013,6 +1024,14 @@ actor SessionCoordinator {
         candidateEngine: GameCore.HostEngine
     ) async throws {
         let candidateEngine = candidateEngine
+        switch result {
+        case let .accepted(event):
+            SessionDiagnostics.log("EVENT-ACCEPTED v\(event.version.rawValue) actor=\(event.actor.rawValue) \(SessionDiagnostics.describe(event.payload))")
+        case let .rejected(rejection):
+            SessionDiagnostics.log("EVENT-REJECTED sender=\(intent.senderID.rawValue) \(SessionDiagnostics.describe(intent.payload)) reason=\(rejection.reasonCode)")
+        case let .internalFailure(failure):
+            SessionDiagnostics.log("EVENT-INTERNAL-FAILURE sender=\(intent.senderID.rawValue) \(SessionDiagnostics.describe(intent.payload)) code=\(failure.code)")
+        }
         switch result {
         case let .accepted(event):
             var projections: [GameCore.PlayerID: GameCore.ClientEvent] = [:]

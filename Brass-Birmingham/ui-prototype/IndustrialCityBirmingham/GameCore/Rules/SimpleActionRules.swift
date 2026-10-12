@@ -54,6 +54,10 @@ extension GameCore {
         let actorID: PlayerID
     }
 
+    nonisolated struct ValidatedTurnEndConfirmation: Equatable, Sendable {
+        let actorID: PlayerID
+    }
+
     nonisolated enum SimpleActionRuleError: String, Codable, Equatable, Error, Sendable {
         case notActivePlayer, missingCard, invalidState, incomeFloor, invalidScoutCards
         case duplicateScoutCard, nonStandardCard, wildHeld, wildPoolEmpty
@@ -93,6 +97,24 @@ extension GameCore {
                   intermission.confirmedPlayerIDs.contains(actorID) == false
             else { throw SimpleActionRuleError.invalidState }
             return ValidatedEraConfirmation(actorID: actorID)
+        }
+
+        /// 回合结束确认:仅当前行动玩家在"待确认"阶段可确认过轮。
+        static func validateTurnEndConfirmation(
+            actorID: PlayerID,
+            state: GameState,
+            catalog verifiedCatalog: VerifiedGameDataCatalog
+        ) throws -> ValidatedTurnEndConfirmation {
+            guard GameStateAuthorityValidator.isValid(state, catalog: verifiedCatalog) else {
+                throw SimpleActionRuleError.invalidState
+            }
+            guard state.players.contains(where: { $0.id == actorID }) else {
+                throw SimpleActionRuleError.notActivePlayer
+            }
+            guard case .awaitingTurnEndConfirmation = state.turnPhase,
+                  state.activePlayerID == actorID
+            else { throw SimpleActionRuleError.invalidState }
+            return ValidatedTurnEndConfirmation(actorID: actorID)
         }
 
         static func validateLoan(

@@ -146,6 +146,18 @@ struct BuildAndNetworkRulesTests {
         #expect(engine.gameState.publicSupply.iron == -1)
         #expect(GameCore.GameStateAuthorityValidator.isValid(engine.gameState, catalog: catalog))
 
+        // 新流程:确认过轮,然后对手行动。
+        let confirmTurnEnd = GameCore.PlayerIntent(
+            protocolVersion: 1, rulesetVersion: engine.gameState.rulesetVersion, roomID: roomID,
+            senderID: actor, reconnectToken: try #require(tokens[actor]),
+            baseVersion: engine.gameState.authoritativeVersion,
+            payload: .confirmTurnEnd
+        )
+        guard case .accepted = engine.submit(confirmTurnEnd, catalog: catalog) else {
+            Issue.record("turn-end confirm after build must be accepted")
+            return
+        }
+
         // 关键回归：下一个行动不再被 internalFailure 卡死。
         let nextActor = try #require(engine.gameState.activePlayerID)
         let nextCard = try #require(engine.gameState.players.first(where: { $0.id == nextActor })?.hand.first)
@@ -629,6 +641,8 @@ struct BuildAndNetworkRulesTests {
         state.placedLinks = [
             .init(routeID: "birmingham-worcester", ownerID: actor, era: .canal),
             .init(routeID: "gloucester-worcester", ownerID: actor, era: .canal),
+            // 第二笔出售需要另一个空槽:官方槽位整局限一次,补一条到 oxford 的连线。
+            .init(routeID: "birmingham-oxford", ownerID: actor, era: .canal),
         ]
         state.players[playerIndex].linksRemaining = 12
         state.boardIndustryPlacements = [
@@ -915,6 +929,11 @@ struct BuildAndNetworkRulesTests {
                 industryDefinitionID: "coal-mine", slotIndex: 0, resourceSources: []
             ))
         ), catalog: catalog).acceptedEvent)
+        // 新流程:两个行动落地后确认过轮,才能轮到对方铺线。
+        let confirm = try #require(host.submit(intent(
+            sender: first, version: host.gameState.authoritativeVersion,
+            payload: .confirmTurnEnd
+        ), catalog: catalog).acceptedEvent)
         let network = try #require(host.submit(intent(
             sender: second, version: host.gameState.authoritativeVersion,
             payload: .network(.init(
@@ -924,7 +943,7 @@ struct BuildAndNetworkRulesTests {
         ), catalog: catalog).acceptedEvent)
 
         var replayed = initial
-        for event in [pass, build, network] {
+        for event in [pass, build, confirm, network] {
             try GameCore.GameRulesEngine.replay(
                 event, expectedRoomID: roomID, to: &replayed, catalog: catalog
             )

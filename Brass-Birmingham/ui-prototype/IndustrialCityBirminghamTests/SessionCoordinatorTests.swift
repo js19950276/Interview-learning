@@ -309,6 +309,13 @@ struct SessionCoordinatorTests {
         let guestPublicChecksum = await guest.snapshot?.match?.publicChecksum
         #expect(hostPublicChecksum == guestPublicChecksum)
 
+        // 新流程:第 1 轮每人 1 行动,建造者确认过轮后对手才能铺线。
+        try await buildCoordinator.submit(.confirmTurnEnd)
+        try await eventually {
+            let hostVersion = await host.snapshot?.authoritativeVersion
+            let guestVersion = await guest.snapshot?.authoritativeVersion
+            return hostVersion == .init(rawValue: 2) && guestVersion == .init(rawValue: 2)
+        }
         let networkActor = buildActor == hostID ? guestID : hostID
         let networkCoordinator = networkActor == hostID ? host : guest
         let networkCard = try #require(await networkCoordinator.snapshot?.players.first(where: { $0.id == networkActor })?.hand?.first)
@@ -318,27 +325,31 @@ struct SessionCoordinatorTests {
         try await networkCoordinator.submit(.network(.init(
             cardID: networkCard, routeIDs: [canalRoute.id], coalSources: [], beerSource: nil
         )))
+        // 网络是第 1 轮该玩家的唯一行动:确认过轮后进入第 2 轮。
+        try await networkCoordinator.submit(.confirmTurnEnd)
         try await eventually {
             let hostVersion = await host.snapshot?.authoritativeVersion
             let guestVersion = await guest.snapshot?.authoritativeVersion
-            return hostVersion == .init(rawValue: 2) && guestVersion == .init(rawValue: 2)
+            return hostVersion == .init(rawValue: 4) && guestVersion == .init(rawValue: 4)
         }
-        #expect(await host.snapshot?.actionNumber == 2)
-        #expect(await guest.snapshot?.actionNumber == 2)
+        #expect(await host.snapshot?.actionNumber == 4)
+        #expect(await guest.snapshot?.actionNumber == 4)
 
         let loanActor = try #require(await host.snapshot?.activePlayerID)
         let loanCoordinator = loanActor == hostID ? host : guest
         let loanCard = try #require(await loanCoordinator.snapshot?.players.first(where: {
             $0.id == loanActor
         })?.hand?.first)
+        // 贷款是第 2 轮第 1 个行动:落地后仍在同一回合内(非待确认)。
         try await loanCoordinator.submit(.loan(.init(cardID: loanCard)))
         try await eventually {
             let hostVersion = await host.snapshot?.authoritativeVersion
             let guestVersion = await guest.snapshot?.authoritativeVersion
-            return hostVersion == .init(rawValue: 3) && guestVersion == .init(rawValue: 3)
+            return hostVersion == .init(rawValue: 5) && guestVersion == .init(rawValue: 5)
         }
-        #expect(await host.snapshot?.actionNumber == 3)
-        #expect(await guest.snapshot?.actionNumber == 3)
+        #expect(await host.snapshot?.actionNumber == 5)
+        #expect(await guest.snapshot?.actionNumber == 5)
+        #expect(await host.snapshot?.awaitingTurnEndConfirmation == false)
     }
 
     @Test func concurrentStartGameAllowsExactlyOneAuthoritativeSetup() async throws {

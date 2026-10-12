@@ -102,6 +102,8 @@ struct AuthoritativeMatchBoardView: View {
                         compactMarket(state: state, metrics: metrics)
                     }
                     actions(state: state, metrics: metrics)
+                    retractTurnPill(metrics: metrics)
+                    confirmTurnEndLayer(metrics: metrics)
                     actionContext(state: state, metrics: metrics)
                     legalChoices(metrics: metrics)
                     // 强制出售面板会全屏覆盖并自带确认键,不再渲染被遮住的标准确认面板。
@@ -569,6 +571,83 @@ struct AuthoritativeMatchBoardView: View {
         .padding(.trailing, metrics.rightRailWidth + 8)
         .padding(.bottom, metrics.handHeight + 8)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+    }
+
+    /// 撤回本回合已落地的全部操作(回到回合开始):自己回合、已有行动、
+    /// 未处于选牌/查询流程时显示。
+    @ViewBuilder
+    private func retractTurnPill(metrics: MatchLayoutMetrics) -> some View {
+        if store.canRetractTurnActions, interaction.selectedCardID == nil {
+            Button {
+                interaction.resetSelection()
+                store.cancelLegalFlow()
+                store.retractTurnActions()
+            } label: {
+                Label(
+                    "撤回本回合操作",
+                    systemImage: "arrow.uturn.backward.circle.fill"
+                )
+                .font(BrassTypography.label)
+                .foregroundStyle(BrassColor.paper.color)
+                .padding(.horizontal, 12)
+                .frame(minHeight: 36)
+                .background(BrassColor.brass.color, in: Capsule())
+                .shadow(color: .black.opacity(0.25), radius: 4, y: 2)
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("match.retractTurnActions")
+            // 右下角:与左下的紧凑材料面板错开;仅在未选牌时显示,
+            // 而右下的操作菜单只在选牌后出现,二者不会同屏。
+            .padding(.trailing, metrics.rightRailWidth + 8)
+            .padding(.bottom, metrics.handHeight + 8)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+        }
+    }
+
+    /// 回合结束待确认:自己两个行动落地后,点击确认才过轮(期间仍可撤回);
+    /// 他人待确认时顶部提示等待。
+    @ViewBuilder
+    private func confirmTurnEndLayer(metrics: MatchLayoutMetrics) -> some View {
+        if store.isAwaitingTurnEndConfirmation {
+            if store.canConfirmTurnEnd, interaction.selectedCardID == nil {
+                VStack(spacing: 8) {
+                    Button {
+                        interaction.resetSelection()
+                        store.cancelLegalFlow()
+                        store.confirmTurnEnd()
+                    } label: {
+                        Label(
+                            "确认结束回合",
+                            systemImage: "checkmark.circle.fill"
+                        )
+                        .font(BrassTypography.title)
+                        .foregroundStyle(BrassColor.coal.color)
+                        .padding(.horizontal, 18)
+                        .frame(minHeight: 44)
+                        .background(BrassColor.brass.color, in: Capsule())
+                        .shadow(color: .black.opacity(0.3), radius: 5, y: 2)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("match.confirmTurnEnd")
+                    Text("两个行动已完成,确认后交给下一位;仍可撤回重下")
+                        .font(BrassTypography.label)
+                        .foregroundStyle(BrassColor.paper.color.opacity(0.92))
+                }
+                // 屏幕中下方居中:不与右下撤回胶囊、底部手牌区重叠。
+                .padding(.bottom, metrics.handHeight + 56)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+            } else if store.snapshot?.activePlayerID != store.localPlayerID {
+                Text("等待 \(store.displayName(for: store.snapshot?.activePlayerID ?? store.localPlayerID)) 确认结束回合…")
+                    .font(BrassTypography.label)
+                    .foregroundStyle(BrassColor.paper.color.opacity(0.9))
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(BrassColor.coal.color.opacity(0.88), in: Capsule())
+                    .accessibilityIdentifier("match.awaitingTurnEndNotice")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                    .padding(.top, 64)
+            }
+        }
     }
 
     @ViewBuilder

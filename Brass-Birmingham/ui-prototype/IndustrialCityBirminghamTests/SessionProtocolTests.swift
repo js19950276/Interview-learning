@@ -129,6 +129,131 @@ struct SessionProtocolTests {
         #expect(try SessionProtocol.EnvelopeValidator().validate(envelope, against: makeContext()) == envelope.payload)
     }
 
+    // MARK: 强制出售转移的隐私守卫
+    // 2026-10-11 双模拟器自动对局发现:守卫曾用整个 ForcedSaleProjection 做相等比较,
+    // 而引擎给债务人附带清算明细(options),导致合法事件被判 snapshotPrivacyViolation、
+    // 客机静默丢弃、对局冻结。
+
+    private func makeForcedSaleEnvelope(
+        debtorID: GameCore.PlayerID,
+        recipientID: GameCore.PlayerID,
+        forcedSale: GameCore.ForcedSaleProjection?,
+        markerForNonDebtor: Bool
+    ) throws -> SessionProtocol.SessionEnvelope {
+        let base = try makeEngine().snapshot(for: recipientID)
+        let event = GameCore.AuthoritativeGameEvent(
+            roomID: roomID,
+            actor: aliceID,
+            previousVersion: .init(rawValue: 4),
+            version: .init(rawValue: 5),
+            actionNumber: 11,
+            payload: .passed(discardedCardID: "public-card"),
+            transitions: [markerForNonDebtor
+                ? .forcedSaleRequiredMarker(debtorID)
+                : .forcedSaleRequired(.init(
+                    playerID: debtorID, shortfall: 5,
+                    eligiblePlacementIDs: ["coventry#1", "cannock#1", "wolverhampton#1"]
+                ))]
+        )
+        let snapshot = GameCore.ViewSnapshot(
+            roomID: base.roomID,
+            recipient: base.recipient,
+            players: base.players,
+            activePlayerID: base.activePlayerID,
+            turn: base.turn,
+            actionNumber: 11,
+            authoritativeVersion: .init(rawValue: 5),
+            discardPile: base.discardPile,
+            forcedSale: forcedSale,
+            checksum: try GameCore.snapshotChecksum(
+                roomID: base.roomID,
+                recipient: base.recipient,
+                players: base.players,
+                activePlayerID: base.activePlayerID,
+                turn: base.turn,
+                actionNumber: 11,
+                authoritativeVersion: .init(rawValue: 5),
+                discardPile: base.discardPile,
+                forcedSale: forcedSale,
+                match: base.match
+            )
+        )
+        return makeEnvelope(
+            authoritativeVersion: .init(rawValue: 5),
+            recipientID: recipientID,
+            senderID: aliceID,
+            payload: .clientEvent(.init(event: event, snapshot: snapshot))
+        )
+    }
+
+    @Test func debtorForcedSaleEventCarryingLiquidationOptionsValidates() throws {
+        // 引擎投影会带清算明细;守卫不得因 options 存在而误判违约。
+        let envelope = try makeForcedSaleEnvelope(
+            debtorID: bobID,
+            recipientID: bobID,
+            forcedSale: .init(
+                shortfall: 5,
+                eligiblePlacementIDs: ["cannock#1", "coventry#1", "wolverhampton#1"],
+                options: [
+                    .init(placementID: "coventry#1", liquidationValue: 4),
+                    .init(placementID: "cannock#1", liquidationValue: 2),
+                    .init(placementID: "wolverhampton#1", liquidationValue: 3),
+                ]
+            ),
+            markerForNonDebtor: false
+        )
+        #expect(try SessionProtocol.EnvelopeValidator().validate(envelope, against: makeContext()) == envelope.payload)
+    }
+
+    @Test func debtorForcedSaleEventWithoutProjectionIsRejected() throws {
+        let envelope = try makeForcedSaleEnvelope(
+            debtorID: bobID, recipientID: bobID, forcedSale: nil, markerForNonDebtor: false
+        )
+        #expect(throws: SessionProtocol.SessionProtocolError.snapshotPrivacyViolation) {
+            try SessionProtocol.EnvelopeValidator().validate(envelope, against: makeContext())
+        }
+    }
+
+    @Test func debtorForcedSaleEventWithForeignPlacementOptionIsRejected() throws {
+        let envelope = try makeForcedSaleEnvelope(
+            debtorID: bobID,
+            recipientID: bobID,
+            forcedSale: .init(
+                shortfall: 5,
+                eligiblePlacementIDs: ["cannock#1", "coventry#1", "wolverhampton#1"],
+                options: [
+                    .init(placementID: "coventry#1", liquidationValue: 4),
+                    .init(placementID: "birmingham#9", liquidationValue: 9),
+                ]
+            ),
+            markerForNonDebtor: false
+        )
+        #expect(throws: SessionProtocol.SessionProtocolError.snapshotPrivacyViolation) {
+            try SessionProtocol.EnvelopeValidator().validate(envelope, against: makeContext())
+        }
+    }
+
+    @Test func nonDebtorReceivesMarkerAndMustNotSeeForcedSaleProjection() throws {
+        let clean = try makeForcedSaleEnvelope(
+            debtorID: aliceID, recipientID: bobID, forcedSale: nil, markerForNonDebtor: true
+        )
+        #expect(try SessionProtocol.EnvelopeValidator().validate(clean, against: makeContext()) == clean.payload)
+
+        let leaking = try makeForcedSaleEnvelope(
+            debtorID: aliceID,
+            recipientID: bobID,
+            forcedSale: .init(
+                shortfall: 5,
+                eligiblePlacementIDs: ["cannock#1"],
+                options: [.init(placementID: "cannock#1", liquidationValue: 2)]
+            ),
+            markerForNonDebtor: true
+        )
+        #expect(throws: SessionProtocol.SessionProtocolError.snapshotPrivacyViolation) {
+            try SessionProtocol.EnvelopeValidator().validate(leaking, against: makeContext())
+        }
+    }
+
     @Test func validatorRejectsMaxVersionRelationshipsWithoutOverflowing() throws {
         let snapshot = try makeEngine(version: Int.max).snapshot(for: bobID)
         let event = GameCore.AuthoritativeGameEvent(

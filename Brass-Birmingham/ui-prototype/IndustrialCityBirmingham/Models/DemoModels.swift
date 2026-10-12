@@ -100,6 +100,8 @@ nonisolated struct MapMerchantPlacement: Identifiable, Equatable, Codable, Senda
     let hasBeer: Bool
     let bonusKind: MerchantBonusKind
     let bonusAmount: Int
+    /// 该槽位已售出的货物(官方:出售在空槽放标记,整局限一次);nil=空槽。
+    var soldIndustry: IndustryKind? = nil
 }
 
 nonisolated struct MapLocationSlot: Identifiable, Equatable, Codable, Sendable {

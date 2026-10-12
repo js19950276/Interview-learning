@@ -131,7 +131,10 @@ struct RulesCoverageTests {
                 .init(id: 8, testNames: ["doubleRailConsumesCoalInOrderLetsFirstLinkUnlockSecondAndUsesOwnBeerAnywhere"]),
                 .init(id: 9, testNames: ["canalPreparationPreservesMarketsRefillsMerchantsRedealsAndPreservesLongLivedState"]),
                 .init(id: 10, testNames: ["finalRailScoringRepeatsPreservedLevelTwoAwardsNoIncomeAndResolvesAllWinnerTies"]),
-                .init(id: 11, testNames: ["sellUsesConcreteConnectedMerchantConsumesAtMostOneMerchantBeerAndAppliesRewards"]),
+                .init(id: 11, testNames: [
+                    "sellUsesConcreteConnectedMerchantConsumesAtMostOneMerchantBeerAndAppliesRewards",
+                    "sellFillsMerchantSlotOnceAndRejectsReuseAndMismatchedIndustry",
+                ]),
                 .init(id: 12, testNames: [
                     "sellRejectsBlankWrongTypeDisconnectedFlippedAndSecondInvalidSaleWithoutMutation",
                     "coalMarketRequiresEdgeConnectionUsesCheapestFilledSlotThenUnlimitedEight",
@@ -171,6 +174,7 @@ struct RulesCoverageTests {
             ExecutableTest(name: "canalPreparationPreservesMarketsRefillsMerchantsRedealsAndPreservesLongLivedState", run: TurnScoringRulesTests().canalPreparationPreservesMarketsRefillsMerchantsRedealsAndPreservesLongLivedState),
             ExecutableTest(name: "finalRailScoringRepeatsPreservedLevelTwoAwardsNoIncomeAndResolvesAllWinnerTies", run: TurnScoringRulesTests().finalRailScoringRepeatsPreservedLevelTwoAwardsNoIncomeAndResolvesAllWinnerTies),
             ExecutableTest(name: "sellUsesConcreteConnectedMerchantConsumesAtMostOneMerchantBeerAndAppliesRewards", run: DevelopSellSimpleActionTests().sellUsesConcreteConnectedMerchantConsumesAtMostOneMerchantBeerAndAppliesRewards),
+            ExecutableTest(name: "sellFillsMerchantSlotOnceAndRejectsReuseAndMismatchedIndustry", run: DevelopSellSimpleActionTests().sellFillsMerchantSlotOnceAndRejectsReuseAndMismatchedIndustry),
             ExecutableTest(name: "sellRejectsBlankWrongTypeDisconnectedFlippedAndSecondInvalidSaleWithoutMutation", run: DevelopSellSimpleActionTests().sellRejectsBlankWrongTypeDisconnectedFlippedAndSecondInvalidSaleWithoutMutation),
             ExecutableTest(name: "coalMarketRequiresEdgeConnectionUsesCheapestFilledSlotThenUnlimitedEight", run: ResourceRulesTests().coalMarketRequiresEdgeConnectionUsesCheapestFilledSlotThenUnlimitedEight),
             ExecutableTest(name: "identicalSeedsProduceIdenticalCanonicalStateAndReplay", run: GameSetupTests().identicalSeedsProduceIdenticalCanonicalStateAndReplay),

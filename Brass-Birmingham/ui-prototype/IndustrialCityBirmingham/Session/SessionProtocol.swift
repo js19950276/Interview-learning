@@ -292,11 +292,19 @@ nonisolated enum SessionProtocol {
             for transition in clientEvent.event.transitions {
                 switch transition {
                 case .forcedSaleRequired(let pending):
+                    // 债务人收到完整强制出售投影:金额与合格地块必须与权威 pending
+                    // 一致;options 只允许覆盖合格地块(清算明细,不得夹带他人地块)。
+                    // 不能与整个 ForcedSaleProjection 做相等比较——引擎会给债务人
+                    // 附带 liquidationValue 明细,而校验器无法重算这些数值。
                     guard recipientID == pending.playerID,
-                          clientEvent.snapshot.forcedSale == .init(
-                            shortfall: pending.shortfall,
-                            eligiblePlacementIDs: pending.eligiblePlacementIDs.sorted()
-                          ) else { throw SessionProtocolError.snapshotPrivacyViolation }
+                          let forcedSale = clientEvent.snapshot.forcedSale
+                    else { throw SessionProtocolError.snapshotPrivacyViolation }
+                    let optionPlacementIDs = forcedSale.options.map(\.placementID)
+                    guard forcedSale.shortfall == pending.shortfall,
+                          forcedSale.eligiblePlacementIDs == pending.eligiblePlacementIDs.sorted(),
+                          Set(optionPlacementIDs).count == optionPlacementIDs.count,
+                          optionPlacementIDs.allSatisfy(pending.eligiblePlacementIDs.contains)
+                    else { throw SessionProtocolError.snapshotPrivacyViolation }
                 case .forcedSaleRequiredMarker(let debtorID):
                     guard recipientID != debtorID,
                           clientEvent.snapshot.forcedSale == nil

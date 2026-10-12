@@ -140,7 +140,12 @@ extension GameCore {
                     guard slotsByID[placement.slotID] != nil,
                           let merchant = merchantsByID[placement.merchantDefinitionID]
                     else { return false }
-                    return merchant.acceptedIndustryIDs.isEmpty == false || placement.hasBeer == false
+                    guard merchant.acceptedIndustryIDs.isEmpty == false || placement.hasBeer == false else {
+                        return false
+                    }
+                    // 已售出的货物必须在该市场接收清单内(官方:标记只能放到对应图标空槽)。
+                    guard let sold = placement.soldIndustryDefinitionID else { return true }
+                    return merchant.acceptedIndustryIDs.contains(sold)
                 }
             return merchantsOK
         }
@@ -156,6 +161,14 @@ extension GameCore {
                 )
                 return state.activePlayerID == state.playerOrder[state.turnsCompletedInRound]
                     && (1...actionBudget).contains(state.actionsRemaining)
+                    && state.roundIncomeCursor == nil
+            case .awaitingTurnEndConfirmation:
+                // 待确认:行动玩家不变、行动额度已用尽、尚未补牌过轮。
+                guard state.playerOrder.indices.contains(state.turnsCompletedInRound) else {
+                    return false
+                }
+                return state.activePlayerID == state.playerOrder[state.turnsCompletedInRound]
+                    && state.actionsRemaining == 0
                     && state.roundIncomeCursor == nil
             case .forcedSale(let pending):
                 let ownedPlacementIDs = state.boardIndustryPlacements

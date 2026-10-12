@@ -181,6 +181,119 @@ struct DevelopSellSimpleActionTests {
         }
     }
 
+    /// 官方:每次出售占用市场一个空槽(放货物标记),槽位整局限一次。
+    /// 覆盖:售出后槽位被标记、跨行动再售被拒、同一意图内重复选择被拒、
+    /// 合法查询不再枚举已售槽位;以及产业图标不匹配的市场被专项拒绝。
+    @Test func sellFillsMerchantSlotOnceAndRejectsReuseAndMismatchedIndustry() throws {
+        let catalog = try verifiedCatalog()
+        var state = try setupState(catalog: catalog)
+        let actor = try #require(state.activePlayerID)
+        let playerIndex = try #require(state.players.firstIndex { $0.id == actor })
+        state.players[playerIndex].hand = [.init(id: "location-birmingham-1", definitionID: "location-birmingham")]
+        state.merchants = knownMerchants()
+        state.placedLinks = [.init(routeID: "birmingham-oxford", ownerID: actor, era: .canal)]
+        state.boardIndustryPlacements = [
+            .init(
+                placementID: "cotton", locationID: "birmingham", slotIndex: 0, ownerID: actor,
+                tile: .init(id: "cotton-tile", industryDefinitionID: "cotton-mill", level: 1)
+            ),
+            // 槽位种类须与地图数据一致,否则权威校验器判非法、资源源枚举清空。
+            .init(
+                placementID: "cotton-2", locationID: "worcester", slotIndex: 0, ownerID: actor,
+                tile: .init(id: "cotton-tile-2", industryDefinitionID: "cotton-mill", level: 1)
+            ),
+            .init(
+                placementID: "pottery", locationID: "coventry", slotIndex: 0, ownerID: actor,
+                tile: .init(id: "pottery-tile", industryDefinitionID: "pottery", level: 1)
+            ),
+            .init(
+                placementID: "own-beer", locationID: "walsall", slotIndex: 1, ownerID: actor,
+                tile: .init(id: "beer-tile", industryDefinitionID: "brewery", level: 1), resourceCount: 1
+            ),
+        ]
+        state.publicSupply.beer -= 1
+        repairCardFixture(&state, catalog: catalog)
+        let original = state
+
+        // 图标不匹配:棉纺厂不能卖给只收制造厂的 oxford-2(manufacturer-2-plus)。
+        #expect(throws: GameCore.SellRuleError.merchantDoesNotAccept) {
+            try GameCore.SellRules.validate(
+                .init(cardID: "location-birmingham-1", sales: [.init(
+                    industryPlacementID: "cotton", merchantSlotID: "oxford-2",
+                    beerSources: [.merchantBeer(slotID: "oxford-2")]
+                )]),
+                actorID: actor, state: state, catalog: catalog
+            )
+        }
+        #expect(state == original)
+
+        // 查询层正控:未售前 oxford-1 出现在可选市场中。
+        let beforeQuery = try GameCore.LegalActionQueryEngine.respond(
+            to: .init(
+                requestID: "t0", baseVersion: state.authoritativeVersion,
+                draft: .init(action: .sell, cardID: "location-birmingham-1", selections: [.industryPlacement(id: "cotton")])
+            ),
+            actorID: actor, state: state, catalog: catalog
+        )
+        #expect(beforeQuery.nextChoices.contains { choice in
+            if case .merchant(let id) = choice.value { id == "oxford-1" } else { false }
+        })
+
+        // 第一笔出售:占用 oxford-1 槽位。
+        let target = try GameCore.SellRules.validate(
+            .init(cardID: "location-birmingham-1", sales: [.init(
+                industryPlacementID: "cotton", merchantSlotID: "oxford-1",
+                beerSources: [.merchantBeer(slotID: "oxford-1")]
+            )]),
+            actorID: actor, state: state, catalog: catalog
+        )
+        let before = state
+        let event = try GameCore.GameRulesEngine.resolveSell(target, roomID: roomID, state: &state, catalog: catalog)
+        #expect(state.merchants.first { $0.slotID == "oxford-1" }?.soldIndustryDefinitionID == "cotton-mill")
+        var replayed = before
+        try GameCore.GameRulesEngine.replay(event, expectedRoomID: roomID, to: &replayed, catalog: catalog)
+        #expect(replayed == state)
+
+        // 跨行动再售同一槽位:另一块棉纺厂也不能再卖给 oxford-1。
+        state.activePlayerID = actor
+        state.players[playerIndex].hand = [.init(id: "location-birmingham-1", definitionID: "location-birmingham")]
+        repairCardFixture(&state, catalog: catalog)
+        let afterFirstSell = state
+        #expect(throws: GameCore.SellRuleError.merchantSlotFilled) {
+            try GameCore.SellRules.validate(
+                .init(cardID: "location-birmingham-1", sales: [.init(
+                    industryPlacementID: "cotton-2", merchantSlotID: "oxford-1", beerSources: []
+                )]),
+                actorID: actor, state: state, catalog: catalog
+            )
+        }
+        // 同一意图内重复选择同一槽位:第二笔命中已占槽。
+        #expect(throws: GameCore.SellRuleError.merchantSlotFilled) {
+            try GameCore.SellRules.validate(
+                .init(cardID: "location-birmingham-1", sales: [
+                    .init(industryPlacementID: "cotton-2", merchantSlotID: "oxford-1", beerSources: []),
+                    .init(industryPlacementID: "pottery", merchantSlotID: "oxford-1", beerSources: []),
+                ]),
+                actorID: actor, state: state, catalog: catalog
+            )
+        }
+        #expect(state == afterFirstSell)
+
+        // 查询层:已售槽位不再出现在可选市场(死路响应或空选择集均可)。
+        let afterQuery = try? GameCore.LegalActionQueryEngine.respond(
+            to: .init(
+                requestID: "t1", baseVersion: state.authoritativeVersion,
+                draft: .init(action: .sell, cardID: "location-birmingham-1", selections: [.industryPlacement(id: "cotton-2")])
+            ),
+            actorID: actor, state: state, catalog: catalog
+        )
+        if let afterQuery {
+            #expect(afterQuery.nextChoices.allSatisfy { choice in
+                if case .merchant = choice.value { return false } else { return true }
+            })
+        }
+    }
+
     @Test func sellAppliesEveryCatalogMerchantRewardOnlyWhenMerchantBeerIsUsed() throws {
         let catalog = try verifiedCatalog()
         struct RewardCase {
@@ -409,6 +522,7 @@ struct DevelopSellSimpleActionTests {
         multi.placedLinks = [
             .init(routeID: "birmingham-worcester", ownerID: multiActor, era: .canal),
             .init(routeID: "gloucester-worcester", ownerID: multiActor, era: .canal),
+            .init(routeID: "birmingham-oxford", ownerID: multiActor, era: .canal),
         ]
         multi.players[multiIndex].linksRemaining = 12
         multi.boardIndustryPlacements = [
@@ -439,8 +553,9 @@ struct DevelopSellSimpleActionTests {
                     beerSources: [.merchantBeer(slotID: "gloucester-2")],
                     bonusDevelopTileID: bonusTile.id
                 ),
+                // 官方:槽位整局限一次,第二笔改用另一个空槽 oxford-1。
                 .init(
-                    industryPlacementID: "cotton-two", merchantSlotID: "gloucester-2",
+                    industryPlacementID: "cotton-two", merchantSlotID: "oxford-1",
                     beerSources: [.industry(placementID: "multi-own-beer")]
                 ),
             ]),
@@ -520,8 +635,10 @@ struct DevelopSellSimpleActionTests {
         )
 
         let after = try #require(engineState.players.first { $0.id == actor })
-        // 行动结束补牌回 8;侦察所得万能牌在手牌最前(补牌只追加)。
-        #expect(after.hand.count == 8)
+        // 新流程:行动落地后停在待确认,补牌尚未发生;侦察所得万能牌是唯一手牌
+        //(补牌回 8 发生在 confirmTurnEnd,见 passMutates/TheSetupGameState 测试)。
+        #expect(engineState.turnPhase == .awaitingTurnEndConfirmation)
+        #expect(after.hand.count == 1)
         #expect(after.hand.first?.definitionID == "wild-industry")
         #expect(engineState.wildLocationPool.isEmpty)
         #expect(engineState.wildIndustryPool.isEmpty)

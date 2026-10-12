@@ -9,3 +9,6 @@
 .codex/skills/.system/**
 !.codex/prompts/
 !.codex/prompts/**
+
+# 自动对局战报产物(脚本再生,不入库)
+ui-prototype/build/

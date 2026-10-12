@@ -84,6 +84,23 @@ struct EraTransitionSessionTests {
                 }
                 continue
             }
+            if case .awaitingTurnEndConfirmation = state.turnPhase, let actor = state.activePlayerID {
+                let result = engine.submit(.init(
+                    protocolVersion: 2,
+                    rulesetVersion: state.rulesetVersion,
+                    roomID: roomID,
+                    senderID: actor,
+                    reconnectToken: try #require(tokens[actor]),
+                    baseVersion: state.authoritativeVersion,
+                    payload: .confirmTurnEnd
+                ), catalog: catalog)
+                guard case .accepted(let event) = result else {
+                    Issue.record("turn-end confirm rejected: \(result)")
+                    return
+                }
+                lastEvent = event
+                continue
+            }
             guard state.turnPhase == .active, let actor = state.activePlayerID else {
                 Issue.record("unexpected non-active phase in canal era: \(state.turnPhase)")
                 return
@@ -199,7 +216,14 @@ struct EraTransitionSessionTests {
         }
 
         // 其余全部跳过推进到时代结算。
-        while case .active = engine.gameState.turnPhase {
+        while engine.gameState.turnPhase != .ended {
+            if case .awaitingTurnEndConfirmation = engine.gameState.turnPhase {
+                guard let actor = engine.gameState.activePlayerID,
+                      try submit(.confirmTurnEnd, actor)
+                else { break }
+                continue
+            }
+            guard case .active = engine.gameState.turnPhase else { break }
             let current = engine.gameState
             guard let actor = current.activePlayerID,
                   let card = current.players.first(where: { $0.id == actor })?.hand.first
@@ -292,7 +316,17 @@ struct EraTransitionSessionTests {
 
         // 其余行动全部跳过(优先弃普通牌;只剩万能牌时弃万能牌,回奖池),
         // 推进到时代结算。
-        while case .active = engine.gameState.turnPhase {
+        while engine.gameState.turnPhase != .ended {
+            if case .awaitingTurnEndConfirmation = engine.gameState.turnPhase {
+                guard let awaitingActor = engine.gameState.activePlayerID else { return }
+                let confirmOutcome = try submit(.confirmTurnEnd, awaitingActor)
+                guard case .accepted = confirmOutcome else {
+                    Issue.record("turn-end confirm rejected in wild pass loop: \(confirmOutcome)")
+                    return
+                }
+                continue
+            }
+            guard case .active = engine.gameState.turnPhase else { break }
             let current = engine.gameState
             guard let actor = current.activePlayerID,
                   let hand = current.players.first(where: { $0.id == actor })?.hand,
@@ -346,7 +380,20 @@ struct EraTransitionSessionTests {
         })
         var engine = try state.makeHostEngine(roomID: roomID, reconnectTokens: tokens, protocolVersion: 2)
         // 推进到运河末轮最后一位,让回合进入结算确认。
-        while case .active = engine.gameState.turnPhase {
+        outer: while engine.gameState.turnPhase != .ended {
+            if case .awaitingTurnEndConfirmation = engine.gameState.turnPhase {
+                let current = engine.gameState
+                guard let actor = current.activePlayerID else { break }
+                let confirm = engine.submit(.init(
+                    protocolVersion: 2, rulesetVersion: current.rulesetVersion,
+                    roomID: roomID, senderID: actor, reconnectToken: tokens[actor]!,
+                    baseVersion: current.authoritativeVersion,
+                    payload: .confirmTurnEnd
+                ), catalog: catalog)
+                guard case .accepted = confirm else { break outer }
+                continue
+            }
+            guard case .active = engine.gameState.turnPhase else { break }
             let current = engine.gameState
             guard let actor = current.activePlayerID,
                   let card = current.players.first(where: { $0.id == actor })?.hand.first

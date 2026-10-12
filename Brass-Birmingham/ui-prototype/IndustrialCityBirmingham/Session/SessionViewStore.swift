@@ -168,6 +168,45 @@ final class SessionViewStore {
             && snapshot?.match != nil
     }
 
+    /// 本回合已落地操作 > 0 且轮到自己时,可整回合撤回。
+    var canRetractTurnActions: Bool {
+        didConnect && syncStatus == .synchronized
+            && snapshot?.activePlayerID == localPlayerID
+            && pendingSubmissionVersion == nil
+            && (snapshot?.match?.turnActionsTaken ?? 0) > 0
+    }
+
+    /// 回合结束待确认:自己两个行动落地后,需点击确认才过轮。
+    var canConfirmTurnEnd: Bool {
+        didConnect
+            && syncStatus == .synchronized
+            && snapshot?.awaitingTurnEndConfirmation == true
+            && snapshot?.activePlayerID == localPlayerID
+            && pendingSubmissionVersion == nil
+    }
+
+    var isAwaitingTurnEndConfirmation: Bool {
+        snapshot?.awaitingTurnEndConfirmation == true
+    }
+
+    /// 确认结束本回合:补牌/回合末结算/强卖都由房主在此时执行。
+    func confirmTurnEnd() {
+        guard canConfirmTurnEnd else { return }
+        Task {
+            do { try await coordinator.submit(.confirmTurnEnd) }
+            catch { errorMessage = Self.message(for: error) }
+        }
+    }
+
+    /// 撤回当前回合已执行的全部操作,状态回到回合开始。
+    func retractTurnActions() {
+        guard canRetractTurnActions else { return }
+        Task {
+            do { try await coordinator.submit(.retractTurnActions) }
+            catch { errorMessage = Self.message(for: error) }
+        }
+    }
+
     init(
         coordinator: SessionCoordinator,
         role: SessionRole,
@@ -391,30 +430,217 @@ final class SessionViewStore {
     }
 
 #if DEBUG
+    /// 脚本 harness:连接→准备→(房主)开局,然后由 ScriptHarnessBot 自动打完整局。
+    /// 全程向 stdout 打 `INDUSTRIALCITY_LOCAL` 标记,供双模拟器脚本跟踪进度、判定终局。
     func runScriptHarness() async {
         await connect()
         guard syncStatus != .failed else { return }
         await setReady(true)
+        let seed = ScriptHarnessBot.seed(from: ProcessInfo.processInfo.arguments)
+            ?? ScriptHarnessBot.defaultSeed(roomID: roomID.rawValue)
+        var bot = ScriptHarnessBot(seed: seed)
+        print("INDUSTRIALCITY_LOCAL harness-loop seed=\(seed)")
         do {
-            switch role {
-            case .host:
+            if isHost {
                 _ = try await waitUntil { $0.readyPlayerIDs.count >= 2 }
                 try await coordinator.startGame()
-            case .guest:
-                let localPlayerID = self.localPlayerID
-                _ = try await waitUntil { $0.snapshot?.activePlayerID == localPlayerID }
             }
-            let localPlayerID = self.localPlayerID
-            let state = try await waitUntil {
-                $0.snapshot?.activePlayerID == localPlayerID
-                    && $0.snapshot?.players.first(where: { $0.id == localPlayerID })?.hand?.isEmpty == false
-            }
-            guard let card = state.snapshot?.players.first(where: { $0.id == localPlayerID })?.hand?.first else { return }
-            try await coordinator.pass(discardCardID: card)
+            try await playScriptedMatch(bot: &bot)
         } catch {
             errorMessage = Self.message(for: error)
             print("INDUSTRIALCITY_LOCAL failed error=\(error)")
         }
+    }
+
+    private enum HarnessLegalOutcome {
+        case response(GameCore.LegalActionResponse)
+        case deadEnd
+    }
+
+    private static func scriptHarnessDeadline() -> Date {
+        let arguments = ProcessInfo.processInfo.arguments
+        let seconds: Double = if let index = arguments.firstIndex(of: "-local-harness-deadline"),
+            arguments.indices.contains(index + 1),
+            let value = Double(arguments[index + 1]) {
+            value
+        } else {
+            720
+        }
+        return Date().addingTimeInterval(max(60, seconds))
+    }
+
+    /// 主循环:按快照状态推进——终局→结算确认→强制出售→轮到自己出动作,直到 gameEnded。
+    private func playScriptedMatch(bot: inout ScriptHarnessBot) async throws {
+        let deadline = Self.scriptHarnessDeadline()
+        while Date() < deadline {
+            if syncStatus == .failed {
+                throw SessionCoordinator.Error.harnessPhaseTimedOut
+            }
+            if let ended = snapshot?.gameEnded {
+                reportScriptedGameOver(ended)
+                return
+            }
+            if let intermission = snapshot?.eraIntermission {
+                if intermission.confirmedPlayerIDs.contains(localPlayerID) == false {
+                    confirmEraTransition()
+                    print("INDUSTRIALCITY_LOCAL era-confirmed actor=\(localPlayerID.rawValue) era=\(intermission.settledEra)")
+                }
+                try? await Task.sleep(for: .milliseconds(100))
+                continue
+            }
+            if snapshot?.forcedSale != nil {
+                if snapshot?.match?.forcedSaleDebtorID == localPlayerID {
+                    await resolveScriptedForcedSale(bot: &bot, deadline: deadline)
+                }
+                try? await Task.sleep(for: .milliseconds(100))
+                continue
+            }
+            if snapshot?.awaitingTurnEndConfirmation == true {
+                if snapshot?.activePlayerID == localPlayerID {
+                    errorMessage = nil
+                    do { try await coordinator.submit(.confirmTurnEnd) }
+                    catch { errorMessage = Self.message(for: error) }
+                    print("INDUSTRIALCITY_LOCAL turn-end-confirmed actor=\(localPlayerID.rawValue) version=\(version.rawValue)")
+                }
+                try? await Task.sleep(for: .milliseconds(60))
+                continue
+            }
+            if snapshot?.activePlayerID == localPlayerID, canInteract {
+                await takeScriptedAction(bot: &bot, deadline: deadline)
+                continue
+            }
+            try? await Task.sleep(for: .milliseconds(60))
+        }
+        throw SessionCoordinator.Error.harnessPhaseTimedOut
+    }
+
+    /// 轮到自己时挑一个合法动作:多次尝试(卡,动作)组合走多步合法流,
+    /// 全部走不通时兜底 pass(恒合法),保证对局必然推进。
+    private func takeScriptedAction(bot: inout ScriptHarnessBot, deadline: Date) async {
+        for _ in 0..<6 {
+            guard canInteract, let byCardID = snapshot?.match?.availableActionsByCardID,
+                  let pick = bot.pickAction(byCardID: byCardID) else { break }
+            if await walkScriptedDraft(cardID: pick.cardID, action: pick.action, bot: &bot, deadline: deadline) {
+                return
+            }
+        }
+        await scriptPass(bot: &bot, deadline: deadline)
+    }
+
+    /// 多步合法动作流:请求→按响应补选择→拿到 completePayload 后提交。
+    /// 走不通(被拒/过期/死路)返回 false,由调用方换组合重试。
+    private func walkScriptedDraft(
+        cardID: String,
+        action: GameCore.ActionKind,
+        bot: inout ScriptHarnessBot,
+        deadline: Date
+    ) async -> Bool {
+        selectCard(cardID)
+        var selections: [GameCore.LegalChoiceValue] = []
+        for _ in 0..<24 {
+            guard canInteract else { return false }
+            let draft = GameCore.LegalActionDraft(action: action, cardID: cardID, selections: selections)
+            guard let digest = try? draft.canonicalDigest() else { return false }
+            let baseVersion = version
+            errorMessage = nil
+            await requestLegalOptions(action: action, selections: selections)
+            guard let outcome = await waitForScriptedLegalResponse(
+                digest: digest, baseVersion: baseVersion,
+                deadline: min(deadline, Date().addingTimeInterval(15))
+            ), case .response(let response) = outcome else {
+                return false
+            }
+            if response.completePayload != nil {
+                await submitCompleteLegalResponse()
+                await waitScriptedSubmissionSettled(deadline: deadline)
+                let landed = pendingSubmissionVersion == nil && errorMessage == nil
+                if landed {
+                    print("INDUSTRIALCITY_LOCAL bot-action actor=\(localPlayerID.rawValue) action=\(action.rawValue) card=\(cardID) version=\(version.rawValue) turn=\(snapshot?.turn ?? -1)")
+                }
+                return landed
+            }
+            guard let choice = bot.pickChoice(response.nextChoices) else { return false }
+            selections.append(choice.value)
+        }
+        return false
+    }
+
+    /// pass 兜底:trivialOptions 里带现成 payload,提交即推进。
+    private func scriptPass(bot: inout ScriptHarnessBot, deadline: Date) async {
+        guard canInteract, let cardID = bot.pickPassCard(snapshot?.match?.trivialOptions ?? []) else { return }
+        selectCard(cardID)
+        await submitPass()
+        await waitScriptedSubmissionSettled(deadline: deadline)
+        if pendingSubmissionVersion == nil, errorMessage == nil {
+            print("INDUSTRIALCITY_LOCAL bot-action actor=\(localPlayerID.rawValue) action=pass card=\(cardID) version=\(version.rawValue) turn=\(snapshot?.turn ?? -1)")
+        }
+    }
+
+    /// 强制出售:与普通多步流同构,selections 为 industryPlacement 累积列表。
+    private func resolveScriptedForcedSale(bot: inout ScriptHarnessBot, deadline: Date) async {
+        var placementIDs: [String] = []
+        for _ in 0..<24 {
+            let draft = GameCore.LegalActionDraft(
+                action: .forcedSale, cardID: nil,
+                selections: placementIDs.map { .industryPlacement(id: $0) }
+            )
+            guard let digest = try? draft.canonicalDigest() else { return }
+            let baseVersion = version
+            errorMessage = nil
+            await requestForcedSaleOptions(placementIDs: placementIDs)
+            guard let outcome = await waitForScriptedLegalResponse(
+                digest: digest, baseVersion: baseVersion,
+                deadline: min(deadline, Date().addingTimeInterval(15))
+            ), case .response(let response) = outcome else {
+                return
+            }
+            if response.completePayload != nil {
+                await submitForcedSale()
+                await waitScriptedSubmissionSettled(deadline: deadline)
+                print("INDUSTRIALCITY_LOCAL forced-sale actor=\(localPlayerID.rawValue) count=\(placementIDs.count) version=\(version.rawValue)")
+                return
+            }
+            guard let choice = bot.pickChoice(response.nextChoices),
+                  case .industryPlacement(let id) = choice.value else { return }
+            placementIDs.append(id)
+        }
+    }
+
+    /// 等待合法流响应落到 legalResponse;deadEnd = 查询被拒/版本前移/串扰响应。
+    private func waitForScriptedLegalResponse(
+        digest: String,
+        baseVersion: GameCore.AuthoritativeVersion,
+        deadline: Date
+    ) async -> HarnessLegalOutcome? {
+        while Date() < deadline {
+            if let response = legalResponse {
+                return response.draftDigest == digest ? .response(response) : .deadEnd
+            }
+            if version != baseVersion { return .deadEnd }
+            if errorMessage != nil { return .deadEnd }
+            try? await Task.sleep(for: .milliseconds(30))
+        }
+        return nil
+    }
+
+    /// 等待已提交动作落地(版本前移)或被拒;两者都会清 pendingSubmissionVersion。
+    private func waitScriptedSubmissionSettled(deadline: Date) async {
+        while Date() < deadline, pendingSubmissionVersion != nil {
+            try? await Task.sleep(for: .milliseconds(30))
+        }
+    }
+
+    private func reportScriptedGameOver(_ ended: GameCore.GameTransitionEvent.GameEndedDetails) {
+        let standings = ended.standings
+            .map { $0.map(\.rawValue).sorted().joined(separator: "+") }
+            .joined(separator: "|")
+        print("INDUSTRIALCITY_LOCAL game-over standings=\(standings)")
+        if let match = snapshot?.match {
+            for player in match.players {
+                print("INDUSTRIALCITY_LOCAL final player=\(player.id.rawValue) vp=\(player.victoryPoints) income=\(player.incomeLevel) cash=\(player.cash) spent=\(player.spent)")
+            }
+        }
+        print("INDUSTRIALCITY_LOCAL harness-complete")
     }
 #endif
 
@@ -720,6 +946,7 @@ final class SessionViewStore {
             authoritativeVersion: snapshot.authoritativeVersion,
             discardPile: snapshot.discardPile,
             forcedSale: snapshot.forcedSale,
+            awaitingTurnEndConfirmation: snapshot.awaitingTurnEndConfirmation,
             match: match,
             checksum: snapshot.checksum
         )

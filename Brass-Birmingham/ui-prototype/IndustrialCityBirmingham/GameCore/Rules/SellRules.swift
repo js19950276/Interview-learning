@@ -54,6 +54,7 @@ extension GameCore {
         case alreadyFlipped, unsellableIndustry, unknownMerchant, blankMerchant
         case merchantDoesNotAccept, disconnectedMerchant, wrongBeerCount, illegalBeer
         case missingBonusDevelopTile, illegalBonusDevelopTile
+        case merchantSlotFilled
     }
 
     nonisolated enum SellRules {
@@ -94,6 +95,11 @@ extension GameCore {
                           $0.id == merchant.merchantDefinitionID && $0.playerCounts.contains(candidate.playerCount)
                       })
                 else { throw SellRuleError.unknownMerchant }
+                // 官方:每次出售在市场空槽放一枚货物标记,槽位整局限一次
+                //(含同一出售意图内对同一槽位的重复选择)。
+                guard merchant.soldIndustryDefinitionID == nil else {
+                    throw SellRuleError.merchantSlotFilled
+                }
                 guard merchantDefinition.acceptedIndustryIDs.isEmpty == false else { throw SellRuleError.blankMerchant }
                 guard merchantDefinition.acceptedIndustryIDs.contains(placement.tile.industryDefinitionID)
                 else { throw SellRuleError.merchantDoesNotAccept }
@@ -132,6 +138,9 @@ extension GameCore {
                 }
 
                 candidate.boardIndustryPlacements[placementIndex].isFlipped = true
+                if let merchantIndex = candidate.merchants.firstIndex(where: { $0.slotID == selection.merchantSlotID }) {
+                    candidate.merchants[merchantIndex].soldIndustryDefinitionID = placement.tile.industryDefinitionID
+                }
                 try advanceIncome(level.incomeReward, playerIndex: playerIndex, state: &candidate, catalog: catalog)
 
                 let receivesBonus = merchantBeerCount == 1
@@ -201,6 +210,9 @@ extension GameCore {
                     state: &state, catalog: verifiedCatalog
                 )
                 state.boardIndustryPlacements[placementIndex].isFlipped = true
+                if let merchantIndex = state.merchants.firstIndex(where: { $0.slotID == sale.selection.merchantSlotID }) {
+                    state.merchants[merchantIndex].soldIndustryDefinitionID = sale.placement.tile.industryDefinitionID
+                }
                 effects.append(.industryFlipped(placementID: sale.placement.placementID))
                 effects += try incomeEffects(
                     sale.incomeReward, actorID: target.actorID,

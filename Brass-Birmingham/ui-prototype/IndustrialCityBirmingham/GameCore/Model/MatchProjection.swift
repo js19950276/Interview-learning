@@ -104,6 +104,9 @@ extension GameCore {
         var availableActions: [ActionKind]
         var availableActionsByCardID: [String: [ActionKind]]?
         var trivialOptions: [ActionOption]
+        /// 当前行动玩家本回合已落地的操作数(>0 时 UI 提供"撤回本回合操作")。
+        /// 可选字段保持旧存档兼容(缺省视为 0)。
+        var turnActionsTaken: Int?
 
         static func make(
             state: GameState,
@@ -157,7 +160,8 @@ extension GameCore {
                     uniqueKeysWithValues: (state.players.first(where: { $0.id == recipient })?.hand ?? [])
                         .map { ($0.id, []) }
                 ),
-                trivialOptions: actionOptions
+                trivialOptions: actionOptions,
+                turnActionsTaken: nil
             )
             projection.publicChecksum = try projection.computePublicChecksum()
             return projection

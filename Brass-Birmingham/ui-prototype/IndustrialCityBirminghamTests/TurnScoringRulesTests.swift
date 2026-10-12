@@ -18,6 +18,7 @@ struct TurnScoringRulesTests {
         })
         var engine = try state.makeHostEngine(roomID: roomID, reconnectTokens: tokens, protocolVersion: 1)
 
+        var lastConfirmEvent: GameCore.AuthoritativeGameEvent?
         for (seat, playerID) in originalOrder.enumerated() {
             let player = try #require(engine.gameState.players.first { $0.id == playerID })
             let card = try #require(player.hand.first)
@@ -28,13 +29,26 @@ struct TurnScoringRulesTests {
                 baseVersion: engine.gameState.authoritativeVersion,
                 payload: .pass(.init(cardID: card.id))
             ), catalog: catalog)
-            guard case .accepted(let event) = result else {
+            guard case .accepted = result else {
                 Issue.record("seat \(seat) should complete its first-round action")
                 continue
             }
-            if seat == originalOrder.count - 1 {
-                #expect(event.transitions.contains { if case .roundEnded = $0 { true } else { false } })
+            // 新流程:行动落地后确认过轮;最后一家确认触发回合末结算。
+            let confirm = engine.submit(.init(
+                protocolVersion: 1, rulesetVersion: engine.rulesetVersion,
+                roomID: roomID, senderID: playerID,
+                reconnectToken: try #require(tokens[playerID]),
+                baseVersion: engine.gameState.authoritativeVersion,
+                payload: .confirmTurnEnd
+            ), catalog: catalog)
+            guard case .accepted(let confirmEvent) = confirm else {
+                Issue.record("seat \(seat) turn-end confirm rejected: \(confirm)")
+                continue
             }
+            lastConfirmEvent = confirmEvent
+        }
+        if playerCount > 0 {
+            #expect(lastConfirmEvent?.transitions.contains { if case .roundEnded = $0 { true } else { false } } == true)
         }
 
         #expect(engine.gameState.roundNumber == 2)
@@ -43,8 +57,9 @@ struct TurnScoringRulesTests {
         #expect(engine.gameState.playerOrder == originalOrder)
         #expect(engine.gameState.standardDrawDeck.isEmpty)
         #expect(engine.gameState.players.reduce(0) { $0 + $1.hand.count } == playerCount * 7 + availableDraws)
-        #expect(engine.gameState.actionNumber == playerCount)
-        #expect(engine.gameState.authoritativeVersion.rawValue == playerCount)
+        // 每人 1 行动 + 1 过轮确认,各占一个版本号。
+        #expect(engine.gameState.actionNumber == playerCount * 2)
+        #expect(engine.gameState.authoritativeVersion.rawValue == playerCount * 2)
     }
 
     @Test func roundEndUsesStableAscendingSpendingOrderAndResetsTurnState() throws {
@@ -875,14 +890,26 @@ struct TurnScoringRulesTests {
         var host = try state.makeHostEngine(roomID: roomID, reconnectTokens: tokens, protocolVersion: 1)
         let before = host.gameState
 
-        let result = host.submit(.init(
+        let passResult = host.submit(.init(
             protocolVersion: 1, rulesetVersion: state.rulesetVersion, roomID: roomID,
             senderID: actor, reconnectToken: tokens[actor]!,
             baseVersion: state.authoritativeVersion, payload: .pass(.init(cardID: card.id))
         ), catalog: catalog)
+        guard case .accepted = passResult else {
+            Issue.record("final pass should be accepted, got \(passResult)")
+            return
+        }
+        #expect(host.gameState.turnPhase == .awaitingTurnEndConfirmation)
+        let afterPass = host.gameState
 
-        #expect(result == .internalFailure(.init(code: .arithmeticOverflow)))
-        #expect(host.gameState == before)
+        // 回合末结算随过轮确认发生;溢出必须表现为内部失败且不破坏权威状态。
+        let confirmResult = host.submit(.init(
+            protocolVersion: 1, rulesetVersion: state.rulesetVersion, roomID: roomID,
+            senderID: actor, reconnectToken: tokens[actor]!,
+            baseVersion: host.gameState.authoritativeVersion, payload: .confirmTurnEnd
+        ), catalog: catalog)
+        #expect(confirmResult == .internalFailure(.init(code: .arithmeticOverflow)))
+        #expect(host.gameState == afterPass)
     }
 
     @Test func eraVictoryPointOverflowIsInternalAndLeavesHostAuthorityUnchanged() throws {
@@ -910,14 +937,26 @@ struct TurnScoringRulesTests {
         var host = try state.makeHostEngine(roomID: roomID, reconnectTokens: tokens, protocolVersion: 1)
         let before = host.gameState
 
-        let result = host.submit(.init(
+        let passResult = host.submit(.init(
             protocolVersion: 1, rulesetVersion: state.rulesetVersion, roomID: roomID,
             senderID: actor, reconnectToken: tokens[actor]!,
             baseVersion: state.authoritativeVersion, payload: .pass(.init(cardID: card.id))
         ), catalog: catalog)
+        guard case .accepted = passResult else {
+            Issue.record("final pass should be accepted, got \(passResult)")
+            return
+        }
+        #expect(host.gameState.turnPhase == .awaitingTurnEndConfirmation)
+        let afterPass = host.gameState
 
-        #expect(result == .internalFailure(.init(code: .arithmeticOverflow)))
-        #expect(host.gameState == before)
+        // 回合末结算随过轮确认发生;溢出必须表现为内部失败且不破坏权威状态。
+        let confirmResult = host.submit(.init(
+            protocolVersion: 1, rulesetVersion: state.rulesetVersion, roomID: roomID,
+            senderID: actor, reconnectToken: tokens[actor]!,
+            baseVersion: host.gameState.authoritativeVersion, payload: .confirmTurnEnd
+        ), catalog: catalog)
+        #expect(confirmResult == .internalFailure(.init(code: .arithmeticOverflow)))
+        #expect(host.gameState == afterPass)
     }
 
     @Test(arguments: [GameCore.Era.canal, .rail])
@@ -950,13 +989,25 @@ struct TurnScoringRulesTests {
         let actor = try #require(state.activePlayerID)
         let card = try #require(state.players.first { $0.id == actor }?.hand.first)
 
-        let result = engine.submit(.init(
+        let passResult = engine.submit(.init(
             protocolVersion: 1, rulesetVersion: state.rulesetVersion, roomID: roomID,
             senderID: actor, reconnectToken: try #require(tokens[actor]),
             baseVersion: state.authoritativeVersion, payload: .pass(.init(cardID: card.id))
         ), catalog: catalog)
-        guard case .accepted(let event) = result else {
-            Issue.record("the final seat action should settle the \(era) era atomically, got \(result)")
+        guard case .accepted = passResult else {
+            Issue.record("the final seat action should be accepted, got \(passResult)")
+            return
+        }
+        // 新流程:最后一家行动落地后停在待确认,回合末结算随确认事件原子发生。
+        #expect(engine.gameState.turnPhase == .awaitingTurnEndConfirmation)
+        let afterPass = engine.gameState
+        let confirmResult = engine.submit(.init(
+            protocolVersion: 1, rulesetVersion: state.rulesetVersion, roomID: roomID,
+            senderID: actor, reconnectToken: try #require(tokens[actor]),
+            baseVersion: engine.gameState.authoritativeVersion, payload: .confirmTurnEnd
+        ), catalog: catalog)
+        guard case .accepted(let event) = confirmResult else {
+            Issue.record("the final seat confirm should settle the \(era) era atomically, got \(confirmResult)")
             return
         }
         #expect(event.transitions.contains { if case .roundEnded = $0 { true } else { false } })
@@ -992,7 +1043,7 @@ struct TurnScoringRulesTests {
             #expect(engine.gameState.turnPhase == .ended)
             #expect(Dictionary(uniqueKeysWithValues: engine.gameState.players.map { ($0.id, $0.cash) }) == cashBefore)
         }
-        var replayed = state
+        var replayed = afterPass
         try GameCore.GameRulesEngine.replay(
             event, expectedRoomID: roomID, to: &replayed, catalog: catalog
         )

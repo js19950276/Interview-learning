@@ -108,6 +108,19 @@ extension GameCore {
                         target, roomID: expectedRoomID, state: &candidate,
                         catalog: verifiedCatalog
                     )
+                case .turnEndConfirmed(let playerID):
+                    let target = try SimpleActionRules.validateTurnEndConfirmation(
+                        actorID: playerID, state: candidate, catalog: verifiedCatalog
+                    )
+                    reproduced = try resolveTurnEndConfirmation(
+                        actorID: target.actorID, roomID: expectedRoomID,
+                        state: &candidate, catalog: verifiedCatalog
+                    )
+                case .turnActionsRetracted:
+                    // 撤回是"回到回合锚点快照"的检查点语义,不是可由线性重放
+                    // 推导的事件;客机经 ClientEvent 携带的快照收敛,不重放事件。
+                    // 线性重放流(金哈希/批次重放)不会包含撤回事件,遇到即拒绝。
+                    throw ReplayError.invalidEvent
                 }
             } catch {
                 throw ReplayError.invalidEvent
@@ -561,16 +574,53 @@ extension GameCore {
             state.actionNumber = try checkedAdd(state.actionNumber, 1)
             state.actionsRemaining = max(0, try checkedSubtract(state.actionsRemaining, 1))
             guard state.actionsRemaining == 0 else { return [] }
-            TurnRules.refillHand(playerID: actorID, state: &state)
-            state.turnsCompletedInRound = try checkedAdd(state.turnsCompletedInRound, 1)
-            if state.turnsCompletedInRound == state.playerCount {
-                return try TurnRules.resolveRoundEnd(state: &state, catalog: catalog)
-            }
-            state.activePlayerID = state.playerOrder[state.turnsCompletedInRound]
-            state.actionsRemaining = TurnRules.actionsPerTurn(
-                era: state.era, roundNumber: state.roundNumber
-            )
+            // 两个行动落地后不自动过轮:进入待确认阶段,换人/补牌/回合末
+            // 结算统一由 confirmTurnEnd 触发;期间行动玩家仍可整回合撤回。
+            state.turnPhase = .awaitingTurnEndConfirmation
             return []
+        }
+
+        /// 回合结束确认:补牌 → 回合计数 →(回合法满:回合末结算)或换下一位。
+        /// 原 advanceAction 尾部的过轮逻辑整体迁移至此。
+        static func resolveTurnEndConfirmation(
+            actorID: PlayerID,
+            roomID: RoomID,
+            state: inout GameState,
+            catalog verifiedCatalog: VerifiedGameDataCatalog
+        ) throws -> AuthoritativeGameEvent {
+            let previous = state.authoritativeVersion
+            var candidate = state
+            TurnRules.refillHand(playerID: actorID, state: &candidate)
+            candidate.turnsCompletedInRound = try checkedAdd(candidate.turnsCompletedInRound, 1)
+            var transitions: [GameTransitionEvent] = []
+            if candidate.turnsCompletedInRound == candidate.playerCount {
+                transitions = try TurnRules.resolveRoundEnd(state: &candidate, catalog: verifiedCatalog)
+            } else {
+                candidate.activePlayerID = candidate.playerOrder[candidate.turnsCompletedInRound]
+                candidate.actionsRemaining = TurnRules.actionsPerTurn(
+                    era: candidate.era, roundNumber: candidate.roundNumber
+                )
+            }
+            // resolveRoundEnd 会按需切换时代结算/终局阶段;普通过轮回到活跃阶段。
+            if case .awaitingTurnEndConfirmation = candidate.turnPhase {
+                candidate.turnPhase = .active
+            }
+            let (nextVersion, versionOverflow) = previous.rawValue.addingReportingOverflow(1)
+            let (nextActionNumber, actionOverflow) = candidate.actionNumber.addingReportingOverflow(1)
+            guard versionOverflow == false, actionOverflow == false else {
+                throw GameRulesInternalError.arithmeticOverflow
+            }
+            candidate.authoritativeVersion = .init(rawValue: nextVersion)
+            candidate.actionNumber = nextActionNumber
+            let event = AuthoritativeGameEvent(
+                roomID: roomID, actor: actorID,
+                previousVersion: previous, version: candidate.authoritativeVersion,
+                actionNumber: nextActionNumber,
+                payload: .turnEndConfirmed(playerID: actorID),
+                transitions: transitions
+            )
+            state = candidate
+            return event
         }
 
         /// Fixture-only compatibility path. Complete authoritative games always use

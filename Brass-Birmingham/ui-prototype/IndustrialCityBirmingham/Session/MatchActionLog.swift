@@ -121,6 +121,12 @@ nonisolated enum MatchActionLog {
         case .eraIntermissionConfirmed(let playerID):
             let name = playerNames[playerID] ?? playerID.rawValue
             lines.append("确认了时代结算（\(name)）")
+        case .turnEndConfirmed(let playerID):
+            let name = playerNames[playerID] ?? playerID.rawValue
+            lines.append("\(name) 确认结束回合，交给下一位")
+        case .turnActionsRetracted(let playerID, _, let actionCount):
+            let name = playerNames[playerID] ?? playerID.rawValue
+            lines.append("\(name) 撤回了本回合的操作 ×\(actionCount)，回到回合开始")
         }
 
         for transition in transitions {

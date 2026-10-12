@@ -22,10 +22,11 @@ struct GameRulesEngineTests {
         // 金哈希随规则基线变化重录(2026-09:开局£0、官方市场、时代确认两阶段过渡)。
         // 金哈希随审计修复重录(2026-09:官方市场留空£1格、连线保留+逐时代计分、
         // 发展运河限1、侦察空堆部分取得、VP债即时封顶、伯明翰运河例外)。
+        // 金哈希随回合流程重录(2026-10:两行动后进入待确认,confirmTurnEnd 过轮)。
         let expectedHashes = [
-            2: "92a703e7048e2aed3c512265b03af0d134820436fbac7888b99dec85470e0c08",
-            3: "31bf8281ac6fed33865bef55f287a80c8e964529617cded0dea38356efa0ec76",
-            4: "20f005b75cf43e09bd2aeeaab6ba0559bb1fc38ccd3d102db77a4d68358bd783",
+            2: "ae1e20cb0c0c354d23719f8cde0286168679f45b5e81b72553cc74749b2f23b9",
+            3: "479b30f6929ff8c77b0a505bcfe8ff3105b8aaf2cf4a8c04cab70f71e577d7aa",
+            4: "f0f69d8f7014aee0348661d20db7a214107fb149c884bce8f99afe7ee1ae27cf",
         ]
         #expect(first.finalHash == expectedHashes[playerCount])
         #expect(first.events == second.events)
@@ -161,6 +162,25 @@ struct GameRulesEngineTests {
                     events.append(confirmEvent)
                     ordinaryIntentCount += 1
                 }
+                continue
+            }
+            if case .awaitingTurnEndConfirmation = state.turnPhase {
+                let actor = try #require(state.activePlayerID)
+                ordinaryIntentCount += 1
+                let result = engine.submit(.init(
+                    protocolVersion: 1,
+                    rulesetVersion: state.rulesetVersion,
+                    roomID: roomID,
+                    senderID: actor,
+                    reconnectToken: try #require(tokens[actor]),
+                    baseVersion: state.authoritativeVersion,
+                    payload: .confirmTurnEnd
+                ), catalog: catalog)
+                guard case .accepted(let event) = result else {
+                    Issue.record("turn-end confirmation was rejected: \(result)")
+                    break
+                }
+                events.append(event)
                 continue
             }
             guard state.turnPhase == .active else {

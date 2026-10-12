@@ -46,6 +46,11 @@ nonisolated enum GameCore {
             case forcedSale(ForcedSaleIntent)
             /// 时代结算界面的确认;全员确认后进入下一时代。
             case confirmEraIntermission
+            /// 回合结束确认:两个行动落地后的"待确认"阶段,确认后才过轮
+            ///(补牌/回合末结算/强卖/时代过渡都发生在此时)。
+            case confirmTurnEnd
+            /// 撤回当前行动玩家本回合已执行的全部操作,回到回合开始状态。
+            case retractTurnActions
         }
 
         let protocolVersion: Int
@@ -150,6 +155,14 @@ nonisolated enum GameCore {
             case scouted(ScoutDetails?)
             case forcedSaleResolved(ForcedSaleIntent)
             case eraIntermissionConfirmed(playerID: PlayerID)
+            /// 回合结束确认:行动玩家在待确认阶段确认过轮,真正的换人/结算在此时发生。
+            case turnEndConfirmed(playerID: PlayerID)
+            /// 回合操作撤回:状态回到该玩家回合开始时的快照,版本链照常 +1 前进。
+            case turnActionsRetracted(
+                playerID: PlayerID,
+                rewoundFromVersion: AuthoritativeVersion,
+                actionCount: Int
+            )
         }
 
         let roomID: RoomID
@@ -308,6 +321,9 @@ nonisolated enum GameCore {
         let forcedSale: ForcedSaleProjection?
         let eraIntermission: EraIntermissionState?
         let gameEnded: GameTransitionEvent.GameEndedDetails?
+        /// 回合结束待确认:行动玩家两个行动落地后需确认才过轮(自定义扩展)。
+        /// 可选解码,旧存档缺省为 false。
+        let awaitingTurnEndConfirmation: Bool
         let match: MatchProjection?
         let checksum: String
 
@@ -318,6 +334,7 @@ nonisolated enum GameCore {
             forcedSale: ForcedSaleProjection? = nil,
             eraIntermission: EraIntermissionState? = nil,
             gameEnded: GameTransitionEvent.GameEndedDetails? = nil,
+            awaitingTurnEndConfirmation: Bool = false,
             match: MatchProjection? = nil,
             checksum: String
         ) {
@@ -332,13 +349,15 @@ nonisolated enum GameCore {
             self.forcedSale = forcedSale
             self.eraIntermission = eraIntermission
             self.gameEnded = gameEnded
+            self.awaitingTurnEndConfirmation = awaitingTurnEndConfirmation
             self.match = match
             self.checksum = checksum
         }
 
         private enum CodingKeys: String, CodingKey {
             case roomID, recipient, players, activePlayerID, turn, actionNumber
-            case authoritativeVersion, discardPile, forcedSale, eraIntermission, gameEnded, match, checksum
+            case authoritativeVersion, discardPile, forcedSale, eraIntermission, gameEnded
+            case awaitingTurnEndConfirmation, match, checksum
         }
 
         init(from decoder: Decoder) throws {
@@ -354,6 +373,7 @@ nonisolated enum GameCore {
             forcedSale = try values.decodeIfPresent(ForcedSaleProjection.self, forKey: .forcedSale)
             eraIntermission = try values.decodeIfPresent(EraIntermissionState.self, forKey: .eraIntermission)
             gameEnded = try values.decodeIfPresent(GameTransitionEvent.GameEndedDetails.self, forKey: .gameEnded)
+            awaitingTurnEndConfirmation = try values.decodeIfPresent(Bool.self, forKey: .awaitingTurnEndConfirmation) ?? false
             match = try values.decodeIfPresent(MatchProjection.self, forKey: .match)
             checksum = try values.decode(String.self, forKey: .checksum)
         }
@@ -369,7 +389,16 @@ nonisolated enum GameCore {
     }
 
     struct HostEngine: Equatable, Sendable {
+        /// 回合起点锚点:该玩家回合开始(上一个事件落地后)的权威状态。
+        /// 撤回 = 恢复锚点状态并把版本/actionNumber 照常 +1,事件链保持严格递增。
+        struct TurnAnchor: Equatable, Sendable {
+            let playerID: PlayerID
+            let version: AuthoritativeVersion
+            let state: GameState
+        }
+
         private(set) var gameState: GameState
+        private(set) var turnAnchor: TurnAnchor?
         private let roomID: RoomID
         private let reconnectTokens: [PlayerID: ReconnectToken]
         let protocolVersion: Int
@@ -405,9 +434,34 @@ nonisolated enum GameCore {
             self.roomID = roomID
             self.reconnectTokens = reconnectTokens
             self.protocolVersion = protocolVersion
+            self.turnAnchor = TurnAnchor(
+                playerID: activePlayerID,
+                version: gameState.authoritativeVersion,
+                state: self.gameState
+            )
         }
 
         mutating func submit(
+            _ intent: PlayerIntent,
+            catalog: VerifiedGameDataCatalog
+        ) -> SubmissionResult {
+            let previousActiveID = gameState.activePlayerID
+            let previousRoundNumber = gameState.roundNumber
+            let result = submitResolved(intent, catalog: catalog)
+            // 事件落地后若行动座位或回合切换,则新座位回合开始,锚点前移。
+            if case .accepted = result,
+               gameState.activePlayerID != previousActiveID || gameState.roundNumber != previousRoundNumber,
+               let active = gameState.activePlayerID {
+                turnAnchor = TurnAnchor(
+                    playerID: active,
+                    version: gameState.authoritativeVersion,
+                    state: gameState
+                )
+            }
+            return result
+        }
+
+        private mutating func submitResolved(
             _ intent: PlayerIntent,
             catalog: VerifiedGameDataCatalog
         ) -> SubmissionResult {
@@ -485,6 +539,50 @@ nonisolated enum GameCore {
                     )
                     event = try GameRulesEngine.resolveEraConfirmation(
                         target, roomID: roomID, state: &gameState, catalog: catalog
+                    )
+                case .confirmTurnEnd:
+                    let target = try SimpleActionRules.validateTurnEndConfirmation(
+                        actorID: intent.senderID, state: gameState, catalog: catalog
+                    )
+                    event = try GameRulesEngine.resolveTurnEndConfirmation(
+                        actorID: target.actorID, roomID: roomID, state: &gameState,
+                        catalog: catalog
+                    )
+                case .retractTurnActions:
+                    guard let anchor = turnAnchor,
+                          anchor.playerID == intent.senderID,
+                          anchor.version.rawValue < gameState.authoritativeVersion.rawValue
+                    else {
+                        return .rejected(rejection(.invalidAction))
+                    }
+                    let previousVersion = gameState.authoritativeVersion
+                    let (nextVersion, versionOverflow) = previousVersion.rawValue.addingReportingOverflow(1)
+                    let (nextActionNumber, actionOverflow) = gameState.actionNumber.addingReportingOverflow(1)
+                    guard versionOverflow == false, actionOverflow == false else {
+                        return .internalFailure(.init(code: .arithmeticOverflow))
+                    }
+                    let retractedActionCount = gameState.actionNumber - anchor.state.actionNumber
+                    var restored = anchor.state
+                    restored.authoritativeVersion = .init(rawValue: nextVersion)
+                    restored.actionNumber = nextActionNumber
+                    event = AuthoritativeGameEvent(
+                        roomID: roomID,
+                        actor: intent.senderID,
+                        previousVersion: previousVersion,
+                        version: restored.authoritativeVersion,
+                        actionNumber: nextActionNumber,
+                        payload: .turnActionsRetracted(
+                            playerID: intent.senderID,
+                            rewoundFromVersion: previousVersion,
+                            actionCount: retractedActionCount
+                        ),
+                        transitions: []
+                    )
+                    gameState = restored
+                    turnAnchor = TurnAnchor(
+                        playerID: intent.senderID,
+                        version: restored.authoritativeVersion,
+                        state: restored
                     )
                 }
                 return .accepted(event)
@@ -580,6 +678,17 @@ nonisolated enum GameCore {
                 )
                 projection.availableActions = availability.kinds
                 projection.availableActionsByCardID = availability.byCardID
+                // 本回合已落地操作数(供 UI 显示"撤回本回合操作"入口):
+                // 活跃或待确认阶段且锚点属于当前行动玩家时,取事件序号差
+                //(待确认阶段 = 两个行动都已落地,撤回入口保持可用)。
+                projection.turnActionsTaken = if gameState.turnPhase == .active
+                    || gameState.turnPhase == .awaitingTurnEndConfirmation,
+                    let anchor = turnAnchor,
+                    anchor.playerID == activePlayerID {
+                    max(0, gameState.actionNumber - anchor.state.actionNumber)
+                } else {
+                    0
+                }
                 return projection
             }
             let checksum = try GameCore.snapshotChecksum(
@@ -614,6 +723,7 @@ nonisolated enum GameCore {
                 gameEnded: gameState.finalStandings.map {
                     GameTransitionEvent.GameEndedDetails(standings: $0)
                 },
+                awaitingTurnEndConfirmation: gameState.turnPhase == .awaitingTurnEndConfirmation,
                 match: match,
                 checksum: checksum
             )
@@ -696,6 +806,15 @@ nonisolated enum GameCore {
             if case .eraIntermission = gameState.turnPhase {
                 return rejection(.invalidAction)
             }
+            // 回合结束待确认:只接受"确认过轮"与"整回合撤回",第三个行动不允许。
+            if case .awaitingTurnEndConfirmation = gameState.turnPhase {
+                switch intent.payload {
+                case .confirmTurnEnd, .retractTurnActions:
+                    break
+                default:
+                    return rejection(.invalidAction)
+                }
+            }
             guard intent.senderID == gameState.activePlayerID else {
                 return rejection(.notActivePlayer)
             }
@@ -743,6 +862,18 @@ nonisolated enum GameCore {
             case .confirmEraIntermission:
                 // 时代确认无持牌要求;阶段合法性由校验规则把关。
                 break
+            case .confirmTurnEnd:
+                // 过轮确认无持牌要求;阶段与行动座位合法性由校验规则把关。
+                break
+            case .retractTurnActions:
+                // 仅当前行动玩家、活跃或待确认阶段、本回合确有已落地操作时可撤回;
+                // 其余阶段(结算暂停/强卖/终局)一律拒绝。
+                guard gameState.turnPhase == .active
+                    || gameState.turnPhase == .awaitingTurnEndConfirmation,
+                      let anchor = turnAnchor,
+                      anchor.playerID == intent.senderID,
+                      anchor.version.rawValue < gameState.authoritativeVersion.rawValue
+                else { return rejection(.invalidAction) }
             }
             return nil
         }

@@ -347,17 +347,41 @@ struct GameSetupTests {
             Issue.record("Expected setup pass to be accepted")
             return
         }
+        // 行动落地后停在待确认:行动消耗已生效,但尚未补牌/换人。
         let mutatedPlayer = try #require(engine.gameState.players.first { $0.id == activePlayerID })
-        #expect(mutatedPlayer.hand.count == 8)
+        #expect(mutatedPlayer.hand.count == 7)
         #expect(mutatedPlayer.hand.contains(discardedCard) == false)
         #expect(engine.gameState.publicDiscard == [discardedCard])
+        #expect(engine.gameState.activePlayerID == activePlayerID)
+        #expect(engine.gameState.actionsRemaining == 0)
+        #expect(engine.gameState.turnsCompletedInRound == 0)
+        #expect(engine.gameState.roundNumber == 1)
+        #expect(engine.gameState.actionNumber == 1)
+        #expect(engine.gameState.authoritativeVersion == .init(rawValue: 1))
+
+        // 确认过轮:补牌、换人、回合计数推进。
+        let confirm = engine.submit(.init(
+            protocolVersion: 1,
+            rulesetVersion: result.state.rulesetVersion,
+            roomID: .init(rawValue: "single-authority-room"),
+            senderID: activePlayerID,
+            reconnectToken: try #require(tokens[activePlayerID]),
+            baseVersion: engine.gameState.authoritativeVersion,
+            payload: .confirmTurnEnd
+        ), catalog: verifiedCatalog(completeCatalog()))
+        guard case .accepted = confirm else {
+            Issue.record("Expected turn-end confirm to be accepted")
+            return
+        }
+        #expect(engine.gameState.players.first { $0.id == activePlayerID }?.hand.count == 8)
         #expect(engine.gameState.activePlayerID == result.state.playerOrder[1])
         #expect(engine.gameState.actionsRemaining == 1)
         #expect(engine.gameState.turnsCompletedInRound == 1)
         #expect(engine.gameState.roundNumber == 1)
-        #expect(engine.gameState.actionNumber == 1)
-        #expect(engine.gameState.authoritativeVersion == .init(rawValue: 1))
-        #expect(engine.state.players.first { $0.id == activePlayerID }?.hand == mutatedPlayer.hand.map(\.id))
+        #expect(engine.gameState.actionNumber == 2)
+        #expect(engine.gameState.authoritativeVersion == .init(rawValue: 2))
+        #expect(engine.state.players.first { $0.id == activePlayerID }?.hand
+                == engine.gameState.players.first { $0.id == activePlayerID }?.hand.map(\.id))
         #expect(engine.state.discardPile == engine.gameState.publicDiscard.map(\.id))
     }
 
@@ -375,13 +399,18 @@ struct GameSetupTests {
         let first = result.state.playerOrder[0]
         let second = result.state.playerOrder[1]
 
+        // 新回合流程:行动落地后停在待确认,确认才过轮(补牌/结算在确认时)。
         try submitPass(to: &engine, playerID: first, roomID: roomID, tokens: tokens)
+        #expect(engine.gameState.turnPhase == .awaitingTurnEndConfirmation)
+        #expect(engine.gameState.activePlayerID == first)
+        try submitConfirmTurnEnd(to: &engine, playerID: first, roomID: roomID, tokens: tokens)
         #expect(engine.gameState.activePlayerID == second)
         #expect(engine.gameState.actionsRemaining == 1)
         #expect(engine.gameState.turnsCompletedInRound == 1)
         #expect(engine.gameState.roundNumber == 1)
 
         try submitPass(to: &engine, playerID: second, roomID: roomID, tokens: tokens)
+        try submitConfirmTurnEnd(to: &engine, playerID: second, roomID: roomID, tokens: tokens)
         #expect(engine.gameState.activePlayerID == first)
         #expect(engine.gameState.actionsRemaining == 2)
         #expect(engine.gameState.turnsCompletedInRound == 0)
@@ -394,6 +423,7 @@ struct GameSetupTests {
         #expect(engine.gameState.roundNumber == 2)
 
         try submitPass(to: &engine, playerID: first, roomID: roomID, tokens: tokens)
+        try submitConfirmTurnEnd(to: &engine, playerID: first, roomID: roomID, tokens: tokens)
         #expect(engine.gameState.activePlayerID == second)
         #expect(engine.gameState.actionsRemaining == 2)
         #expect(engine.gameState.turnsCompletedInRound == 1)
@@ -403,12 +433,14 @@ struct GameSetupTests {
         #expect(engine.gameState.activePlayerID == second)
         #expect(engine.gameState.actionsRemaining == 1)
         try submitPass(to: &engine, playerID: second, roomID: roomID, tokens: tokens)
+        try submitConfirmTurnEnd(to: &engine, playerID: second, roomID: roomID, tokens: tokens)
         #expect(engine.gameState.activePlayerID == first)
         #expect(engine.gameState.actionsRemaining == 2)
         #expect(engine.gameState.turnsCompletedInRound == 0)
         #expect(engine.gameState.roundNumber == 3)
-        #expect(engine.gameState.actionNumber == 6)
-        #expect(engine.gameState.authoritativeVersion == .init(rawValue: 6))
+        // 6 次行动 + 4 次过轮确认(第 1、2 轮各 2 次),各占一个版本号。
+        #expect(engine.gameState.actionNumber == 10)
+        #expect(engine.gameState.authoritativeVersion == .init(rawValue: 10))
         #expect(engine.gameState.publicDiscard.count == 6)
         #expect(engine.gameState.players.allSatisfy { $0.hand.count == 8 })
     }
@@ -426,6 +458,12 @@ struct GameSetupTests {
         )
 
         try submitPass(
+            to: &engine,
+            playerID: result.state.playerOrder[0],
+            roomID: roomID,
+            tokens: tokens
+        )
+        try submitConfirmTurnEnd(
             to: &engine,
             playerID: result.state.playerOrder[0],
             roomID: roomID,
@@ -846,6 +884,27 @@ struct GameSetupTests {
         ), catalog: verifiedCatalog(completeCatalog()))
         guard case .accepted = result else {
             Issue.record("Expected pass by \(playerID.rawValue) to be accepted")
+            return
+        }
+    }
+
+    private func submitConfirmTurnEnd(
+        to engine: inout GameCore.HostEngine,
+        playerID: GameCore.PlayerID,
+        roomID: GameCore.RoomID,
+        tokens: [GameCore.PlayerID: GameCore.ReconnectToken]
+    ) throws {
+        let result = engine.submit(.init(
+            protocolVersion: engine.protocolVersion,
+            rulesetVersion: engine.rulesetVersion,
+            roomID: roomID,
+            senderID: playerID,
+            reconnectToken: try #require(tokens[playerID]),
+            baseVersion: engine.gameState.authoritativeVersion,
+            payload: .confirmTurnEnd
+        ), catalog: verifiedCatalog(completeCatalog()))
+        guard case .accepted = result else {
+            Issue.record("Expected turn-end confirm by \(playerID.rawValue) to be accepted")
             return
         }
     }

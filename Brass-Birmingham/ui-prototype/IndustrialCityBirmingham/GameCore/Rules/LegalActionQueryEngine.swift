@@ -660,11 +660,12 @@ extension GameCore {
             catalog: VerifiedGameDataCatalog
         ) -> [MerchantPlacement] {
             state.merchants.filter { merchant in
-                guard let slot = catalog.catalog.board.merchantSlots.first(where: {
-                    $0.id == merchant.slotID && $0.playerCounts.contains(state.playerCount)
-                }), let definition = catalog.catalog.merchants.first(where: {
-                    $0.id == merchant.merchantDefinitionID && $0.playerCounts.contains(state.playerCount)
-                }), definition.acceptedIndustryIDs.contains(placement.tile.industryDefinitionID)
+                guard merchant.soldIndustryDefinitionID == nil,
+                      let slot = catalog.catalog.board.merchantSlots.first(where: {
+                          $0.id == merchant.slotID && $0.playerCounts.contains(state.playerCount)
+                      }), let definition = catalog.catalog.merchants.first(where: {
+                          $0.id == merchant.merchantDefinitionID && $0.playerCounts.contains(state.playerCount)
+                      }), definition.acceptedIndustryIDs.contains(placement.tile.industryDefinitionID)
                 else { return false }
                 return TopologyRules.hasRoute(
                     from: placement.locationID, to: slot.locationID,
@@ -693,6 +694,12 @@ extension GameCore {
                 (try? SimpleActionRules.validateEraConfirmation(
                     actorID: actorID, state: state, catalog: catalog
                 )) != nil
+            case .confirmTurnEnd:
+                (try? SimpleActionRules.validateTurnEndConfirmation(
+                    actorID: actorID, state: state, catalog: catalog
+                )) != nil
+            case .retractTurnActions:
+                false
             }
             guard valid else { throw LegalActionQueryError.invalidPrefix }
             return ([], payload)
@@ -755,7 +762,7 @@ extension GameCore {
                         roomID: .init(rawValue: "legal-query-dry-run"),
                         state: &candidate, catalog: catalog
                     )
-                case .confirmEraIntermission:
+                case .confirmEraIntermission, .confirmTurnEnd, .retractTurnActions:
                     return nil
                 }
             } catch { return nil }
@@ -763,7 +770,8 @@ extension GameCore {
             let effects: [ResourceEffect] = switch event.payload {
             case .built(_, _, let value), .networkBuilt(_, _, let value),
                  .developed(_, _, let value), .sold(_, _, let value): value
-            case .passed, .loanTaken, .scouted, .forcedSaleResolved, .eraIntermissionConfirmed: []
+            case .passed, .loanTaken, .scouted, .forcedSaleResolved, .eraIntermissionConfirmed,
+                 .turnEndConfirmed, .turnActionsRetracted: []
             }
             return .init(
                 cashDelta: after.cash - before.cash,
