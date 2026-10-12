@@ -1013,6 +1013,19 @@ struct BuildAndNetworkRulesTests {
             )
         }
 
+        // 官方:覆盖必须严格更高等级——资源枯竭全满足,但对手板上已是 L2、
+        // 自己下一块也只到 L2,同级不能盖。
+        var levelBlocked = state
+        levelBlocked.boardIndustryPlacements[0].tile = .init(
+            id: "opponent-l2-coal", industryDefinitionID: "coal-mine", level: 2
+        )
+        #expect(throws: GameCore.BuildRuleError.illegalOverbuild) {
+            try GameCore.BuildRules.validate(
+                .init(cardID: card.id, locationID: "dudley", industryDefinitionID: "coal-mine", slotIndex: 0, resourceSources: []),
+                actorID: actor, state: levelBlocked, catalog: catalog
+            )
+        }
+
         let target = try GameCore.BuildRules.validate(
             .init(cardID: card.id, locationID: "dudley", industryDefinitionID: "coal-mine", slotIndex: 0, resourceSources: []),
             actorID: actor, state: state, catalog: catalog
