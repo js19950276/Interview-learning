@@ -641,8 +641,6 @@ struct BuildAndNetworkRulesTests {
         state.placedLinks = [
             .init(routeID: "birmingham-worcester", ownerID: actor, era: .canal),
             .init(routeID: "gloucester-worcester", ownerID: actor, era: .canal),
-            // 第二笔出售需要另一个空槽:官方槽位整局限一次,补一条到 oxford 的连线。
-            .init(routeID: "birmingham-oxford", ownerID: actor, era: .canal),
         ]
         state.players[playerIndex].linksRemaining = 12
         state.boardIndustryPlacements = [

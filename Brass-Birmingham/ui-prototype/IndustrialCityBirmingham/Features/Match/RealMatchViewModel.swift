@@ -165,8 +165,7 @@ nonisolated enum RealMatchViewModel {
                 acceptedIndustries: acceptedIndustries,
                 hasBeer: placement.hasBeer,
                 bonusKind: merchantBonusKind(slot.bonus.kind),
-                bonusAmount: slot.bonus.amount,
-                soldIndustry: placement.soldIndustryDefinitionID.flatMap(merchantIndustryKind)
+                bonusAmount: slot.bonus.amount
             ))
         }
         return result

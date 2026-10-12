@@ -140,12 +140,7 @@ extension GameCore {
                     guard slotsByID[placement.slotID] != nil,
                           let merchant = merchantsByID[placement.merchantDefinitionID]
                     else { return false }
-                    guard merchant.acceptedIndustryIDs.isEmpty == false || placement.hasBeer == false else {
-                        return false
-                    }
-                    // 已售出的货物必须在该市场接收清单内(官方:标记只能放到对应图标空槽)。
-                    guard let sold = placement.soldIndustryDefinitionID else { return true }
-                    return merchant.acceptedIndustryIDs.contains(sold)
+                    return merchant.acceptedIndustryIDs.isEmpty == false || placement.hasBeer == false
                 }
             return merchantsOK
         }

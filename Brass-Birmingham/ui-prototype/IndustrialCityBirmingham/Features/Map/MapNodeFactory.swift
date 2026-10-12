@@ -661,7 +661,6 @@ enum MapNodeFactory {
             "bonusKind": placement.bonusKind.rawValue,
             "bonusAmount": placement.bonusAmount,
             "isHighlighted": isHighlighted,
-            "soldIndustry": placement.soldIndustry?.rawValue ?? NSNull(),
             "visualState": isHighlighted ? "legal" : "normal",
         ]
 
@@ -699,25 +698,18 @@ enum MapNodeFactory {
         panel.isUserInteractionEnabled = false
         merchant.addChild(panel)
 
-        // 已售槽:主字形换成售出的货物并染黄铜色,啤酒行显示"已售"——
-        // 与官方"在市场空槽放货物标记"一致,玩家一眼看出槽位已占。
         merchant.addChild(merchantLabel(
-            text: placement.soldIndustry.map { merchantAcceptanceGlyph([$0]) }
-                ?? merchantAcceptanceGlyph(placement.acceptedIndustries),
+            text: merchantAcceptanceGlyph(placement.acceptedIndustries),
             name: "merchant-acceptance",
             fontSize: 15,
-            color: placement.soldIndustry == nil ? porcelain : brass,
+            color: porcelain,
             y: 10
         ))
         merchant.addChild(merchantLabel(
-            text: placement.soldIndustry != nil
-                ? "已售"
-                : (placement.hasBeer ? "酒" : "—"),
+            text: placement.hasBeer ? "酒" : "—",
             name: "merchant-beer",
             fontSize: 9,
-            color: placement.soldIndustry != nil
-                ? brass
-                : (placement.hasBeer ? brass : porcelain.withAlphaComponent(0.6)),
+            color: placement.hasBeer ? brass : porcelain.withAlphaComponent(0.6),
             y: -2
         ))
         merchant.addChild(merchantLabel(

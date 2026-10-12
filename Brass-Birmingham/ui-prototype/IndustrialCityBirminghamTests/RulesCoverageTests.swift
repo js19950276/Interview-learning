@@ -133,7 +133,7 @@ struct RulesCoverageTests {
                 .init(id: 10, testNames: ["finalRailScoringRepeatsPreservedLevelTwoAwardsNoIncomeAndResolvesAllWinnerTies"]),
                 .init(id: 11, testNames: [
                     "sellUsesConcreteConnectedMerchantConsumesAtMostOneMerchantBeerAndAppliesRewards",
-                    "sellFillsMerchantSlotOnceAndRejectsReuseAndMismatchedIndustry",
+                    "sameMerchantSlotAcceptsRepeatSalesAndRejectsMismatchedIndustry",
                 ]),
                 .init(id: 12, testNames: [
                     "sellRejectsBlankWrongTypeDisconnectedFlippedAndSecondInvalidSaleWithoutMutation",
@@ -174,7 +174,7 @@ struct RulesCoverageTests {
             ExecutableTest(name: "canalPreparationPreservesMarketsRefillsMerchantsRedealsAndPreservesLongLivedState", run: TurnScoringRulesTests().canalPreparationPreservesMarketsRefillsMerchantsRedealsAndPreservesLongLivedState),
             ExecutableTest(name: "finalRailScoringRepeatsPreservedLevelTwoAwardsNoIncomeAndResolvesAllWinnerTies", run: TurnScoringRulesTests().finalRailScoringRepeatsPreservedLevelTwoAwardsNoIncomeAndResolvesAllWinnerTies),
             ExecutableTest(name: "sellUsesConcreteConnectedMerchantConsumesAtMostOneMerchantBeerAndAppliesRewards", run: DevelopSellSimpleActionTests().sellUsesConcreteConnectedMerchantConsumesAtMostOneMerchantBeerAndAppliesRewards),
-            ExecutableTest(name: "sellFillsMerchantSlotOnceAndRejectsReuseAndMismatchedIndustry", run: DevelopSellSimpleActionTests().sellFillsMerchantSlotOnceAndRejectsReuseAndMismatchedIndustry),
+            ExecutableTest(name: "sameMerchantSlotAcceptsRepeatSalesAndRejectsMismatchedIndustry", run: DevelopSellSimpleActionTests().sameMerchantSlotAcceptsRepeatSalesAndRejectsMismatchedIndustry),
             ExecutableTest(name: "sellRejectsBlankWrongTypeDisconnectedFlippedAndSecondInvalidSaleWithoutMutation", run: DevelopSellSimpleActionTests().sellRejectsBlankWrongTypeDisconnectedFlippedAndSecondInvalidSaleWithoutMutation),
             ExecutableTest(name: "coalMarketRequiresEdgeConnectionUsesCheapestFilledSlotThenUnlimitedEight", run: ResourceRulesTests().coalMarketRequiresEdgeConnectionUsesCheapestFilledSlotThenUnlimitedEight),
             ExecutableTest(name: "identicalSeedsProduceIdenticalCanonicalStateAndReplay", run: GameSetupTests().identicalSeedsProduceIdenticalCanonicalStateAndReplay),

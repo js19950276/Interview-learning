@@ -121,9 +121,6 @@ extension GameCore {
         var slotID: String
         var merchantDefinitionID: String
         var hasBeer: Bool
-        /// 该槽位已售出的货物(官方:每次出售占用一个空槽,整局限一次);nil=空槽。
-        /// 可选字段,旧存档缺省解码为 nil。
-        var soldIndustryDefinitionID: String? = nil
     }
 
     nonisolated struct BoardIndustryPlacement: Codable, Equatable, Sendable {
