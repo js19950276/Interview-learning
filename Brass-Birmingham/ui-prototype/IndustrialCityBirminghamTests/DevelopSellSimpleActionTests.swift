@@ -294,6 +294,51 @@ struct DevelopSellSimpleActionTests {
         }
     }
 
+    /// 官方:每个市场槽整局限一次。两个棉纺厂但只有一个可达匹配槽时,
+    /// 第一笔售出后不再提供"继续出售",且"结束出售"明示原因,避免误判为 bug。
+    @Test func singleReachableMerchantSlotStopsMultiSellWithExplicitReason() throws {
+        let catalog = try verifiedCatalog()
+        var state = try setupState(catalog: catalog)
+        let actor = try #require(state.activePlayerID)
+        let playerIndex = try #require(state.players.firstIndex { $0.id == actor })
+        state.players[playerIndex].hand = [.init(id: "location-birmingham-1", definitionID: "location-birmingham")]
+        state.merchants = knownMerchants()
+        state.placedLinks = [
+            .init(routeID: "birmingham-oxford", ownerID: actor, era: .canal),
+            .init(routeID: "birmingham-worcester", ownerID: actor, era: .canal),
+        ]
+        state.boardIndustryPlacements = [
+            .init(placementID: "cotton", locationID: "birmingham", slotIndex: 0, ownerID: actor,
+                  tile: .init(id: "cotton-tile", industryDefinitionID: "cotton-mill", level: 1)),
+            .init(placementID: "cotton-2", locationID: "worcester", slotIndex: 0, ownerID: actor,
+                  tile: .init(id: "cotton-tile-2", industryDefinitionID: "cotton-mill", level: 1)),
+            .init(placementID: "own-beer", locationID: "walsall", slotIndex: 1, ownerID: actor,
+                  tile: .init(id: "beer-tile", industryDefinitionID: "brewery", level: 1), resourceCount: 1),
+        ]
+        state.publicSupply.beer -= 1
+        repairCardFixture(&state, catalog: catalog)
+
+        // 走完第一笔出售(棉纺厂→唯一可达的 any 槽 oxford-1,用市场啤酒)。
+        let disposition = try GameCore.LegalActionQueryEngine.respond(
+            to: .init(
+                requestID: "dispose", baseVersion: state.authoritativeVersion,
+                draft: .init(
+                    action: .sell, cardID: "location-birmingham-1",
+                    selections: [
+                        .industryPlacement(id: "cotton"),
+                        .merchant(id: "oxford-1"),
+                        .resourceSource(.merchantBeer(slotID: "oxford-1")),
+                    ]
+                )
+            ),
+            actorID: actor, state: state, catalog: catalog
+        )
+        // 第二个棉纺厂虽然未翻面,但唯一可达匹配槽已被占用 → 只有结束出售,并说明原因。
+        #expect(disposition.nextChoices.count == 1)
+        #expect(disposition.nextChoices.first?.id == "sell:finish")
+        #expect(disposition.nextChoices.first?.label.contains("无可售市场槽") == true)
+    }
+
     @Test func sellAppliesEveryCatalogMerchantRewardOnlyWhenMerchantBeerIsUsed() throws {
         let catalog = try verifiedCatalog()
         struct RewardCase {

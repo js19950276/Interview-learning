@@ -581,9 +581,10 @@ extension GameCore {
                         throw LegalActionQueryError.invalidPrefix
                     }
                     let remaining = sellablePlacements(actorID: actorID, state: afterSale, catalog: catalog)
-                    // 引导多笔出售:继续卖放首位并标明剩余可卖数,避免误以为只能卖一笔。
+                    // 引导多笔出售:继续卖放首位并标明剩余可卖数,避免误以为只能卖一笔;
+                    // 无槽可续时明示原因(官方:每槽整局限一次,勿让玩家误判为 bug)。
                     if remaining.isEmpty {
-                        return ([choice("sell:finish", "结束出售（已选\(proposed.count)笔）",
+                        return ([choice("sell:finish", "结束出售（已选\(proposed.count)笔，其余产业已无可售市场槽）",
                                         .sellDisposition(continueSelling: false))], nil)
                     }
                     return ([
