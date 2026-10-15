@@ -199,7 +199,17 @@ extension GameCore {
             }
             let scoring = try ScoringRules.scoreEra(state.era, state: &state, catalog: catalog)
             events.append(scoring)
-            if state.era == .canal {
+            if state.matchMode == .shortCanal {
+                // 短局终局:追加分 → 撤线 → 排名。不进 eraIntermission,不准备铁路。
+                guard case .eraScored(let details) = scoring else {
+                    throw GameRulesEngine.GameRulesInternalError.invariantViolation
+                }
+                events.append(try ScoringRules.applyShortCanalBonus(
+                    priorAwards: details.awards, state: &state, catalog: catalog
+                ))
+                try ScoringRules.returnScoredLinks(state: &state)
+                events.append(ScoringRules.resolveWinner(state: &state))
+            } else if state.era == .canal {
                 // 两阶段过渡:先进入“时代结算确认”暂停,全员确认后再 prepareRailEra。
                 try enterEraIntermission(scoring: scoring, state: &state, catalog: catalog)
             } else {

@@ -46,6 +46,90 @@ struct ShortCanalRulesTests {
 
     // MARK: - 辅助(与 TurnScoringRulesTests.verifiedCatalog 同款)
 
+    @Test func shortCanalEndsAfterCanalScoringWithoutRailPreparation() throws {
+        let catalog = try verifiedCatalog()
+        var state = try shortCanalState()
+        let owner = state.playerOrder[0]
+        // 一块翻面一级产业(短局不移除) + 一条线(计分后撤回)。
+        var coal = try placement(
+            ownerID: owner, industryID: "coal-mine", level: 1,
+            placementID: "short-coal", locationID: "dudley", catalog: catalog.catalog
+        )
+        coal.isFlipped = true
+        state.boardIndustryPlacements.append(coal)
+        let route = try #require(catalog.catalog.board.routes.first { $0.id == "birmingham-coventry" })
+        state.placedLinks.append(.init(routeID: route.id, ownerID: owner, era: .canal))
+        mutate(owner, in: &state) { $0.linksRemaining = 13 }
+        // 推到最后一回合的最后一家。
+        state.roundNumber = state.canalRoundCapacity
+        state.actionsRemaining = 1
+        state.turnsCompletedInRound = state.playerCount - 1
+        state.activePlayerID = state.playerOrder.last
+        let roomID = GameCore.RoomID(rawValue: "short-end")
+        let tokens = Dictionary(uniqueKeysWithValues: state.players.map {
+            ($0.id, GameCore.ReconnectToken(rawValue: "token-\($0.id.rawValue)"))
+        })
+        var engine = try state.makeHostEngine(roomID: roomID, reconnectTokens: tokens, protocolVersion: 1)
+        let actor = try #require(state.activePlayerID)
+        let card = try #require(state.players.first { $0.id == actor }?.hand.first)
+        _ = engine.submit(.init(
+            protocolVersion: 1, rulesetVersion: state.rulesetVersion, roomID: roomID,
+            senderID: actor, reconnectToken: tokens[actor]!,
+            baseVersion: state.authoritativeVersion, payload: .pass(.init(cardID: card.id))
+        ), catalog: catalog)
+        #expect(engine.gameState.turnPhase == .awaitingTurnEndConfirmation)
+        let afterPass = engine.gameState
+        let zonesBefore = afterPass.players.flatMap(\.hand).map(\.id)
+            + afterPass.players.compactMap(\.privateBottomDiscard).map(\.id)
+            + afterPass.standardDrawDeck.map(\.id)
+            + afterPass.publicDiscard.map(\.id)
+            + afterPass.wildLocationPool.map(\.id)
+            + afterPass.wildIndustryPool.map(\.id)
+
+        let confirm = engine.submit(.init(
+            protocolVersion: 1, rulesetVersion: state.rulesetVersion, roomID: roomID,
+            senderID: actor, reconnectToken: tokens[actor]!,
+            baseVersion: engine.gameState.authoritativeVersion, payload: .confirmTurnEnd
+        ), catalog: catalog)
+        guard case .accepted(let event) = confirm else {
+            Issue.record("short canal final confirm should end the game, got \(confirm)")
+            return
+        }
+
+        // 事件序恰好 4 个:roundEnded、eraScored、shortCanalScored、gameEnded。
+        #expect(event.transitions.count == 4)
+        guard case .roundEnded = event.transitions[0],
+              case .eraScored = event.transitions[1],
+              case .shortCanalScored = event.transitions[2],
+              case .gameEnded = event.transitions[3] else {
+            Issue.record("short canal end must be roundEnded, eraScored, shortCanalScored, gameEnded")
+            return
+        }
+        #expect(engine.gameState.era == .canal)
+        #expect(engine.gameState.turnPhase == .ended)
+        #expect(engine.gameState.matchMode == .shortCanal)
+        #expect(engine.gameState.finalStandings?.isEmpty == false)
+        // 不做铁路准备:一级产业还在、底牌还在、没有 railPrepared。
+        #expect(engine.gameState.boardIndustryPlacements.contains { $0.placementID == "short-coal" })
+        #expect(engine.gameState.players.allSatisfy { $0.privateBottomDiscard != nil })
+        #expect(event.transitions.contains { if case .railPrepared = $0 { true } else { false } } == false)
+        // 线已撤回,余量回补;牌区多重集不变(最后一家确认时的补牌只是搬牌)。
+        #expect(engine.gameState.placedLinks.isEmpty)
+        #expect(try #require(engine.gameState.players.first { $0.id == owner }).linksRemaining == 14)
+        let zonesAfter = engine.gameState.players.flatMap(\.hand).map(\.id)
+            + engine.gameState.players.compactMap(\.privateBottomDiscard).map(\.id)
+            + engine.gameState.standardDrawDeck.map(\.id)
+            + engine.gameState.publicDiscard.map(\.id)
+            + engine.gameState.wildLocationPool.map(\.id)
+            + engine.gameState.wildIndustryPool.map(\.id)
+        #expect(zonesAfter.sorted() == zonesBefore.sorted())
+        #expect(GameCore.GameStateAuthorityValidator.isValid(engine.gameState, catalog: catalog))
+        // 重放一致:转换事件随 turnEndConfirmed 的重放自动复现。
+        var replayed = afterPass
+        try GameCore.GameRulesEngine.replay(event, expectedRoomID: roomID, to: &replayed, catalog: catalog)
+        #expect(replayed == engine.gameState)
+    }
+
     private func shortCanalState(playerCount: Int = 2, seed: UInt64 = 21) throws -> GameCore.GameState {
         let catalog = try verifiedCatalog()
         var rules = GameCore.SetupRules(seed: seed)
