@@ -192,6 +192,8 @@ extension GameCore {
                 // 两阶段过渡:先进入“时代结算确认”暂停,全员确认后再 prepareRailEra。
                 try enterEraIntermission(scoring: scoring, state: &state, catalog: catalog)
             } else {
+                // 铁路终局:计分后撤下连接片退回主人,再排名;不再加第二次 VP。
+                try ScoringRules.returnScoredLinks(state: &state)
                 events.append(ScoringRules.resolveWinner(state: &state))
             }
             return events

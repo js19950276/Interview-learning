@@ -72,6 +72,23 @@ extension GameCore {
             ))
         }
 
+        /// 已计分的连接片全部撤下,退回各自主人(余量+1);不加 VP、不发事件。
+        /// 缺主人的孤儿线抛 missingDefinition 且一条余量都不改。
+        static func returnScoredLinks(state: inout GameState) throws {
+            var ownerIndexes: [Int] = []
+            ownerIndexes.reserveCapacity(state.placedLinks.count)
+            for link in state.placedLinks {
+                guard let index = state.players.firstIndex(where: { $0.id == link.ownerID }) else {
+                    throw ScoringRuleError.missingDefinition
+                }
+                ownerIndexes.append(index)
+            }
+            for index in ownerIndexes {
+                state.players[index].linksRemaining += 1
+            }
+            state.placedLinks.removeAll()
+        }
+
         static func prepareRailEra(
             state: inout GameState,
             catalog: VerifiedGameDataCatalog
@@ -92,12 +109,7 @@ extension GameCore {
 
             // 官方规则(End of Era 步骤 1):连接片计分后全部从板上撤下,
             // 连线片(双面:运河面/铁路面)退回各自主人,铁路时代可再次使用。
-            for link in state.placedLinks {
-                if let index = state.players.firstIndex(where: { $0.id == link.ownerID }) {
-                    state.players[index].linksRemaining += 1
-                }
-            }
-            state.placedLinks.removeAll()
+            try returnScoredLinks(state: &state)
 
             let merchantDefinitions = Dictionary(uniqueKeysWithValues: catalog.catalog.merchants.map {
                 ($0.id, $0)

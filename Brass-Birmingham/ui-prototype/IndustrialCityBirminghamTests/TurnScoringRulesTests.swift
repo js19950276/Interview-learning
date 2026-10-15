@@ -1050,6 +1050,66 @@ struct TurnScoringRulesTests {
         #expect(replayed == postEventState)
     }
 
+    @Test func railFinalRoundReturnsScoredLinksToOwnersWithoutDoubleScoring() throws {
+        let catalog = try verifiedCatalog()
+        var state = try setup(playerCount: 2, catalog: catalog)
+        state.era = .rail
+        state.roundNumber = state.railRoundCapacity
+        let owner = state.playerOrder[0]
+        var cotton = try placement(
+            ownerID: owner, industryID: "cotton-mill", level: 2,
+            placementID: "rail-cotton", locationID: "birmingham", catalog: catalog.catalog
+        )
+        cotton.isFlipped = true
+        state.boardIndustryPlacements.append(cotton)
+        let cottonLevel = try #require(
+            catalog.catalog.industries.first { $0.id == "cotton-mill" }?
+                .levels.first { $0.level == 2 }
+        )
+        let route = try #require(catalog.catalog.board.routes.first { $0.id == "birmingham-coventry" })
+        // 直接 append,不走 resolveNetwork:那条路径会把余量减到 12,退回后回不到 14。
+        state.placedLinks.append(.init(routeID: route.id, ownerID: owner, era: .rail))
+        mutatePlayer(owner, in: &state) { $0.linksRemaining = 13; $0.victoryPoints = 0 }
+
+        let events = try GameCore.GameRulesEngine.resolveRoundEnd(state: &state, catalog: catalog)
+
+        let player = try #require(state.players.first { $0.id == owner })
+        // 线分 2 + 产业分 5,各计一次,不是两倍。
+        #expect(player.victoryPoints == cottonLevel.linkPoints + cottonLevel.victoryPoints)
+        #expect(state.placedLinks.isEmpty)
+        #expect(player.linksRemaining == 14)
+        #expect(state.turnPhase == .ended)
+        // 撤线不产生第四个转换:仍是 roundEnded、eraScored、gameEnded。
+        #expect(events.count == 3)
+        guard case .roundEnded = events[0],
+              case .eraScored(let scored) = events[1],
+              case .gameEnded = events[2] else {
+            Issue.record("rail endgame events must stay roundEnded, eraScored, gameEnded")
+            return
+        }
+        #expect(scored.removedRouteIDs.isEmpty)
+    }
+
+    @Test func eraPreparationFailsClosedWhenALinkHasNoOwner() throws {
+        let catalog = try verifiedCatalog()
+        var state = try setup(playerCount: 2, catalog: catalog)
+        let owner = state.playerOrder[0]
+        state.placedLinks = [
+            .init(routeID: "birmingham-coventry", ownerID: owner, era: .canal),
+            .init(routeID: "birmingham-coventry", ownerID: .init(rawValue: "ghost"), era: .canal),
+        ]
+        mutatePlayer(owner, in: &state) { $0.linksRemaining = 13 }
+
+        // 合法对局的线都有主人;孤儿线让时代准备整体失败,而不是被静默跳过后清空。
+        #expect(throws: GameCore.ScoringRuleError.missingDefinition) {
+            _ = try GameCore.GameRulesEngine.prepareRailEra(state: &state, catalog: catalog)
+        }
+        // 抛错时撤线尚未发生:线还在,余量未加。
+        #expect(state.placedLinks.count == 2)
+        #expect(state.players.first { $0.id == owner }?.linksRemaining == 13)
+        #expect(state.era == .canal)
+    }
+
     private func setup(playerCount: Int, catalog: GameCore.VerifiedGameDataCatalog) throws -> GameCore.GameState {
         var rules = GameCore.SetupRules(seed: UInt64(9_000 + playerCount))
         return try rules.makeGame(
