@@ -46,6 +46,31 @@ struct ShortCanalRulesTests {
 
     // MARK: - 辅助(与 TurnScoringRulesTests.verifiedCatalog 同款)
 
+    @Test func isGameFinalRoundDependsOnMatchMode() throws {
+        let catalog = try verifiedCatalog()
+        func state(mode: GameCore.MatchMode, era: GameCore.Era) throws -> GameCore.GameState {
+            var rules = GameCore.SetupRules(seed: 11)
+            var value = try rules.makeGame(
+                catalog: catalog, playerIDs: (1...2).map { .init(rawValue: "p\($0)") }
+            ).state
+            value.matchMode = mode
+            value.era = era
+            return value
+        }
+        var standardCanalEnd = try state(mode: .standard, era: .canal)
+        standardCanalEnd.roundNumber = standardCanalEnd.canalRoundCapacity
+        #expect(GameCore.TurnRules.isGameFinalRound(standardCanalEnd) == false)
+        var standardRailEnd = try state(mode: .standard, era: .rail)
+        standardRailEnd.roundNumber = standardRailEnd.railRoundCapacity
+        #expect(GameCore.TurnRules.isGameFinalRound(standardRailEnd))
+        var shortCanalEnd = try state(mode: .shortCanal, era: .canal)
+        shortCanalEnd.roundNumber = shortCanalEnd.canalRoundCapacity
+        #expect(GameCore.TurnRules.isGameFinalRound(shortCanalEnd))
+        var shortMidway = shortCanalEnd
+        shortMidway.roundNumber = shortMidway.canalRoundCapacity - 1
+        #expect(GameCore.TurnRules.isGameFinalRound(shortMidway) == false)
+    }
+
     @Test func shortCanalSetupInsertsMatchModeSelectedAndKeepsTheDealIdentical() throws {
         let catalog = try verifiedCatalog()
         let playerIDs = [GameCore.PlayerID(rawValue: "p1"), GameCore.PlayerID(rawValue: "p2")]

@@ -12,6 +12,17 @@ extension GameCore {
             era == .canal && roundNumber == 1 ? 1 : 2
         }
 
+        /// 游戏最后一回合(RULES.md §6.3 不结收入的"最后一回合"):
+        /// 标准局=铁路末回合;短局=运河末回合。标准局运河末回合为假。
+        static func isGameFinalRound(_ state: GameState) -> Bool {
+            switch state.matchMode {
+            case .standard:
+                return state.era == .rail && state.roundNumber >= state.railRoundCapacity
+            case .shortCanal:
+                return state.era == .canal && state.roundNumber >= state.canalRoundCapacity
+            }
+        }
+
         static func refillHand(playerID: PlayerID, state: inout GameState) {
             guard let index = state.players.firstIndex(where: { $0.id == playerID }) else { return }
             while state.players[index].hand.count < 8, state.standardDrawDeck.isEmpty == false {
@@ -41,7 +52,7 @@ extension GameCore {
             state.activePlayerID = state.playerOrder.first
             state.roundIncomeCursor = 0
 
-            if state.era == .rail && state.roundNumber >= state.railRoundCapacity {
+            if isGameFinalRound(state) {
                 return try completeRound(state: &state, catalog: catalog)
             }
             return try resolveIncomeFromCursor(state: &state, catalog: catalog)

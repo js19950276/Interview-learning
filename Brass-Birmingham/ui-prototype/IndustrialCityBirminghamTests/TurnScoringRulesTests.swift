@@ -1020,6 +1020,10 @@ struct TurnScoringRulesTests {
                 return
             }
             #expect(intermission.awards.count == state.players.count)
+            // 标准局运河末回合不是游戏最后一回合:照常发收入
+            //(夹具 incomePosition 15 = £3,现金 20 → 23),不得提前跳过。
+            #expect(Dictionary(uniqueKeysWithValues: engine.gameState.players.map { ($0.id, $0.cash) })
+                == Dictionary(uniqueKeysWithValues: state.players.map { ($0.id, 23) }))
             // 全员确认后进入铁路时代;最后一家的确认事件携带 railPrepared。
             var lastConfirmEvent: GameCore.AuthoritativeGameEvent?
             for player in state.players.map(\.id) {
