@@ -60,7 +60,8 @@ actor SessionCoordinator {
     }
 
     struct Configuration: Sendable {
-        let protocolVersion: Int
+        /// 会话协议;短局房间由主机在协议 2/3 之间切换(存档/信封都抄这个值)。
+        var protocolVersion: Int
         let rulesetVersion: String
         let roomID: GameCore.RoomID
         let playerID: GameCore.PlayerID
@@ -154,6 +155,10 @@ actor SessionCoordinator {
     private var startPhase: StartPhase = .notStarted
     /// 对局模式(主机权威);开局时传给 makeGame,大厅广播随名册下发。
     private(set) var matchMode: GameCore.MatchMode = .standard
+    /// 协议切换期间需要按新协议重新 hello 的座位;发送返回后仍带标记者移出名册。
+    private var needsProtocolRehello: Set<GameCore.PlayerID> = []
+    /// 客机跟随协议后的待确认标记:翻转后的 hello 再被拒即停,不在 2/3 之间震荡。
+    private var awaitingProtocolFollowAck = false
     private var stateContinuations: [UUID: AsyncStream<State>.Continuation] = [:]
     private(set) var snapshot: GameCore.ViewSnapshot?
     /// 缺初始快照时只发一次恢复请求,防止每个到达的事件都触发 catchUp。
@@ -348,11 +353,36 @@ actor SessionCoordinator {
         }
     }
 
-    /// 主机选择对局模式(仅大厅阶段);变更即广播名册。
+    /// 主机选择对局模式(仅大厅阶段、棋盘未写出)。切换协议时:
+    /// 先写新协议并标记全部客机座位,发 versionIncompatible 期间按新协议
+    /// hello 回来的座位保留;发送返回后仍带标记者移出名册,再广播缩小后的名册。
     func setMatchMode(_ mode: GameCore.MatchMode) async throws {
         guard isHost else { throw Error.hostOnly }
-        guard startPhase == .notStarted else { throw Error.gameAlreadyStarted }
+        guard startPhase == .notStarted, engine == nil, snapshot == nil else {
+            throw Error.gameAlreadyStarted
+        }
+        let target = mode == .shortCanal ? 3 : 2
+        let changed = matchMode != mode
         matchMode = mode
+        guard changed, target != configuration.protocolVersion else {
+            await broadcastLobbyState()
+            return
+        }
+        // 1) 先写新协议:发通知期间按新协议 hello 的客机能对上协议检查。
+        configuration.protocolVersion = target
+        needsProtocolRehello = Set(playerIDs.filter { $0 != configuration.playerID })
+        for player in needsProtocolRehello { ready.remove(player) }   // tokens 先不动
+        // 2) 发 versionIncompatible;.hello 处理会把按新协议回来的人移出标记。
+        for player in playerIDs where player != configuration.playerID {
+            try? await send(.versionIncompatible, to: player)
+        }
+        // 3) 发送全部返回:仍带标记的座位移出名册(断线/旧构建都不会重新 hello)。
+        for player in needsProtocolRehello {
+            tokens[player] = nil
+            ready.remove(player)
+        }
+        needsProtocolRehello = []
+        // 4) 广播缩小后的名册;startGame 只给剩下的 tokens 发牌。
         await broadcastLobbyState()
     }
 
@@ -575,6 +605,8 @@ actor SessionCoordinator {
         switch envelope.payload {
         case let .hello(token, displayName):
             guard envelope.recipientID == configuration.playerID else { return }
+            // 协议切换期间:按当前(新)协议回来的 hello 把座位移出待重连名册。
+            needsProtocolRehello.remove(envelope.senderID)
             if let existing = tokens[envelope.senderID], existing != token {
                 try? await send(.rejection(.init(reasonCode: .invalidReconnectToken,
                     recoverySuggestion: "Reauthenticate the seat with its reconnect token.")),
@@ -764,6 +796,7 @@ actor SessionCoordinator {
         switch envelope.payload {
         case .createRoom:
             guard acceptUnique(envelope, peer: peer) else { return }
+            awaitingProtocolFollowAck = false
             joinOutcome = .accepted
             recoveryTargetVersion = envelope.authoritativeVersion
             // 跨生命周期防御:本地存档版本高于新房间的权威版本,说明是上一局残留,
@@ -780,7 +813,20 @@ actor SessionCoordinator {
             try? await send(.catchUp(fromVersion: fromVersion), to: configuration.hostPlayerID, version: fromVersion)
         case .versionIncompatible:
             guard acceptUnique(envelope, peer: peer) else { return }
-            joinOutcome = .rejected(.incompatiblePeer)
+            if awaitingProtocolFollowAck {
+                // 翻转后的 hello 仍被拒:停止,不在 2/3 之间震荡。
+                awaitingProtocolFollowAck = false
+                joinOutcome = .rejected(.incompatiblePeer)
+                return
+            }
+            // 跟随主机:2→3、3→2,立刻用改过的存储值重新 hello 一次。
+            // 旧构建没有这条分支,收到即在上面的拒绝路径停下,不会 hello。
+            configuration.protocolVersion = configuration.protocolVersion == 3 ? 2 : 3
+            awaitingProtocolFollowAck = true
+            try? await send(
+                .hello(reconnectToken: configuration.reconnectToken, displayName: configuration.displayName),
+                to: configuration.hostPlayerID
+            )
         case let .rejection(rejection):
             guard acceptUnique(envelope, peer: peer) else { return }
             if snapshot == nil {
@@ -798,6 +844,8 @@ actor SessionCoordinator {
             guard envelope.protocolVersion == configuration.protocolVersion,
                   envelope.rulesetVersion == configuration.rulesetVersion,
                   validatedLobbyState(lobby), acceptUnique(envelope, peer: peer) else { return }
+            // 名册同步成功:协议跟随的待确认标记清零(主机再改模式可以再翻转一次)。
+            awaitingProtocolFollowAck = false
             tokens = Dictionary(uniqueKeysWithValues: lobby.playerIDs.map { ($0, .init(rawValue: "host-authoritative-roster")) })
             ready = Set(lobby.readyPlayerIDs)
             for (rawName, name) in lobby.names {

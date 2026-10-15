@@ -489,6 +489,48 @@ struct SessionCoordinatorTests {
         try await eventually { await guest.snapshot?.match?.matchMode == .shortCanal }
     }
 
+    @Test func hostSwitchingProtocolPrunesSeatsThatNeverRehello() async throws {
+        let catalog = try verifiedCatalog()
+        let hub = LoopbackTransportHub()
+        let host = realCoordinator(id: hostID, token: "t-host", transport: hub.makeTransport(peerID: hostID), catalog: catalog)
+        try await host.createRoom()
+        // 入座后断连的客机:收不到 versionIncompatible,永远不会重新 hello。
+        let guest = realCoordinator(id: guestID, token: "t-guest", transport: hub.makeTransport(peerID: guestID), catalog: catalog)
+        _ = try await guest.joinRoom()
+        try await eventually { await host.playerIDs.contains(guestID) }
+        await guest.disconnect()
+
+        try await host.setMatchMode(.shortCanal)
+
+        // 名册必须剔除不回来重新 hello 的座位;ready 里也不在;主机自己保留。
+        try await eventually { await host.playerIDs.contains(guestID) == false }
+        #expect(await host.readyPlayerIDs.contains(guestID) == false)
+        #expect(await host.playerIDs.contains(hostID))
+    }
+
+    @Test func guestFollowsHostProtocolFlipAndStaysSeated() async throws {
+        let catalog = try verifiedCatalog()
+        let hub = LoopbackTransportHub()
+        let host = realCoordinator(id: hostID, token: "t-host", transport: hub.makeTransport(peerID: hostID), catalog: catalog)
+        try await host.createRoom()
+        let guest = realCoordinator(id: guestID, token: "t-guest", transport: hub.makeTransport(peerID: guestID), catalog: catalog)
+        _ = try await guest.joinRoom()
+        try await eventually { await host.playerIDs.contains(guestID) }
+
+        try await host.setMatchMode(.shortCanal)
+
+        // 新客机跟随到协议 3 并重新 hello 成功,仍在大厅名册里,
+        // 且后续能准备、主机仍能开局短局。
+        try await eventually { await host.playerIDs.contains(guestID) }
+        #expect(await host.matchMode == .shortCanal)
+        try await guest.setReady(true)
+        try await host.setReady(true)
+        try await eventually { await host.readyPlayerIDs.count == 2 }
+        try await host.startGame()
+        try await eventually { await host.snapshot?.match?.matchMode == .shortCanal }
+        try await eventually { await guest.snapshot?.match?.matchMode == .shortCanal }
+    }
+
     @Test func reconnectTokenIsBoundToRoomAndPlayer() async throws {
         let hub = LoopbackTransportHub()
         let host = coordinator(id: "host", token: "t-host", transport: hub.makeTransport(peerID: .init(rawValue: "host")))
