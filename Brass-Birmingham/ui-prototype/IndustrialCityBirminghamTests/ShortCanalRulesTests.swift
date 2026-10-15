@@ -46,6 +46,30 @@ struct ShortCanalRulesTests {
 
     // MARK: - 辅助(与 TurnScoringRulesTests.verifiedCatalog 同款)
 
+    @Test func matchProjectionDecodesLegacyJSONAndOmitsStandardModeKey() throws {
+        // 手工构造一份"旧构建"的投影 JSON(没有 matchMode 键;可选键缺省)。
+        let legacyJSON = Data("""
+        {"era":"canal","roundNumber":1,"deckCount":10,"actionsRemaining":1,
+         "players":[],"boardIndustryPlacements":[],"placedLinks":[],
+         "coalMarket":{"resource":"coal","slots":[]},
+         "ironMarket":{"resource":"iron","slots":[]},
+         "publicSupply":{"coal":0,"iron":0,"beer":0,"mayUseSubstitutes":true},
+         "merchants":[],"publicChecksum":"checksum","ownHand":[],
+         "availableActions":[],"trivialOptions":[]}
+        """.utf8)
+        let decoded = try JSONDecoder().decode(GameCore.MatchProjection.self, from: legacyJSON)
+        #expect(decoded.matchMode == .standard)
+        #expect(String(data: try JSONEncoder().encode(decoded), encoding: .utf8)?
+            .contains("\"matchMode\"") == false)
+
+        var short = decoded
+        short.matchMode = .shortCanal
+        let shortJSON = try JSONEncoder().encode(short)
+        let text = try #require(String(data: shortJSON, encoding: .utf8))
+        #expect(text.contains("\"matchMode\":\"shortCanal\""))
+        #expect(try JSONDecoder().decode(GameCore.MatchProjection.self, from: shortJSON) == short)
+    }
+
     @Test func shortCanalEndsAfterCanalScoringWithoutRailPreparation() throws {
         let catalog = try verifiedCatalog()
         var state = try shortCanalState()

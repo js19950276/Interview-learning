@@ -107,6 +107,8 @@ extension GameCore {
         /// 当前行动玩家本回合已落地的操作数(>0 时 UI 提供"撤回本回合操作")。
         /// 可选字段保持旧存档兼容(缺省视为 0)。
         var turnActionsTaken: Int?
+        /// 对局模式;标准局不写出该键(缺键解码为 .standard),快照字节保持兼容。
+        var matchMode: MatchMode = .standard
 
         static func make(
             state: GameState,
@@ -161,7 +163,8 @@ extension GameCore {
                         .map { ($0.id, []) }
                 ),
                 trivialOptions: actionOptions,
-                turnActionsTaken: nil
+                turnActionsTaken: nil,
+                matchMode: state.matchMode
             )
             projection.publicChecksum = try projection.computePublicChecksum()
             return projection
@@ -221,6 +224,73 @@ extension GameCore {
                 Set(option.cardIDs).isSubset(of: handIDs)
                     && (option.action == .pass || option.action == .loan)
             }
+        }
+    }
+}
+
+extension GameCore.MatchProjection {
+    /// 手写编解码:matchMode 缺键解为 .standard、仅短局写出;
+    /// 其余字段与合成实现逐字段同形(非可选 encode、可选 encodeIfPresent),
+    /// 保证旧快照可读、标准局重编码不多键。
+    private nonisolated enum CodingKeys: String, CodingKey {
+        case era, roundNumber, deckCount, actionsRemaining, players
+        case boardIndustryPlacements, placedLinks, coalMarket, ironMarket
+        case publicSupply, merchants, forcedSaleDebtorID, publicChecksum, ownHand
+        case availableActions, availableActionsByCardID, trivialOptions
+        case turnActionsTaken, matchMode
+    }
+
+    nonisolated init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        era = try values.decode(GameCore.Era.self, forKey: .era)
+        roundNumber = try values.decode(Int.self, forKey: .roundNumber)
+        deckCount = try values.decode(Int.self, forKey: .deckCount)
+        actionsRemaining = try values.decode(Int.self, forKey: .actionsRemaining)
+        players = try values.decode([GameCore.MatchPlayerProjection].self, forKey: .players)
+        boardIndustryPlacements = try values.decode(
+            [GameCore.BoardIndustryPlacement].self, forKey: .boardIndustryPlacements
+        )
+        placedLinks = try values.decode([GameCore.PlacedLink].self, forKey: .placedLinks)
+        coalMarket = try values.decode(GameCore.ResourceMarket.self, forKey: .coalMarket)
+        ironMarket = try values.decode(GameCore.ResourceMarket.self, forKey: .ironMarket)
+        publicSupply = try values.decode(GameCore.PublicSupply.self, forKey: .publicSupply)
+        merchants = try values.decode([GameCore.MerchantPlacement].self, forKey: .merchants)
+        forcedSaleDebtorID = try values.decodeIfPresent(
+            GameCore.PlayerID.self, forKey: .forcedSaleDebtorID
+        )
+        publicChecksum = try values.decode(String.self, forKey: .publicChecksum)
+        ownHand = try values.decode([GameCore.CardInstance].self, forKey: .ownHand)
+        availableActions = try values.decode([GameCore.ActionKind].self, forKey: .availableActions)
+        availableActionsByCardID = try values.decodeIfPresent(
+            [String: [GameCore.ActionKind]].self, forKey: .availableActionsByCardID
+        )
+        trivialOptions = try values.decode([GameCore.ActionOption].self, forKey: .trivialOptions)
+        turnActionsTaken = try values.decodeIfPresent(Int.self, forKey: .turnActionsTaken)
+        matchMode = try values.decodeIfPresent(GameCore.MatchMode.self, forKey: .matchMode) ?? .standard
+    }
+
+    nonisolated func encode(to encoder: Encoder) throws {
+        var values = encoder.container(keyedBy: CodingKeys.self)
+        try values.encode(era, forKey: .era)
+        try values.encode(roundNumber, forKey: .roundNumber)
+        try values.encode(deckCount, forKey: .deckCount)
+        try values.encode(actionsRemaining, forKey: .actionsRemaining)
+        try values.encode(players, forKey: .players)
+        try values.encode(boardIndustryPlacements, forKey: .boardIndustryPlacements)
+        try values.encode(placedLinks, forKey: .placedLinks)
+        try values.encode(coalMarket, forKey: .coalMarket)
+        try values.encode(ironMarket, forKey: .ironMarket)
+        try values.encode(publicSupply, forKey: .publicSupply)
+        try values.encode(merchants, forKey: .merchants)
+        try values.encodeIfPresent(forcedSaleDebtorID, forKey: .forcedSaleDebtorID)
+        try values.encode(publicChecksum, forKey: .publicChecksum)
+        try values.encode(ownHand, forKey: .ownHand)
+        try values.encode(availableActions, forKey: .availableActions)
+        try values.encodeIfPresent(availableActionsByCardID, forKey: .availableActionsByCardID)
+        try values.encode(trivialOptions, forKey: .trivialOptions)
+        try values.encodeIfPresent(turnActionsTaken, forKey: .turnActionsTaken)
+        if matchMode != .standard {
+            try values.encode(matchMode, forKey: .matchMode)
         }
     }
 }
