@@ -17,17 +17,34 @@ nonisolated struct RecoverableSessionReference: Codable, Equatable, Hashable, Se
     let playerID: GameCore.PlayerID
     let role: SessionArchiveRole
     let rulesetVersion: String
+    /// 档案使用的会话协议(短局=3,标准局=2);旧记录缺键按 2 解。
+    var protocolVersion: Int = 2
 
     init(
         roomID: GameCore.RoomID,
         playerID: GameCore.PlayerID,
         role: SessionArchiveRole,
-        rulesetVersion: String = "rules-v1"
+        rulesetVersion: String = "rules-v1",
+        protocolVersion: Int = 2
     ) {
         self.roomID = roomID
         self.playerID = playerID
         self.role = role
         self.rulesetVersion = rulesetVersion
+        self.protocolVersion = protocolVersion
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case roomID, playerID, role, rulesetVersion, protocolVersion
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        roomID = try values.decode(GameCore.RoomID.self, forKey: .roomID)
+        playerID = try values.decode(GameCore.PlayerID.self, forKey: .playerID)
+        role = try values.decode(SessionArchiveRole.self, forKey: .role)
+        rulesetVersion = try values.decodeIfPresent(String.self, forKey: .rulesetVersion) ?? "rules-v1"
+        protocolVersion = try values.decodeIfPresent(Int.self, forKey: .protocolVersion) ?? 2
     }
 
     var id: String { "\(role.rawValue):\(roomID.rawValue):\(playerID.rawValue)" }
@@ -237,7 +254,9 @@ nonisolated enum SnapshotStoreError: Error, Equatable, Sendable {
 
 nonisolated struct SnapshotEnvelope: Codable, Equatable, Sendable {
     static let currentSchemaVersion = 4
-    static let supportedSchemaVersions: Set<Int> = [2, currentSchemaVersion]
+    /// schema 5 只由 save 在「协议 3 且短局」时盖章;currentSchemaVersion 仍是 4,
+    /// 标准局存档保持 schema 4。
+    static let supportedSchemaVersions: Set<Int> = [2, currentSchemaVersion, 5]
 
     var schemaVersion: Int
     let archive: SessionArchive
@@ -398,7 +417,17 @@ actor SnapshotStore {
         } else if archive.commitSequence < highestCommittedSequence {
             throw SnapshotStoreError.commitSequenceRollback
         }
-        let envelope = try SnapshotEnvelope(archive: archive)
+        var envelope = try SnapshotEnvelope(archive: archive)
+        if archive.protocolVersion == 3 {
+            // 短局专用信封:协议 3 + 短局载荷才盖 schema 5;
+            // 校验和只覆盖 archive,改 schemaVersion 不用重算。
+            let isShortCanal: Bool
+            switch archive.payload {
+            case .host(let host): isShortCanal = host.gameState?.matchMode == .shortCanal
+            case .guest(let guest): isShortCanal = guest.snapshot.match?.matchMode == .shortCanal
+            }
+            if isShortCanal { envelope.schemaVersion = 5 }
+        }
         let canonical = try JSONEncoder.canonical.encode(envelope)
         let encrypted = try SnapshotCrypto.seal(canonical, keyData: keyProvider.keyData())
         try fileWriter.replaceCommittedFile(
@@ -468,13 +497,29 @@ actor SnapshotStore {
         guard SnapshotEnvelope.supportedSchemaVersions.contains(envelope.schemaVersion) else {
             throw SnapshotStoreError.schemaMismatch
         }
-        guard !requiresCurrentSchema || envelope.schemaVersion == SnapshotEnvelope.currentSchemaVersion else {
+        // schema 5 是短局的"当前 schema";schema 2 仍不是,维持"留档待迁移"。
+        guard !requiresCurrentSchema
+                || envelope.schemaVersion == SnapshotEnvelope.currentSchemaVersion
+                || envelope.schemaVersion == 5 else {
             throw SnapshotStoreError.incompleteAuthorityState
         }
         guard envelope.checksum == (try SnapshotEnvelope.checksum(for: envelope.archive)) else {
             throw SnapshotStoreError.checksumMismatch
         }
         let archive = Self.migratingLegacyAuthorityFields(envelope.archive)
+        // 模式门:schema 与载荷模式必须匹配,防止未知键被旧解码器忽略后
+        // 把进行中的短局下成标准运河局。
+        let decodedMode: GameCore.MatchMode?
+        switch archive.payload {
+        case .host(let host): decodedMode = host.gameState?.matchMode
+        case .guest(let guest): decodedMode = guest.snapshot.match?.matchMode
+        }
+        if envelope.schemaVersion == 5, decodedMode != .shortCanal {
+            throw SnapshotStoreError.schemaMismatch
+        }
+        if envelope.schemaVersion != 5, decodedMode == .shortCanal {
+            throw SnapshotStoreError.schemaMismatch
+        }
         guard archive.authoritativeVersion.rawValue >= 0 else { throw SnapshotStoreError.versionMismatch }
         guard try validatePrivacy(
             archive,
@@ -909,16 +954,28 @@ nonisolated struct SessionPersistenceFactory: Sendable {
             )
             do {
                 let expectedProtocol = catalog == nil ? 1 : 2
-                let archive = try await store.load(
-                    expected: .init(
-                        protocolVersion: expectedProtocol,
+                func expectation(protocolVersion: Int) -> SnapshotExpectation {
+                    .init(
+                        protocolVersion: protocolVersion,
                         rulesetVersion: expectedRulesetVersion,
                         roomID: reference.roomID,
                         recipientID: hostPlayerID,
                         role: .host
-                    ),
-                    requiresCurrentSchema: true
-                )
+                    )
+                }
+                let archive: SessionArchive
+                do {
+                    archive = try await store.load(
+                        expected: expectation(protocolVersion: expectedProtocol),
+                        requiresCurrentSchema: true
+                    )
+                } catch SnapshotStoreError.protocolMismatch where catalog != nil {
+                    // 短局存档按协议 3 保存:仅协议不匹配时再试一次,两次都要求当前 schema。
+                    archive = try await store.load(
+                        expected: expectation(protocolVersion: 3),
+                        requiresCurrentSchema: true
+                    )
+                }
                 let recovery = RecoveryCoordinator(tokenStore: tokenStore)
                 if let catalog {
                     _ = try await recovery.restoreHost(
@@ -937,7 +994,8 @@ nonisolated struct SessionPersistenceFactory: Sendable {
                     roomID: reference.roomID,
                     playerID: reference.playerID,
                     role: .host,
-                    rulesetVersion: archive.rulesetVersion
+                    rulesetVersion: archive.rulesetVersion,
+                    protocolVersion: archive.protocolVersion
                 ))
             } catch SnapshotStoreError.missing {
                 continue

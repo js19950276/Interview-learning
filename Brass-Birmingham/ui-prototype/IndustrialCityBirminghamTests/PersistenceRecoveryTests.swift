@@ -2661,6 +2661,140 @@ struct PersistenceRecoveryTests {
         )
     }
 
+    @Test func shortCanalHostArchiveSavesAsSchemaFiveAndReloadsWithCurrentSchema() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let tokenStore = RoomTokenStore(adapter: InMemorySecureItemAdapter())
+        let key = FixedSnapshotKeyProvider(key: Data(repeating: 0x33, count: 32))
+        let catalog = try verifiedCatalog()
+        let hostID = GameCore.PlayerID(rawValue: "host")
+        let roomID = GameCore.RoomID(rawValue: "SHORT-SAVE")
+        var selectedState: GameCore.GameState?
+        for seed in 1...100 {
+            var setup = GameCore.SetupRules(seed: UInt64(seed))
+            let candidate = try setup.makeGame(
+                catalog: catalog, playerIDs: [hostID, player], mode: .shortCanal
+            ).state
+            if candidate.activePlayerID == hostID { selectedState = candidate; break }
+        }
+        let gameState = try #require(selectedState)
+        let tokens: [GameCore.PlayerID: GameCore.ReconnectToken] = [
+            hostID: .init(rawValue: "host-secret"), player: .init(rawValue: "guest-secret"),
+        ]
+        for (playerID, token) in tokens {
+            try await tokenStore.save(.init(roomID: roomID, playerID: playerID, reconnectToken: token))
+        }
+        let engine = try gameState.makeHostEngine(
+            roomID: roomID, reconnectTokens: tokens, protocolVersion: 3
+        )
+        let archive = SessionArchive.host(
+            protocolVersion: 3, rulesetVersion: catalog.catalog.rulesetVersion,
+            recipientID: hostID, state: engine.state, gameState: engine.gameState,
+            eventWindows: [:],
+            tokenReferences: [.init(roomID: roomID, playerID: hostID), .init(roomID: roomID, playerID: player)],
+            peersNeedingRecovery: [], commitSequence: 0
+        )
+        let store = SnapshotStore(directory: directory, keyProvider: key)
+        try await store.save(archive)
+
+        // 信封 schema 必须是 5(由 save 盖章,不是手改)。
+        let plaintext = try SnapshotCrypto.open(
+            try Data(contentsOf: store.committedFileURL), keyData: key.key
+        )
+        let envelope = try JSONDecoder().decode(SnapshotEnvelope.self, from: plaintext)
+        #expect(envelope.schemaVersion == 5)
+
+        // requiresCurrentSchema 把 schema 5 视为短局的当前 schema,读回 .shortCanal。
+        let loaded = try await store.load(
+            expected: .init(
+                protocolVersion: 3, rulesetVersion: catalog.catalog.rulesetVersion,
+                roomID: roomID, recipientID: hostID, role: .host
+            ),
+            requiresCurrentSchema: true
+        )
+        guard case let .host(host) = loaded.payload else {
+            Issue.record("expected host archive")
+            return
+        }
+        #expect(try #require(host.gameState).matchMode == .shortCanal)
+    }
+
+    @Test func mismatchedSchemaModeCombinationsAreRejectedAsSchemaMismatch() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let tokenStore = RoomTokenStore(adapter: InMemorySecureItemAdapter())
+        let keyData = Data(repeating: 0x34, count: 32)
+        let key = FixedSnapshotKeyProvider(key: keyData)
+        let factory = SessionPersistenceFactory(baseDirectory: directory, tokenStore: tokenStore, keyProvider: key)
+        let catalog = try verifiedCatalog()
+        let hostID = GameCore.PlayerID(rawValue: "host")
+        let guestID = GameCore.PlayerID(rawValue: "guest")
+
+        func makeArchive(mode: GameCore.MatchMode) throws -> SessionArchive {
+            var rules = GameCore.SetupRules(seed: 3)
+            var state = try rules.makeGame(catalog: catalog, playerIDs: [hostID, guestID]).state
+            state.matchMode = mode
+            let engine = try state.makeHostEngine(
+                roomID: GameCore.RoomID(rawValue: "MISMATCH"),
+                reconnectTokens: [
+                    hostID: .init(rawValue: "t-host"), guestID: .init(rawValue: "t-guest"),
+                ],
+                protocolVersion: 3
+            )
+            return SessionArchive.host(
+                protocolVersion: 3, rulesetVersion: catalog.catalog.rulesetVersion,
+                recipientID: hostID, state: engine.state, gameState: engine.gameState,
+                eventWindows: [:], tokenReferences: [], peersNeedingRecovery: [], commitSequence: 0
+            )
+        }
+
+        func writeSealed(_ archive: SessionArchive, schemaVersion: Int, roomID: GameCore.RoomID) throws {
+            var envelope = try SnapshotEnvelope(archive: archive)
+            envelope.schemaVersion = schemaVersion
+            let store = SnapshotStore(
+                directory: factory.directory(roomID: roomID, playerID: hostID), keyProvider: key
+            )
+            try FileManager.default.createDirectory(
+                at: store.committedFileURL.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+            let encrypted = try SnapshotCrypto.seal(
+                JSONEncoder.canonical.encode(envelope), keyData: keyData
+            )
+            try encrypted.write(to: store.committedFileURL)
+        }
+
+        func expectSchemaMismatch(roomID: GameCore.RoomID, requiresCurrentSchema: Bool = true) async throws {
+            let store = SnapshotStore(
+                directory: factory.directory(roomID: roomID, playerID: hostID), keyProvider: key
+            )
+            do {
+                _ = try await store.load(
+                    expected: .init(
+                        protocolVersion: 3, rulesetVersion: catalog.catalog.rulesetVersion,
+                        roomID: roomID, recipientID: hostID, role: .host
+                    ),
+                    requiresCurrentSchema: requiresCurrentSchema
+                )
+                Issue.record("expected schemaMismatch for \(roomID.rawValue)")
+            } catch let error as SnapshotStoreError {
+                #expect(error == .schemaMismatch)
+            }
+        }
+
+        // schema 5 但内层是标准局:schemaMismatch(不是 incompleteAuthorityState)。
+        try writeSealed(try makeArchive(mode: .standard), schemaVersion: 5, roomID: .init(rawValue: "FIVE-STANDARD"))
+        try await expectSchemaMismatch(roomID: .init(rawValue: "FIVE-STANDARD"))
+        // schema 4 夹带短局键:拒绝,不许剥键当标准运河局开下去。
+        try writeSealed(try makeArchive(mode: .shortCanal), schemaVersion: 4, roomID: .init(rawValue: "FOUR-SHORT"))
+        try await expectSchemaMismatch(roomID: .init(rawValue: "FOUR-SHORT"))
+        // schema 2 夹带短局键:模式门在"当前 schema"检查之后,不带
+        // requiresCurrentSchema 才走得到模式门;带则先抛 incompleteAuthorityState
+        //(schema 2 本就不是当前 schema)——两种错误都不许恢复。
+        try writeSealed(try makeArchive(mode: .shortCanal), schemaVersion: 2, roomID: .init(rawValue: "TWO-SHORT"))
+        try await expectSchemaMismatch(roomID: .init(rawValue: "TWO-SHORT"), requiresCurrentSchema: false)
+    }
+
     @Test func hostArchiveEncodingIsByteStableAcrossDecodeReencode() throws {
         // Set/复合键字典的无序 JSON 编码曾让"重编码校验和"跨启动随机失败并清档。
         let catalog = try verifiedCatalog()

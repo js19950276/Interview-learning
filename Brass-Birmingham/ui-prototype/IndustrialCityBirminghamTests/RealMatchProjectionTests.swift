@@ -293,7 +293,8 @@ struct RealMatchProjectionTests {
     }
 
     @Test func snapshotSchemaSupportIsExplicitAndDoesNotClaimSchemaThree() {
-        #expect(SnapshotEnvelope.supportedSchemaVersions == Set([2, 4]))
+        // schema 5 只给协议 3 的短局存档;3 仍不支持。
+        #expect(SnapshotEnvelope.supportedSchemaVersions == Set([2, 4, 5]))
     }
 
     @Test func legalQueryAndResponseAreVersionedTypedAndBounded() throws {
