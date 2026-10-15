@@ -246,6 +246,39 @@ struct SessionViewStoreTests {
         #expect(await host.lastDeliveryError == nil)
     }
 
+    @Test func matchModeSelectionIsHostOnlyAndFlowsIntoStartedMatch() async throws {
+        let catalog = try GameCore.GameDataLoader.loadBundledFixtureCatalog()
+        let hub = LoopbackTransportHub()
+        let host = verifiedCoordinator(id: hostID, token: "t-host", transport: hub.makeTransport(peerID: hostID), catalog: catalog)
+        let guest = verifiedCoordinator(id: guestID, token: "t-guest", transport: hub.makeTransport(peerID: guestID), catalog: catalog)
+        let hostStore = SessionViewStore(coordinator: host, role: .host)
+        let guestStore = SessionViewStore(coordinator: guest, role: .guest)
+
+        #expect(hostStore.matchModeSelection == .standard)
+        #expect(guestStore.matchModeSelection == .standard)
+
+        await hostStore.connect()
+        await guestStore.connect()
+        try await eventually { hostStore.players.count == 2 }
+
+        // 客机改模式:报 hostOnly 文案错误,选择不变。
+        await guestStore.setMatchMode(.shortCanal)
+        #expect(guestStore.errorMessage != nil)
+        #expect(guestStore.matchModeSelection == .standard)
+
+        // 主机改模式:选择翻转(经状态流异步发布),客机经广播读到同一模式。
+        await hostStore.setMatchMode(.shortCanal)
+        try await eventually { hostStore.matchModeSelection == .shortCanal }
+        try await eventually { guestStore.matchModeSelection == .shortCanal }
+
+        await hostStore.setReady(true)
+        await guestStore.setReady(true)
+        try await eventually { hostStore.readyPlayerIDs.count == 2 }
+        await hostStore.startGame()
+        try await eventually { hostStore.snapshot?.match?.matchMode == .shortCanal }
+        try await eventually { guestStore.snapshot?.match?.matchMode == .shortCanal }
+    }
+
     private func startedPair() async throws -> (hostStore: SessionViewStore, guestStore: SessionViewStore) {
         let hub = LoopbackTransportHub()
         let host = coordinator(id: "host", token: "t-host", transport: hub.makeTransport(peerID: hostID))

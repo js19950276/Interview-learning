@@ -132,6 +132,14 @@ final class SessionViewStore {
 
     var isHost: Bool { role == .host }
     var isReady: Bool { readyPlayerIDs.contains(localPlayerID) }
+    /// 对局模式:主机可改(仅大厅阶段),客机只读、跟随大厅广播。
+    var matchModeSelection: GameCore.MatchMode = .standard
+
+    func setMatchMode(_ mode: GameCore.MatchMode) async {
+        do { try await coordinator.setMatchMode(mode) }
+        catch { errorMessage = Self.message(for: error) }
+    }
+
 #if DEBUG
     var showsRecoveryUIFixtureControl: Bool { recoveryUIFixtureStatusOverride != nil }
 #endif
@@ -863,6 +871,7 @@ final class SessionViewStore {
         playerColors = state.playerColors
         actionLog = state.actionLog
         readyPlayerIDs = state.readyPlayerIDs
+        matchModeSelection = state.matchMode
         let previousVersion = snapshot?.authoritativeVersion
 #if DEBUG
         snapshot = localUIFixturePresentationSnapshot(from: state.snapshot)

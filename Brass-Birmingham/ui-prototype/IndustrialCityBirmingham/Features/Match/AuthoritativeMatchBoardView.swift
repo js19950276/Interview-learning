@@ -50,6 +50,11 @@ struct AuthoritativeMatchBoardView: View {
         let isSynchronized: Bool
     }
 
+    /// 对局模式来自客机也可见的投影(不是主机内存里的 GameState)。
+    private var matchMode: GameCore.MatchMode {
+        store.snapshot?.match?.matchMode ?? .standard
+    }
+
     var body: some View {
         GeometryReader { proxy in
             let metrics = MatchLayoutMetrics(
@@ -129,7 +134,8 @@ struct AuthoritativeMatchBoardView: View {
                         FinalScoreboardView(
                             standings: gameEnded.standings,
                             projections: store.snapshot?.match?.players ?? [],
-                            displayName: { store.displayName(for: $0) }
+                            displayName: { store.displayName(for: $0) },
+                            title: matchMode == .shortCanal ? "运河短局" : "游戏结束"
                         )
                         .transition(.opacity)
                     }
@@ -428,6 +434,7 @@ struct AuthoritativeMatchBoardView: View {
             isSynchronized: store.syncStatus == .synchronized,
             activeTurn: activeTurn,
             metrics: metrics,
+            modeLabel: matchMode == .shortCanal ? "运河短局" : nil,
             onShowActionLog: { showsActionLog = true }
         )
         .padding(.horizontal, max(metrics.leftRailWidth, metrics.rightRailWidth) + 8)

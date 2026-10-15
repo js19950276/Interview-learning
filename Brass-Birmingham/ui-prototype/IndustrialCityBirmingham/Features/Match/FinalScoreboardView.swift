@@ -5,6 +5,20 @@ struct FinalScoreboardView: View {
     let standings: [[GameCore.PlayerID]]
     let projections: [GameCore.MatchPlayerProjection]
     let displayName: (GameCore.PlayerID) -> String
+    /// 标题;标准局缺省"游戏结束",短局传"运河短局"。
+    var title: String = "游戏结束"
+
+    init(
+        standings: [[GameCore.PlayerID]],
+        projections: [GameCore.MatchPlayerProjection],
+        displayName: @escaping (GameCore.PlayerID) -> String,
+        title: String = "游戏结束"
+    ) {
+        self.standings = standings
+        self.projections = projections
+        self.displayName = displayName
+        self.title = title
+    }
 
     private func projection(_ playerID: GameCore.PlayerID) -> GameCore.MatchPlayerProjection? {
         projections.first(where: { $0.id == playerID })
@@ -14,7 +28,7 @@ struct FinalScoreboardView: View {
         ZStack {
             Color.black.opacity(0.85).ignoresSafeArea()
             VStack(spacing: 14) {
-                Text("游戏结束")
+                Text(title)
                     .font(BrassTypography.title)
                     .foregroundStyle(BrassColor.brass.color)
                 Text("最终排名")

@@ -135,6 +135,26 @@ struct RealSessionRootView: View {
                     .accessibilityElement(children: .contain)
                     .accessibilityIdentifier("real.colorPicker")
 
+                    // 对局模式:仅主机可改;客机只读跟随广播。
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("对局模式")
+                            .font(BrassTypography.label)
+                            .foregroundStyle(BrassColor.paper.color.opacity(0.7))
+                        if store.isHost {
+                            Picker("对局模式", selection: Binding(
+                                get: { store.matchModeSelection },
+                                set: { mode in Task { await store.setMatchMode(mode) } }
+                            )) {
+                                Text("标准局").tag(GameCore.MatchMode.standard)
+                                Text("运河短局").tag(GameCore.MatchMode.shortCanal)
+                            }
+                            .pickerStyle(.segmented)
+                            .accessibilityIdentifier("real.matchMode")
+                        } else if store.matchModeSelection == .shortCanal {
+                            Text("运河短局").font(BrassTypography.label)
+                        }
+                    }
+
                     Text("玩家")
                         .font(BrassTypography.label)
                         .foregroundStyle(BrassColor.paper.color.opacity(0.7))

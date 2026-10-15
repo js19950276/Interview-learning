@@ -7,6 +7,8 @@ struct MatchHeaderView: View {
     let isSynchronized: Bool?
     let activeTurn: ActiveTurnPresentation?
     let metrics: MatchLayoutMetrics?
+    /// 附加模式标签(短局标题),nil 不显示;时代字符串继续给地图样式解析用。
+    var modeLabel: String?
     var onShowActionLog: (() -> Void)?
 
     init(
@@ -16,6 +18,7 @@ struct MatchHeaderView: View {
         isSynchronized: Bool? = nil,
         activeTurn: ActiveTurnPresentation? = nil,
         metrics: MatchLayoutMetrics? = nil,
+        modeLabel: String? = nil,
         onShowActionLog: (() -> Void)? = nil
     ) {
         self.state = state
@@ -24,6 +27,7 @@ struct MatchHeaderView: View {
         self.isSynchronized = isSynchronized
         self.activeTurn = activeTurn
         self.metrics = metrics
+        self.modeLabel = modeLabel
         self.onShowActionLog = onShowActionLog
     }
 
@@ -48,6 +52,12 @@ struct MatchHeaderView: View {
                 compact ? "\(state.era.replacingOccurrences(of: "时代", with: "")) R\(state.round)/\(state.roundCount)" : "\(state.era) · 回合 \(state.round)/\(state.roundCount)",
                 icon: "arrow.triangle.2.circlepath"
             )
+            if let modeLabel {
+                Text(modeLabel)
+                    .font(BrassTypography.label)
+                    .foregroundStyle(BrassColor.brass.color)
+                    .lineLimit(1)
+            }
             if let activeTurn {
                 ActiveTurnStatusView(presentation: activeTurn)
                     .layoutPriority(3)

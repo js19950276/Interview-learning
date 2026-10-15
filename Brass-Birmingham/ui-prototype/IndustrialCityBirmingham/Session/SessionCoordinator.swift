@@ -57,6 +57,8 @@ actor SessionCoordinator {
         let playerNames: [GameCore.PlayerID: String]
         let actionLog: [MatchActionLogEntry]
         let playerColors: [GameCore.PlayerID: GameCore.PlayerColor]
+        /// 对局模式;客机值来自主机的大厅广播。
+        let matchMode: GameCore.MatchMode
     }
 
     struct Configuration: Sendable {
@@ -846,6 +848,8 @@ actor SessionCoordinator {
                   validatedLobbyState(lobby), acceptUnique(envelope, peer: peer) else { return }
             // 名册同步成功:协议跟随的待确认标记清零(主机再改模式可以再翻转一次)。
             awaitingProtocolFollowAck = false
+            // 模式由主机权威决定:客机跟随广播。
+            matchMode = lobby.matchMode
             tokens = Dictionary(uniqueKeysWithValues: lobby.playerIDs.map { ($0, .init(rawValue: "host-authoritative-roster")) })
             ready = Set(lobby.readyPlayerIDs)
             for (rawName, name) in lobby.names {
@@ -1524,7 +1528,8 @@ actor SessionCoordinator {
             lastClientEvent: lastClientEvent,
             playerNames: playerNames,
             actionLog: matchActionLog,
-            playerColors: playerColors
+            playerColors: playerColors,
+            matchMode: matchMode
         )
     }
 
