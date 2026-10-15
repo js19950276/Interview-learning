@@ -33,8 +33,9 @@ extension GameCore {
                 )
             }
 
-            // 官方规则:每个时代结束时,自己的"所有"连线都计分
-            // (运河连线保留到铁路时代,铁路末再次计分)。
+            // 官方规则:每个时代结束时,自己的"所有"连线各计一次分。
+            // 本函数只加 VP、不撤线:运河线留在地图上,待全员确认后的
+            // prepareRailEra 退回主人;铁路线由终局调用方退回。两种线都不计第二次分。
             let eraLinks = state.placedLinks
             for link in eraLinks {
                 guard let adjacent = routes[link.routeID]?.adjacentLocationIDs else {
@@ -66,7 +67,7 @@ extension GameCore {
                     playerID: playerID, linkPoints: links, industryPoints: industries
                 )
             }
-            // 官方规则:连线永久保留,时代结算不移除任何线路。
+            // 撤线不在本函数:见上方注释;removedRouteIDs 恒为空。
             return .eraScored(.init(
                 era: era, awards: awards, removedRouteIDs: []
             ))

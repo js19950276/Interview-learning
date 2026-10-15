@@ -233,7 +233,7 @@ struct TurnScoringRulesTests {
         // 官方规则:每个时代末"所有"己方连线各计一次分(本场景同一线放了两条,
         // 物理上不可能,但引擎按连线逐条计分 → 线分×2)。
         #expect(player.victoryPoints == expectedLinkPoints * 2 + ownIndustryPoints)
-        // 官方规则:连线永久保留,时代结算不移除。
+        // 计分函数本身不撤线:运河线待 eraIntermission 确认后的 prepareRailEra 退回。
         #expect(state.placedLinks.map(\.era) == [.canal, .rail])
         guard case .eraScored(let details) = event else {
             Issue.record("expected era scoring event")
@@ -270,7 +270,7 @@ struct TurnScoringRulesTests {
             Issue.record("expected era scoring event")
             return
         }
-        // 连线永久保留:时代结算不再移除线路。
+        // 计分函数不撤线;removedRouteIDs 恒空,撤线在确认后的 prepareRailEra。
         #expect(details.removedRouteIDs.isEmpty)
     }
 
