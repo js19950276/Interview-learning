@@ -676,10 +676,12 @@ struct DevelopSellSimpleActionTests {
             emptyTarget, roomID: roomID, state: &engineBoth, catalog: catalog
         )
         let afterBoth = try #require(engineBoth.players.first { $0.id == actor })
-        // 两堆全空:一张万能牌也拿不到,手牌只有补牌。
-        #expect(afterBoth.hand.allSatisfy {
-            $0.definitionID != "wild-location" && $0.definitionID != "wild-industry"
-        })
+        // 两堆全空:侦察仍成功,3 张普通牌照弃,手牌不增加任何万能牌。
+        // (hand.isEmpty 只因本夹具手牌恰为这 3 张且停在补牌前的待确认相位。)
+        #expect(afterBoth.hand.isEmpty)
+        #expect(engineBoth.publicDiscard.count == 3)
+        #expect(engineBoth.wildLocationPool.isEmpty)
+        #expect(engineBoth.wildIndustryPool.isEmpty)
     }
 
     @Test func scoutDiscardsThreeDistinctNormalCardsTakesBothWildsAndRejectsWhenWildHeld() throws {
