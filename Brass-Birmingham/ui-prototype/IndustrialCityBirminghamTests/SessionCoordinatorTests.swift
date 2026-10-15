@@ -458,6 +458,37 @@ struct SessionCoordinatorTests {
         #expect(await host.playerIDs == [hostID])
     }
 
+    @Test func setMatchModeRequiresHostAndFlowsIntoBroadcastAndStartGame() async throws {
+        let catalog = try verifiedCatalog()
+        let hub = LoopbackTransportHub()
+        let host = realCoordinator(id: hostID, token: "t-host", transport: hub.makeTransport(peerID: hostID), catalog: catalog)
+        try await host.createRoom()
+        #expect(await host.matchMode == .standard)
+
+        // 客机只读。
+        let guest = realCoordinator(id: guestID, token: "t-guest", transport: hub.makeTransport(peerID: guestID), catalog: catalog)
+        _ = try await guest.joinRoom()
+        try await eventually { await host.playerIDs.contains(guestID) }
+        do {
+            try await guest.setMatchMode(.shortCanal)
+            Issue.record("guest must not set match mode")
+        } catch let error as SessionCoordinator.Error {
+            #expect(error == .hostOnly)
+        }
+
+        // 主机切短局:模式可读、广播带上模式、客机名册仍同步。
+        try await host.setMatchMode(.shortCanal)
+        #expect(await host.matchMode == .shortCanal)
+        try await eventually { await guest.playerIDs.contains(guestID) }
+        // 开局:短局状态进入引擎与投影。
+        try await host.setReady(true)
+        try await guest.setReady(true)
+        try await eventually { await host.readyPlayerIDs.count == 2 }
+        try await host.startGame()
+        try await eventually { await host.snapshot?.match?.matchMode == .shortCanal }
+        try await eventually { await guest.snapshot?.match?.matchMode == .shortCanal }
+    }
+
     @Test func reconnectTokenIsBoundToRoomAndPlayer() async throws {
         let hub = LoopbackTransportHub()
         let host = coordinator(id: "host", token: "t-host", transport: hub.makeTransport(peerID: .init(rawValue: "host")))

@@ -130,7 +130,9 @@ actor SessionCoordinator {
 
     private enum JoinOutcome { case pending, accepted, rejected(Error) }
     private enum StartPhase { case notStarted, starting, started }
-    private let configuration: Configuration
+    // 协议字段可变:短局房间把被档案/信封/PlayerIntent 抄走的这个数升到 3,
+    // 全部拷贝点都读 configuration.protocolVersion,不另立第二套数字。
+    private var configuration: Configuration
     private let transport: any Transport
     private let persistence: (any SessionArchivePersisting)?
     private let tokenStore: RoomTokenStore?
@@ -150,6 +152,8 @@ actor SessionCoordinator {
     /// 玩家显示名(含房主),随大厅广播与投影下发。
     private var playerNames: [GameCore.PlayerID: String] = [:]
     private var startPhase: StartPhase = .notStarted
+    /// 对局模式(主机权威);开局时传给 makeGame,大厅广播随名册下发。
+    private(set) var matchMode: GameCore.MatchMode = .standard
     private var stateContinuations: [UUID: AsyncStream<State>.Continuation] = [:]
     private(set) var snapshot: GameCore.ViewSnapshot?
     /// 缺初始快照时只发一次恢复请求,防止每个到达的事件都触发 catchUp。
@@ -344,6 +348,14 @@ actor SessionCoordinator {
         }
     }
 
+    /// 主机选择对局模式(仅大厅阶段);变更即广播名册。
+    func setMatchMode(_ mode: GameCore.MatchMode) async throws {
+        guard isHost else { throw Error.hostOnly }
+        guard startPhase == .notStarted else { throw Error.gameAlreadyStarted }
+        matchMode = mode
+        await broadcastLobbyState()
+    }
+
     func startGame() async throws {
         guard isHost else { throw Error.hostOnly }
         guard startPhase == .notStarted else { throw Error.gameAlreadyStarted }
@@ -359,7 +371,7 @@ actor SessionCoordinator {
             do {
                 var setup = GameCore.SetupRules(seed: configuration.setupSeed)
                 let game = try setup.makeGame(
-                    catalog: verifiedCatalog, playerIDs: ordered, colors: seatColors
+                    catalog: verifiedCatalog, playerIDs: ordered, colors: seatColors, mode: matchMode
                 )
                 engine = try game.state.makeHostEngine(
                     roomID: configuration.roomID,
@@ -548,9 +560,16 @@ actor SessionCoordinator {
                 toTransportPeer: peer, recipient: envelope.senderID, envelopeRoomID: envelope.roomID)
             return
         }
-        guard envelope.protocolVersion == configuration.protocolVersion,
-              envelope.rulesetVersion == configuration.rulesetVersion else {
+        guard envelope.protocolVersion == configuration.protocolVersion else {
             try? await send(.versionIncompatible, toTransportPeer: peer, recipient: envelope.senderID)
+            return
+        }
+        guard envelope.rulesetVersion == configuration.rulesetVersion else {
+            // 规则集不符是可解释的拒绝,不是协议不兼容;客机硬失败,不翻转协议。
+            try? await send(.rejection(.init(
+                reasonCode: .rulesetVersionMismatch,
+                recoverySuggestion: "Update to the same ruleset version to join this room."
+            )), toTransportPeer: peer, recipient: envelope.senderID)
             return
         }
         switch envelope.payload {
@@ -768,6 +787,7 @@ actor SessionCoordinator {
                 switch rejection.reasonCode {
                 case .wrongRoom: joinOutcome = .rejected(.roomMismatch)
                 case .invalidReconnectToken: joinOutcome = .rejected(.reconnectTokenMismatch)
+                case .rulesetVersionMismatch: joinOutcome = .rejected(.incompatiblePeer)
                 default: joinOutcome = .rejected(.roomFull)
                 }
             } else {
@@ -1290,7 +1310,8 @@ actor SessionCoordinator {
         let lobby = SessionProtocol.Payload.LobbyState(
             playerIDs: playerIDs, readyPlayerIDs: readyPlayerIDs,
             names: Dictionary(uniqueKeysWithValues: playerNames.map { ($0.key.rawValue, $0.value) }),
-            colors: Dictionary(uniqueKeysWithValues: playerColors.map { ($0.key.rawValue, $0.value.rawValue) })
+            colors: Dictionary(uniqueKeysWithValues: playerColors.map { ($0.key.rawValue, $0.value.rawValue) }),
+            matchMode: matchMode
         )
         for player in playerIDs where player != configuration.playerID {
             do {
