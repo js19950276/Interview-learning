@@ -121,6 +121,11 @@ extension GameCore {
                   ironTotal >= 18,
                   beerTotal >= 15
             else { return false }
+            if state.matchMode == .shortCanal {
+                // 短局只打运河时代:不进铁路,也不进 eraIntermission(终局直接 .ended)。
+                guard state.era == .canal else { return false }
+                if case .eraIntermission = state.turnPhase { return false }
+            }
             let activeMerchantSlots = catalog.board.merchantSlots.filter {
                 $0.playerCounts.contains(state.playerCount) && activeLocations[$0.locationID] != nil
             }
