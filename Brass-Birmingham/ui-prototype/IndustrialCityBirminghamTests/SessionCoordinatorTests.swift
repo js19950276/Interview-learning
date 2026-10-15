@@ -506,6 +506,8 @@ struct SessionCoordinatorTests {
         try await eventually { await host.playerIDs.contains(guestID) == false }
         #expect(await host.readyPlayerIDs.contains(guestID) == false)
         #expect(await host.playerIDs.contains(hostID))
+        // 被清扫的座位不得残留在恢复名册里,否则主机永久停在 recovering 无法行动。
+        #expect(await host.peersNeedingRecovery.isEmpty)
     }
 
     @Test func guestFollowsHostProtocolFlipAndStaysSeated() async throws {

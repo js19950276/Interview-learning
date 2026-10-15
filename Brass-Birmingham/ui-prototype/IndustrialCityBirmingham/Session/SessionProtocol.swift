@@ -46,8 +46,8 @@ nonisolated enum SessionProtocol {
                 let values = try decoder.container(keyedBy: CodingKeys.self)
                 playerIDs = try values.decode([GameCore.PlayerID].self, forKey: .playerIDs)
                 readyPlayerIDs = try values.decode([GameCore.PlayerID].self, forKey: .readyPlayerIDs)
-                names = try values.decodeIfPresent([String: String].self, forKey: .names) ?? [:]
-                colors = try values.decodeIfPresent([String: String].self, forKey: .colors) ?? [:]
+                names = try values.decode([String: String].self, forKey: .names)
+                colors = try values.decode([String: String].self, forKey: .colors)
                 matchMode = try values.decodeIfPresent(
                     GameCore.MatchMode.self, forKey: .matchMode
                 ) ?? .standard

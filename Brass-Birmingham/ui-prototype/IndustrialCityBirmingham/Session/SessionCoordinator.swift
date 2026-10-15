@@ -379,9 +379,12 @@ actor SessionCoordinator {
             try? await send(.versionIncompatible, to: player)
         }
         // 3) 发送全部返回:仍带标记的座位移出名册(断线/旧构建都不会重新 hello)。
+        //    恢复名册与连接映射一并清掉,否则幽灵座位会把主机永久卡在 recovering。
         for player in needsProtocolRehello {
             tokens[player] = nil
             ready.remove(player)
+            peersNeedingRecovery.remove(player)
+            peerByPlayer[player] = nil
         }
         needsProtocolRehello = []
         // 4) 广播缩小后的名册;startGame 只给剩下的 tokens 发牌。
