@@ -7,6 +7,13 @@ extension GameCore {
         case rail
     }
 
+    /// 对局模式:标准局(运河+铁路)或只打运河时代的新手短局(RULES.md §11)。
+    /// 标准局 canonical JSON 不写出该键(缺键解码为 .standard),保住既有哈希。
+    nonisolated enum MatchMode: String, Codable, Equatable, Sendable {
+        case standard
+        case shortCanal
+    }
+
     nonisolated enum PlayerColor: String, CaseIterable, Codable, Equatable, Hashable, Sendable {
         case red
         case yellow
@@ -245,6 +252,8 @@ extension GameCore {
         var appliedResourceActionIDs: [String]? = nil
         /// 终局排名(并列同组);仅在 turnPhase == .ended 时非空。
         var finalStandings: [[PlayerID]]? = nil
+        /// 对局模式;标准局不编码进 canonical JSON。
+        var matchMode: MatchMode = .standard
 
         func canonicalBytes() throws -> Data {
             let encoder = JSONEncoder()
@@ -385,7 +394,7 @@ extension GameCore.GameState {
         case wildIndustryPool, publicDiscard, boardIndustryPlacements, placedLinks
         case coalMarket, ironMarket, publicSupply, merchants, authoritativeVersion
         case turnPhase, roundIncomeCursor, authorityCompleteness, appliedResourceActionIDs
-        case finalStandings
+        case finalStandings, matchMode
     }
 
     nonisolated init(from decoder: Decoder) throws {
@@ -427,5 +436,45 @@ extension GameCore.GameState {
             [String].self, forKey: .appliedResourceActionIDs
         )
         finalStandings = try values.decodeIfPresent([[GameCore.PlayerID]].self, forKey: .finalStandings)
+        matchMode = try values.decodeIfPresent(GameCore.MatchMode.self, forKey: .matchMode) ?? .standard
+    }
+
+    /// 手写 encode 与原合成实现逐字段同形(非可选 encode、可选 encodeIfPresent——
+    /// 合成编码对 nil 可选是省略键,不是写 null),否则标准局 canonical 字节与
+    /// 三份金哈希会变。matchMode 仅在非 standard 时写出。
+    nonisolated func encode(to encoder: Encoder) throws {
+        var values = encoder.container(keyedBy: CodingKeys.self)
+        try values.encode(rulesetVersion, forKey: .rulesetVersion)
+        try values.encode(seed, forKey: .seed)
+        try values.encode(playerCount, forKey: .playerCount)
+        try values.encode(era, forKey: .era)
+        try values.encode(roundNumber, forKey: .roundNumber)
+        try values.encode(actionsRemaining, forKey: .actionsRemaining)
+        try values.encode(turnsCompletedInRound, forKey: .turnsCompletedInRound)
+        try values.encode(actionNumber, forKey: .actionNumber)
+        try values.encode(canalRoundCapacity, forKey: .canalRoundCapacity)
+        try values.encode(railRoundCapacity, forKey: .railRoundCapacity)
+        try values.encode(players, forKey: .players)
+        try values.encode(playerOrder, forKey: .playerOrder)
+        try values.encodeIfPresent(activePlayerID, forKey: .activePlayerID)
+        try values.encode(standardDrawDeck, forKey: .standardDrawDeck)
+        try values.encode(wildLocationPool, forKey: .wildLocationPool)
+        try values.encode(wildIndustryPool, forKey: .wildIndustryPool)
+        try values.encode(publicDiscard, forKey: .publicDiscard)
+        try values.encode(boardIndustryPlacements, forKey: .boardIndustryPlacements)
+        try values.encode(placedLinks, forKey: .placedLinks)
+        try values.encode(coalMarket, forKey: .coalMarket)
+        try values.encode(ironMarket, forKey: .ironMarket)
+        try values.encode(publicSupply, forKey: .publicSupply)
+        try values.encode(merchants, forKey: .merchants)
+        try values.encode(authoritativeVersion, forKey: .authoritativeVersion)
+        try values.encode(turnPhase, forKey: .turnPhase)
+        try values.encodeIfPresent(roundIncomeCursor, forKey: .roundIncomeCursor)
+        try values.encodeIfPresent(authorityCompleteness, forKey: .authorityCompleteness)
+        try values.encodeIfPresent(appliedResourceActionIDs, forKey: .appliedResourceActionIDs)
+        try values.encodeIfPresent(finalStandings, forKey: .finalStandings)
+        if matchMode != .standard {
+            try values.encode(matchMode, forKey: .matchMode)
+        }
     }
 }
