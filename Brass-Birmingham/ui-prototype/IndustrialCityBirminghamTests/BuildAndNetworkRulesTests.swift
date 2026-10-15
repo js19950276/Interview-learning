@@ -1205,6 +1205,142 @@ struct BuildAndNetworkRulesTests {
         }
     }
 
+    @Test func canalNonBirminghamLocationAllowsOnlyOneOwnIndustry() throws {
+        let catalog = try verifiedCatalog()
+        var state = try setupState(catalog: catalog)
+        let actor = try #require(state.activePlayerID)
+        let index = try #require(state.players.firstIndex { $0.id == actor })
+        state.players[index].hand = [.init(id: "wild-build", definitionID: "wild-industry")]
+        // 先占槽 0(注入一块已在板上的自己的产业),再对槽 1 校验零消耗的煤矿 1 级。
+        state.boardIndustryPlacements.append(.init(
+            locationID: "nuneaton", slotIndex: 0, ownerID: actor,
+            tile: .init(id: "own-first", industryDefinitionID: "manufacturer", level: 1)
+        ))
+        #expect(throws: GameCore.BuildRuleError.canalLocationLimit) {
+            try GameCore.BuildRules.validate(
+                .init(cardID: "wild-build", locationID: "nuneaton",
+                      industryDefinitionID: "coal-mine", slotIndex: 1, resourceSources: []),
+                actorID: actor, state: state, catalog: catalog
+            )
+        }
+    }
+
+    @Test func canalLocationLimitIgnoresOpponentPlacements() throws {
+        let catalog = try verifiedCatalog()
+        var state = try setupState(catalog: catalog)
+        let actor = try #require(state.activePlayerID)
+        let index = try #require(state.players.firstIndex { $0.id == actor })
+        state.players[index].hand = [.init(id: "wild-build", definitionID: "wild-industry")]
+        let opponent = state.players.first { $0.id != actor }!.id
+        state.boardIndustryPlacements.append(.init(
+            locationID: "nuneaton", slotIndex: 0, ownerID: opponent,
+            tile: .init(id: "opp-first", industryDefinitionID: "manufacturer", level: 1)
+        ))
+        // 对手的板块不占自己的名额:自己的第一格(槽 1)仍然合法。
+        let target = try GameCore.BuildRules.validate(
+            .init(cardID: "wild-build", locationID: "nuneaton",
+                  industryDefinitionID: "coal-mine", slotIndex: 1, resourceSources: []),
+            actorID: actor, state: state, catalog: catalog
+        )
+        #expect(target.intent.locationID == "nuneaton")
+    }
+
+    @Test func canalOverbuildSameSlotDoesNotCountTowardLocationLimit() throws {
+        let catalog = try verifiedCatalog()
+        var state = try setupState(catalog: catalog)
+        let actor = try #require(state.activePlayerID)
+        let index = try #require(state.players.firstIndex { $0.id == actor })
+        state.players[index].hand = [.init(id: "wild-build", definitionID: "wild-industry")]
+        // 伯明翰已有自己的两块(槽 0、槽 1);覆盖槽 1 不算"第三个产业",
+        // 拒绝理由必须是槽位规则而非 canalLocationLimit。
+        state.boardIndustryPlacements.append(.init(
+            locationID: "birmingham", slotIndex: 0, ownerID: actor,
+            tile: .init(id: "own-a", industryDefinitionID: "manufacturer", level: 1)
+        ))
+        state.boardIndustryPlacements.append(.init(
+            locationID: "birmingham", slotIndex: 1, ownerID: actor,
+            tile: .init(id: "own-b", industryDefinitionID: "manufacturer", level: 1)
+        ))
+        // 栈顶升到制造厂 2 级,构造合法的同产业覆盖意图(槽 3 仍空,应报 emptySlotAvailable)。
+        let stackIndex = try #require(
+            state.players[index].industryStacks.firstIndex { $0.industryDefinitionID == "manufacturer" }
+        )
+        state.players[index].industryStacks[stackIndex].tiles.removeFirst()
+        do {
+            _ = try GameCore.BuildRules.validate(
+                .init(cardID: "wild-build", locationID: "birmingham",
+                      industryDefinitionID: "manufacturer", slotIndex: 1, resourceSources: []),
+                actorID: actor, state: state, catalog: catalog
+            )
+            Issue.record("expected a non-limit rejection for same-slot overbuild")
+        } catch let error as GameCore.BuildRuleError {
+            #expect(error == .emptySlotAvailable)
+        }
+    }
+
+    @Test func railEraHasNoPerLocationIndustryLimit() throws {
+        let catalog = try verifiedCatalog()
+        var state = try setupState(catalog: catalog)
+        state.era = .rail
+        // 铁路时代不得保留扣置底牌(验证器);洗回牌堆保持牌账守恒,
+        // 否则 legalResourceSources 因状态非法返回空,资源方案必被拒。
+        for playerIndex in state.players.indices {
+            if let bottom = state.players[playerIndex].privateBottomDiscard {
+                state.players[playerIndex].privateBottomDiscard = nil
+                state.standardDrawDeck.append(bottom)
+            }
+        }
+        let actor = try #require(state.activePlayerID)
+        let index = try #require(state.players.firstIndex { $0.id == actor })
+        // 万能产业牌从池里换入手(一张真手牌回牌堆),保持牌账多重集守恒,
+        // 否则验证器判状态非法,市场资源源全部不可用。
+        let wild = state.wildIndustryPool.removeLast()
+        if let displaced = state.players[index].hand.first {
+            state.players[index].hand.removeAll { $0.id == displaced.id }
+            state.standardDrawDeck.append(displaced)
+        }
+        state.players[index].hand.append(wild)
+        state.players[index].cash = 25
+        // (a) 非伯明翰:nuneaton 已有自己两块(运河上限是 1),铁路时代覆盖第三块仍合法。
+        state.boardIndustryPlacements.append(.init(
+            locationID: "nuneaton", slotIndex: 0, ownerID: actor,
+            tile: .init(id: "rail-a", industryDefinitionID: "manufacturer", level: 1)
+        ))
+        state.boardIndustryPlacements.append(.init(
+            locationID: "nuneaton", slotIndex: 1, ownerID: actor,
+            tile: .init(id: "rail-b", industryDefinitionID: "coal-mine", level: 1)
+        ))
+        let coalStack = try #require(
+            state.players[index].industryStacks.firstIndex { $0.industryDefinitionID == "coal-mine" }
+        )
+        state.players[index].industryStacks[coalStack].tiles.removeFirst()
+        _ = try GameCore.BuildRules.validate(
+            .init(cardID: wild.id, locationID: "nuneaton",
+                  industryDefinitionID: "coal-mine", slotIndex: 1, resourceSources: []),
+            actorID: actor, state: state, catalog: catalog
+        )
+        // (b) 伯明翰:已有两块(运河上限 2),铁路第三格(槽 3)仍合法;制造厂 2 级补 1 铁。
+        // 制造厂栈顶 L1(railEra=false)要先移走,栈顶露出 2 级。
+        let manufacturerStack = try #require(
+            state.players[index].industryStacks.firstIndex { $0.industryDefinitionID == "manufacturer" }
+        )
+        state.players[index].industryStacks[manufacturerStack].tiles.removeFirst()
+        state.boardIndustryPlacements.append(.init(
+            locationID: "birmingham", slotIndex: 0, ownerID: actor,
+            tile: .init(id: "rail-c", industryDefinitionID: "manufacturer", level: 1)
+        ))
+        state.boardIndustryPlacements.append(.init(
+            locationID: "birmingham", slotIndex: 1, ownerID: actor,
+            tile: .init(id: "rail-d", industryDefinitionID: "manufacturer", level: 1)
+        ))
+        _ = try GameCore.BuildRules.validate(
+            .init(cardID: wild.id, locationID: "birmingham",
+                  industryDefinitionID: "manufacturer", slotIndex: 3,
+                  resourceSources: [.marketSlot(resource: .iron, index: 2)]),
+            actorID: actor, state: state, catalog: catalog
+        )
+    }
+
     @Test func cardFarmSlotPriorityAndFirstBuildRulesAreEnforced() throws {
         let catalog = try verifiedCatalog()
         var state = try setupState(catalog: catalog)
