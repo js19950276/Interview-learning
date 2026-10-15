@@ -25,13 +25,43 @@ nonisolated enum SessionProtocol {
             var names: [String: String] = [:]
             /// 座位代表色(PlayerColor rawValue);缺省时由房主按序分配。
             var colors: [String: String] = [:]
+            /// 对局模式;标准局不写出该键(旧客机消息可解)。
+            var matchMode: GameCore.MatchMode = .standard
 
             init(playerIDs: [GameCore.PlayerID], readyPlayerIDs: [GameCore.PlayerID],
-                 names: [String: String] = [:], colors: [String: String] = [:]) {
+                 names: [String: String] = [:], colors: [String: String] = [:],
+                 matchMode: GameCore.MatchMode = .standard) {
                 self.playerIDs = playerIDs
                 self.readyPlayerIDs = readyPlayerIDs
                 self.names = names
                 self.colors = colors
+                self.matchMode = matchMode
+            }
+
+            private enum CodingKeys: String, CodingKey {
+                case playerIDs, readyPlayerIDs, names, colors, matchMode
+            }
+
+            init(from decoder: Decoder) throws {
+                let values = try decoder.container(keyedBy: CodingKeys.self)
+                playerIDs = try values.decode([GameCore.PlayerID].self, forKey: .playerIDs)
+                readyPlayerIDs = try values.decode([GameCore.PlayerID].self, forKey: .readyPlayerIDs)
+                names = try values.decodeIfPresent([String: String].self, forKey: .names) ?? [:]
+                colors = try values.decodeIfPresent([String: String].self, forKey: .colors) ?? [:]
+                matchMode = try values.decodeIfPresent(
+                    GameCore.MatchMode.self, forKey: .matchMode
+                ) ?? .standard
+            }
+
+            func encode(to encoder: Encoder) throws {
+                var values = encoder.container(keyedBy: CodingKeys.self)
+                try values.encode(playerIDs, forKey: .playerIDs)
+                try values.encode(readyPlayerIDs, forKey: .readyPlayerIDs)
+                try values.encode(names, forKey: .names)
+                try values.encode(colors, forKey: .colors)
+                if matchMode != .standard {
+                    try values.encode(matchMode, forKey: .matchMode)
+                }
             }
         }
 

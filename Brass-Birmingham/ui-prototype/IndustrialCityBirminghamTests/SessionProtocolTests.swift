@@ -8,6 +8,25 @@ struct SessionProtocolTests {
     private let bobID = GameCore.PlayerID(rawValue: "bob")
     private let aliceToken = GameCore.ReconnectToken(rawValue: "alice-token")
 
+    @Test func lobbyStateDecodesWithoutMatchModeAndEncodesItOnlyForShortCanal() throws {
+        let legacy = Data("""
+        {"playerIDs":["host","p2"],"readyPlayerIDs":["host"],"names":{},"colors":{}}
+        """.utf8)
+        let decoded = try JSONDecoder().decode(
+            SessionProtocol.Payload.LobbyState.self, from: legacy
+        )
+        #expect(decoded.matchMode == .standard)
+        #expect(String(data: try JSONEncoder().encode(decoded), encoding: .utf8)?
+            .contains("\"matchMode\"") == false)
+
+        var short = decoded
+        short.matchMode = .shortCanal
+        let encoded = try JSONEncoder().encode(short)
+        #expect(String(data: encoded, encoding: .utf8)?
+            .contains("\"matchMode\":\"shortCanal\"") == true)
+        #expect(try JSONDecoder().decode(SessionProtocol.Payload.LobbyState.self, from: encoded) == short)
+    }
+
     @Test func everyPayloadRoundTripsInsideStronglyTypedEnvelope() throws {
         for payload in payloads() {
             let envelope = makeEnvelope(payload: payload)
