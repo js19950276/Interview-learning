@@ -2795,6 +2795,134 @@ struct PersistenceRecoveryTests {
         try await expectSchemaMismatch(roomID: .init(rawValue: "TWO-SHORT"), requiresCurrentSchema: false)
     }
 
+    @Test func nearbyHostRecoveryRouteOpensShortCanalArchivesWithProtocolThree() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let tokenStore = RoomTokenStore(adapter: InMemorySecureItemAdapter())
+        let keyData = Data(repeating: 0x35, count: 32)
+        let key = FixedSnapshotKeyProvider(key: keyData)
+        let factory = SessionPersistenceFactory(baseDirectory: directory, tokenStore: tokenStore, keyProvider: key)
+        let catalog = try verifiedCatalog()
+        let hostID = GameCore.PlayerID(rawValue: "host")
+        let roomID = GameCore.RoomID(rawValue: "SHORT-ROUTE")
+        var selectedState: GameCore.GameState?
+        for seed in 1...100 {
+            var setup = GameCore.SetupRules(seed: UInt64(seed))
+            let candidate = try setup.makeGame(
+                catalog: catalog, playerIDs: [hostID, player], mode: .shortCanal
+            ).state
+            if candidate.activePlayerID == hostID { selectedState = candidate; break }
+        }
+        let gameState = try #require(selectedState)
+        let tokens: [GameCore.PlayerID: GameCore.ReconnectToken] = [
+            hostID: .init(rawValue: "host-secret"), player: .init(rawValue: "guest-secret"),
+        ]
+        for (playerID, token) in tokens {
+            try await tokenStore.save(.init(roomID: roomID, playerID: playerID, reconnectToken: token))
+        }
+        let engine = try gameState.makeHostEngine(roomID: roomID, reconnectTokens: tokens, protocolVersion: 3)
+        let archive = SessionArchive.host(
+            protocolVersion: 3, rulesetVersion: catalog.catalog.rulesetVersion,
+            recipientID: hostID, state: engine.state, gameState: engine.gameState,
+            eventWindows: [:],
+            tokenReferences: [.init(roomID: roomID, playerID: hostID), .init(roomID: roomID, playerID: player)],
+            peersNeedingRecovery: [], commitSequence: 0
+        )
+        try await SnapshotStore(
+            directory: factory.directory(roomID: roomID, playerID: hostID), keyProvider: key
+        ).save(archive)
+
+        // 房间列表先按协议 2 试、protocolMismatch 后按 3 再试,引用带协议 3。
+        let reference = try #require(try await factory.recoverableHostRooms(catalog: catalog).first)
+        #expect(reference.protocolVersion == 3)
+
+        // 恢复路由用引用上的协议(不再写死 2),能连上并恢复出短局投影。
+        let store = try await NearbyHostRecoveryRoute.makeStore(
+            reference: reference,
+            identity: .init(
+                deviceID: UUID(uuidString: "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE")!,
+                roomID: roomID.rawValue
+            ),
+            persistenceFactory: factory,
+            transport: LoopbackTransportHub().makeTransport(peerID: hostID),
+            catalog: catalog
+        )
+        #expect(await store.connect() == nil)
+        try await eventuallyMainActor { store.snapshot != nil }
+        #expect(await store.snapshot?.match?.matchMode == .shortCanal)
+    }
+
+    @Test func nearbyGuestProbesProtocolTwoThenThreeForItsShortCanalArchive() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let tokenStore = RoomTokenStore(adapter: InMemorySecureItemAdapter())
+        let keyData = Data(repeating: 0x36, count: 32)
+        let factory = SessionPersistenceFactory(
+            baseDirectory: directory, tokenStore: tokenStore,
+            keyProvider: FixedSnapshotKeyProvider(key: keyData)
+        )
+        let catalog = try verifiedCatalog()
+        let hostID = GameCore.PlayerID(rawValue: "host")
+        let roomID = GameCore.RoomID(rawValue: "SHORT-GUEST")
+        let identity = NearbySessionIdentity(
+            deviceID: UUID(uuidString: "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE")!,
+            roomID: roomID.rawValue
+        )
+        // 一份协议 3 的短局客机档案:按协议 2 探测必 protocolMismatch。
+        // 协议 ≥2 的客机快照必须带 recipient-safe 的 match 投影,用真实短局状态构造。
+        var setupRules = GameCore.SetupRules(seed: 5)
+        let state = try setupRules.makeGame(
+            catalog: catalog, playerIDs: [hostID, identity.playerID], mode: .shortCanal
+        ).state
+        let match = try GameCore.MatchProjection.make(
+            state: state, recipient: identity.playerID, actionOptions: []
+        )
+        let players = state.players.map { player in
+            GameCore.VisiblePlayer(
+                id: player.id, handCount: player.hand.count,
+                hand: player.id == identity.playerID ? player.hand.map(\.id) : nil
+            )
+        }
+        let version = state.authoritativeVersion
+        let snapshot = GameCore.ViewSnapshot(
+            roomID: roomID, recipient: identity.playerID, players: players,
+            activePlayerID: state.activePlayerID ?? identity.playerID,
+            turn: state.roundNumber, actionNumber: state.actionNumber,
+            authoritativeVersion: version, discardPile: [],
+            match: match,
+            checksum: try GameCore.snapshotChecksum(
+                roomID: roomID, recipient: identity.playerID, players: players,
+                activePlayerID: state.activePlayerID ?? identity.playerID,
+                turn: state.roundNumber, actionNumber: state.actionNumber,
+                authoritativeVersion: version, discardPile: [],
+                forcedSale: nil, match: match
+            )
+        )
+        let archive = SessionArchive.guest(
+            protocolVersion: 3, rulesetVersion: catalog.catalog.rulesetVersion,
+            hostPlayerID: hostID,
+            snapshot: snapshot,
+            eventWindow: [],
+            tokenReference: .init(roomID: roomID, playerID: identity.playerID),
+            commitSequence: 4
+        )
+        try await SnapshotStore(
+            directory: factory.directory(roomID: roomID, playerID: identity.playerID),
+            keyProvider: FixedSnapshotKeyProvider(key: keyData)
+        ).save(archive)
+
+        let room = try #require(NearbyRoom(serviceName: roomID.rawValue))
+        let store = try await SessionViewStore.nearbyGuest(
+            room: room,
+            identity: identity,
+            persistenceFactory: factory,
+            catalog: catalog
+        )
+        // 探测成功:恢复出私档(snapshot 非空)而不是协议 2 空座位。
+        try await eventuallyMainActor { store.snapshot != nil }
+        #expect(await store.snapshot?.match?.matchMode == .shortCanal)
+    }
+
     @Test func hostArchiveEncodingIsByteStableAcrossDecodeReencode() throws {
         // Set/复合键字典的无序 JSON 编码曾让"重编码校验和"跨启动随机失败并清档。
         let catalog = try verifiedCatalog()

@@ -772,6 +772,37 @@ nonisolated struct SessionPersistenceFactory: Sendable {
         return baseDirectory.appendingPathComponent(identifier, isDirectory: true)
     }
 
+    /// 客机座位协议探测:返回已存私档所用的会话协议(短局=3);无档案或
+    /// 其他失败返回 nil(按协议 2 空座位处理)。只做只读 load,不触发恢复计数。
+    func guestArchiveProtocol(
+        roomID: GameCore.RoomID,
+        playerID: GameCore.PlayerID,
+        rulesetVersion: String
+    ) async -> Int? {
+        let store = SnapshotStore(
+            directory: directory(roomID: roomID, playerID: playerID),
+            keyProvider: keyProvider
+        )
+        guard FileManager.default.fileExists(atPath: store.committedFileURL.path) else { return nil }
+        for protocolVersion in [2, 3] {
+            do {
+                _ = try await store.load(expected: .init(
+                    protocolVersion: protocolVersion,
+                    rulesetVersion: rulesetVersion,
+                    roomID: roomID,
+                    recipientID: playerID,
+                    role: .guest
+                ))
+                return protocolVersion
+            } catch SnapshotStoreError.protocolMismatch {
+                continue
+            } catch {
+                return nil
+            }
+        }
+        return nil
+    }
+
     func makeCoordinator(
         configuration proposed: SessionCoordinator.Configuration,
         role: SessionArchiveRole,

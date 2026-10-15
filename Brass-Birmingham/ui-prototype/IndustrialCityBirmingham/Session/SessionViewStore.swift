@@ -62,7 +62,7 @@ enum NearbyHostRecoveryRoute {
         }
         let coordinator = try await persistenceFactory.makeCoordinator(
             configuration: .init(
-                protocolVersion: 2,
+                protocolVersion: reference.protocolVersion,
                 rulesetVersion: reference.rulesetVersion,
                 roomID: reference.roomID,
                 playerID: reference.playerID,
@@ -362,9 +362,14 @@ final class SessionViewStore {
         let hostID = GameCore.PlayerID(rawValue: "host")
         // 混玩统一:模拟器与真机同走 NearbyTransport(Bonjour TCP + 点对点)。
         let transport = NearbyTransport(serviceName: room.serviceName)
+        // 短局客机档案按协议 3 保存:先 2 后 3 探测,成功者即本座位的会话协议,
+        // 避免绑着协议 2 空座位撞上短局的提交序号。
+        let protocolVersion = await persistenceFactory.guestArchiveProtocol(
+            roomID: roomID, playerID: identity.playerID, rulesetVersion: catalog.catalog.rulesetVersion
+        ) ?? 2
         let coordinator = try await persistenceFactory.makeCoordinator(
             configuration: .init(
-                protocolVersion: 2, rulesetVersion: catalog.catalog.rulesetVersion, roomID: roomID,
+                protocolVersion: protocolVersion, rulesetVersion: catalog.catalog.rulesetVersion, roomID: roomID,
                 playerID: identity.playerID, reconnectToken: identity.reconnectToken, hostPlayerID: hostID,
                 displayName: UserDefaults.standard.string(forKey: "playerDisplayName")
             ),
