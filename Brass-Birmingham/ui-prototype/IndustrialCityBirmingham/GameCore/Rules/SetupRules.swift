@@ -46,7 +46,8 @@ extension GameCore {
         mutating func makeGame(
             catalog verifiedCatalog: VerifiedGameDataCatalog,
             playerIDs: [PlayerID],
-            colors: [PlayerID: PlayerColor] = [:]
+            colors: [PlayerID: PlayerColor] = [:],
+            mode: MatchMode = .standard
         ) throws -> SetupResult {
             let catalog = verifiedCatalog.catalog
             guard (2...4).contains(playerIDs.count) else {
@@ -120,6 +121,10 @@ extension GameCore {
                 ),
                 to: &events
             )
+            if mode == .shortCanal {
+                // 短局只多这一条事件;标准局事件序列与缺省调用逐字节相同。
+                append(.matchModeSelected(.shortCanal), to: &events)
+            }
             append(
                 .turnStateInitialized(
                     era: .canal,
@@ -295,6 +300,15 @@ extension GameCore {
                         authoritativeVersion: .init(rawValue: 0)
                     )
                     phase = .turnState
+
+                case let .matchModeSelected(mode):
+                    // 只允许紧跟 gameCreated、在 turnStateInitialized 之前,且只允许
+                    // .shortCanal(显式选 standard 是编码错误;缺事件即 standard)。
+                    guard phase == .turnState, mode == .shortCanal, var value = state else {
+                        throw SetupError.invalidReplay(.unexpectedPhase)
+                    }
+                    value.matchMode = mode
+                    state = value
 
                 case let .turnStateInitialized(
                     era,

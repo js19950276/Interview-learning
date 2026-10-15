@@ -46,6 +46,65 @@ struct ShortCanalRulesTests {
 
     // MARK: - 辅助(与 TurnScoringRulesTests.verifiedCatalog 同款)
 
+    @Test func shortCanalSetupInsertsMatchModeSelectedAndKeepsTheDealIdentical() throws {
+        let catalog = try verifiedCatalog()
+        let playerIDs = [GameCore.PlayerID(rawValue: "p1"), GameCore.PlayerID(rawValue: "p2")]
+
+        var standardRules = GameCore.SetupRules(seed: 77)
+        let standard = try standardRules.makeGame(catalog: catalog, playerIDs: playerIDs)
+        var shortRules = GameCore.SetupRules(seed: 77)
+        let short = try shortRules.makeGame(catalog: catalog, playerIDs: playerIDs, mode: .shortCanal)
+
+        #expect(short.state.matchMode == .shortCanal)
+        #expect(standard.state.matchMode == .standard)
+        // 不带 mode 的调用与显式 .standard 的事件序列完全相同(没有新事件)。
+        var explicitRules = GameCore.SetupRules(seed: 77)
+        let explicit = try explicitRules.makeGame(
+            catalog: catalog, playerIDs: playerIDs, mode: .standard
+        )
+        #expect(explicit.events == standard.events)
+        // 短局只多一条事件:紧跟 gameCreated 的 matchModeSelected(.shortCanal)。
+        #expect(short.events.count == standard.events.count + 1)
+        guard case .matchModeSelected(let mode) = short.events[1].payload else {
+            Issue.record("second setup event must be matchModeSelected")
+            return
+        }
+        #expect(mode == .shortCanal)
+        // 同种子下,开局/发牌/顺位与标准局完全一致。
+        #expect(short.state.players.map { $0.hand } == standard.state.players.map { $0.hand })
+        #expect(short.state.playerOrder == standard.state.playerOrder)
+        #expect(short.state.standardDrawDeck == standard.state.standardDrawDeck)
+        // 短局事件重放回同一状态。
+        #expect(try GameCore.SetupRules.replay(short.events, catalog: catalog) == short.state)
+    }
+
+    @Test func setupReplayRejectsMisplacedOrExplicitStandardMatchModeEvents() throws {
+        let catalog = try verifiedCatalog()
+        let playerIDs = [GameCore.PlayerID(rawValue: "p1"), GameCore.PlayerID(rawValue: "p2")]
+        var rules = GameCore.SetupRules(seed: 77)
+        let standard = try rules.makeGame(catalog: catalog, playerIDs: playerIDs)
+
+        func renumbered(_ events: [GameCore.SetupEvent]) -> [GameCore.SetupEvent] {
+            events.enumerated().map { .init(sequence: $0.offset, payload: $0.element.payload) }
+        }
+        // 显式 .standard 视为非法(缺事件才是 standard)。
+        var explicit = standard.events
+        explicit.insert(
+            .init(sequence: 1, payload: .matchModeSelected(.standard)), at: 1
+        )
+        #expect(throws: GameCore.SetupError.self) {
+            _ = try GameCore.SetupRules.replay(renumbered(explicit), catalog: catalog)
+        }
+        // 位置错(出现在 turnStateInitialized 之后)同样拒绝。
+        var misplaced = standard.events
+        misplaced.insert(
+            .init(sequence: 2, payload: .matchModeSelected(.shortCanal)), at: 3
+        )
+        #expect(throws: GameCore.SetupError.self) {
+            _ = try GameCore.SetupRules.replay(renumbered(misplaced), catalog: catalog)
+        }
+    }
+
     @Test func shortCanalStateMustStayInCanalEraWithoutIntermission() throws {
         let catalog = try verifiedCatalog()
         func shortState() throws -> GameCore.GameState {

@@ -374,6 +374,7 @@ extension GameCore {
             case merchantTilesShuffled([String])
             case merchantPlaced(MerchantPlacement)
             case setupCompleted
+            case matchModeSelected(MatchMode)
         }
 
         var sequence: Int
