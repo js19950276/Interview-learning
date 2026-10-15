@@ -46,6 +46,176 @@ struct ShortCanalRulesTests {
 
     // MARK: - 辅助(与 TurnScoringRulesTests.verifiedCatalog 同款)
 
+    private func shortCanalState(playerCount: Int = 2, seed: UInt64 = 21) throws -> GameCore.GameState {
+        let catalog = try verifiedCatalog()
+        var rules = GameCore.SetupRules(seed: seed)
+        return try rules.makeGame(
+            catalog: catalog,
+            playerIDs: (1...playerCount).map { .init(rawValue: "p\($0)") },
+            mode: .shortCanal
+        ).state
+    }
+
+    @Test func shortCanalBonusAddsSecondIndustryThenCashThenIncomeWithFloor() throws {
+        let catalog = try verifiedCatalog()
+        var state = try shortCanalState()
+        let owner = state.playerOrder[0]
+        // 翻面煤矿 1 级(线外):只在 scoreEra 出现;翻面棉纺厂 2 级(birmingham):
+        // scoreEra + 追加分各一次;未翻面制造厂 2 级:两次都是 0。
+        var coal = try placement(
+            ownerID: owner, industryID: "coal-mine", level: 1,
+            placementID: "off-link-coal", locationID: "dudley", catalog: catalog.catalog
+        )
+        coal.isFlipped = true
+        var cotton = try placement(
+            ownerID: owner, industryID: "cotton-mill", level: 2,
+            placementID: "on-link-cotton", locationID: "birmingham", catalog: catalog.catalog
+        )
+        cotton.isFlipped = true
+        let darkManufacturer = try placement(
+            ownerID: owner, industryID: "manufacturer", level: 2,
+            placementID: "unflipped", locationID: "nuneaton", catalog: catalog.catalog
+        )
+        state.boardIndustryPlacements += [coal, cotton, darkManufacturer]
+        let route = try #require(catalog.catalog.board.routes.first { $0.id == "birmingham-coventry" })
+        state.placedLinks.append(.init(routeID: route.id, ownerID: owner, era: .canal))
+        mutate(owner, in: &state) { $0.cash = 3; $0.incomePosition = 10; $0.victoryPoints = 0 }
+        let coalLevel = try #require(catalog.catalog.industries.first { $0.id == "coal-mine" }?
+            .levels.first { $0.level == 1 })
+        let cottonLevel = try #require(catalog.catalog.industries.first { $0.id == "cotton-mill" }?
+            .levels.first { $0.level == 2 })
+
+        let eraEvent = try GameCore.GameRulesEngine.scoreEra(.canal, state: &state, catalog: catalog)
+        guard case .eraScored(let eraDetails) = eraEvent else {
+            Issue.record("expected eraScored")
+            return
+        }
+        // 第 3 步:线分 2 + 产业分 1+5。
+        #expect(try #require(state.players.first { $0.id == owner }).victoryPoints
+            == cottonLevel.linkPoints + coalLevel.victoryPoints + cottonLevel.victoryPoints)
+
+        let bonusEvent = try GameCore.ScoringRules.applyShortCanalBonus(
+            priorAwards: eraDetails.awards, state: &state, catalog: catalog
+        )
+        guard case .shortCanalScored(let details) = bonusEvent else {
+            Issue.record("expected shortCanalScored")
+            return
+        }
+        let award = try #require(details.awards.first { $0.playerID == owner })
+        // 第 4 步:二次产业分 5(只有翻面二级棉纺厂),现金分 0(£3),收入分 0(pos 10)。
+        // 总 VP = 1 + 5 + 2 + 5 = 13,不是 15 也不是 18。
+        #expect(award.secondIndustryPoints == cottonLevel.victoryPoints)
+        #expect(award.cashPoints == 0)
+        #expect(award.incomePoints == 0)
+        #expect(award.linkPoints == cottonLevel.linkPoints)
+        #expect(award.industryPoints == coalLevel.victoryPoints + cottonLevel.victoryPoints)
+        #expect(award.victoryPoints ==
+            cottonLevel.linkPoints + coalLevel.victoryPoints + cottonLevel.victoryPoints * 2)
+        #expect(try #require(state.players.first { $0.id == owner }).victoryPoints == award.victoryPoints)
+        // 追加分不碰现金与收入轨。
+        #expect(try #require(state.players.first { $0.id == owner }).cash == 3)
+        #expect(try #require(state.players.first { $0.id == owner }).incomePosition == 10)
+    }
+
+    @Test func shortCanalCashPointsUseIntegerDivisionWithCap() throws {
+        let catalog = try verifiedCatalog()
+        for (cash, expected) in [(0, 0), (3, 0), (4, 1), (59, 14), (60, 15), (61, 15)] {
+            var state = try shortCanalState()
+            let owner = state.playerOrder[0]
+            mutate(owner, in: &state) { $0.cash = cash; $0.incomePosition = 10 }
+            let event = try GameCore.ScoringRules.applyShortCanalBonus(
+                priorAwards: [], state: &state, catalog: catalog
+            )
+            guard case .shortCanalScored(let details) = event,
+                  let award = details.awards.first(where: { $0.playerID == owner }) else {
+                Issue.record("expected shortCanalScored for cash \(cash)")
+                return
+            }
+            #expect(award.cashPoints == expected)
+            #expect(award.victoryPoints == expected)
+        }
+    }
+
+    @Test func shortCanalBonusFloorsVictoryPointsAfterCashThenIncomeInOrder() throws {
+        let catalog = try verifiedCatalog()
+        var state = try shortCanalState()
+        let owner = state.playerOrder[0]
+        // 顺序锁:VP 0、现金 £4(→+1)、收入等级 -3(pos 7)。先加现金再扣收入,最终 0;
+        // 若先扣再加现金会得到 1。名义扣分 -3 仍写进事件。
+        mutate(owner, in: &state) { $0.victoryPoints = 0; $0.cash = 4; $0.incomePosition = 7 }
+        let event = try GameCore.ScoringRules.applyShortCanalBonus(
+            priorAwards: [], state: &state, catalog: catalog
+        )
+        guard case .shortCanalScored(let details) = event,
+              let award = details.awards.first(where: { $0.playerID == owner }) else {
+            Issue.record("expected shortCanalScored")
+            return
+        }
+        #expect(award.cashPoints == 1)
+        #expect(award.incomePoints == -3)
+        #expect(award.victoryPoints == 0)
+        #expect(try #require(state.players.first { $0.id == owner }).victoryPoints == 0)
+        // 收入 6(pos 21)在 VP 10 上加 6。
+        var richState = try shortCanalState()
+        mutate(richState.playerOrder[0], in: &richState) {
+            $0.victoryPoints = 10; $0.cash = 0; $0.incomePosition = 21
+        }
+        guard case .shortCanalScored(let rich) = try GameCore.ScoringRules.applyShortCanalBonus(
+            priorAwards: [], state: &richState, catalog: catalog
+        ), let richAward = rich.awards.first(where: { $0.playerID == richState.playerOrder[0] }) else {
+            Issue.record("expected shortCanalScored for positive income")
+            return
+        }
+        #expect(richAward.victoryPoints == 16)
+    }
+
+    @Test func shortCanalWinnerTieBreaksOnIncomePositionNotIncomeLevel() throws {
+        let catalog = try verifiedCatalog()
+        var state = try shortCanalState()
+        let first = state.playerOrder[0]
+        let second = state.playerOrder[1]
+        // 两人 VP、现金全同;收入轨 11 与 12 的收入等级都是 £1(收入分相同,
+        // 不会自己打破平手),排名必须按 incomePosition(12 在前),不得并列。
+        mutate(first, in: &state) { $0.victoryPoints = 7; $0.cash = 4; $0.incomePosition = 11 }
+        mutate(second, in: &state) { $0.victoryPoints = 7; $0.cash = 4; $0.incomePosition = 12 }
+
+        let event = try GameCore.ScoringRules.applyShortCanalBonus(
+            priorAwards: [], state: &state, catalog: catalog
+        )
+        _ = try GameCore.GameRulesEngine.resolveWinner(state: &state)
+
+        guard case .shortCanalScored(let details) = event else {
+            Issue.record("expected shortCanalScored")
+            return
+        }
+        // 名义收入分:两人都是 1(等级),最终 VP 都是 7+1(现金)+1(收入)=9。
+        #expect(details.awards.allSatisfy { $0.incomePoints == 1 && $0.victoryPoints == 9 })
+        #expect(state.finalStandings == [[second], [first]])
+    }
+
+    private func mutate(
+        _ playerID: GameCore.PlayerID,
+        in state: inout GameCore.GameState,
+        _ mutation: (inout GameCore.SetupPlayer) -> Void
+    ) {
+        guard let index = state.players.firstIndex(where: { $0.id == playerID }) else { return }
+        mutation(&state.players[index])
+    }
+
+    private func placement(
+        ownerID: GameCore.PlayerID, industryID: String, level: Int,
+        placementID: String, locationID: String,
+        catalog: GameCore.GameDataCatalog
+    ) throws -> GameCore.BoardIndustryPlacement {
+        let location = try #require(catalog.board.locations.first { $0.id == locationID })
+        let slotIndex = try #require(location.industrySlots.firstIndex { $0.contains(industryID) })
+        return .init(
+            placementID: placementID, locationID: locationID, slotIndex: slotIndex,
+            ownerID: ownerID,
+            tile: .init(id: "tile-\(placementID)", industryDefinitionID: industryID, level: level)
+        )
+    }
+
     @Test func isGameFinalRoundDependsOnMatchMode() throws {
         let catalog = try verifiedCatalog()
         func state(mode: GameCore.MatchMode, era: GameCore.Era) throws -> GameCore.GameState {

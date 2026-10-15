@@ -146,6 +146,12 @@ nonisolated enum MatchActionLog {
                 } else {
                     lines.append("游戏结束")
                 }
+            case .shortCanalScored(let details):
+                let parts = details.awards.map { award -> String in
+                    let name = playerNames[award.playerID] ?? award.playerID.rawValue
+                    return "\(name) 线分\(award.linkPoints) 产业分\(award.industryPoints) 二次产业分\(award.secondIndustryPoints) 现金分\(award.cashPoints) 收入分\(award.incomePoints) 终分\(award.victoryPoints)"
+                }
+                lines.append("运河短局追加分：" + parts.joined(separator: "、"))
             default:
                 break
             }

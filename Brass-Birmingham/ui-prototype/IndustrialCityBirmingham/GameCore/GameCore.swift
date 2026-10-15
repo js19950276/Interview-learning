@@ -257,6 +257,24 @@ nonisolated enum GameCore {
         struct GameEndedDetails: Codable, Equatable, Sendable {
             let standings: [[PlayerID]]
         }
+        struct ShortCanalPlayerScore: Codable, Equatable, Sendable {
+            let playerID: PlayerID
+            /// 刚才 eraScored 里该玩家的线分,按 playerOrder 回显;本事件不重加。
+            let linkPoints: Int
+            /// 刚才 eraScored 里该玩家的产业分,含已翻面一级;本事件不重加。
+            let industryPoints: Int
+            /// 已翻面且等级 ≥ 2 的板块 VP 之和;本事件之前已加入。
+            let secondIndustryPoints: Int
+            /// min(15, max(0, cash) / 4);已加入。
+            let cashPoints: Int
+            /// 收入等级本身,可为负;名义值,不是夹断后的实际加减量。
+            let incomePoints: Int
+            /// 夹断之后的最终 VP。
+            let victoryPoints: Int
+        }
+        struct ShortCanalScoredDetails: Codable, Equatable, Sendable {
+            let awards: [ShortCanalPlayerScore]
+        }
 
         case forcedSaleRequired(PendingForcedSale)
         case forcedSaleRequiredMarker(PlayerID)
@@ -265,6 +283,7 @@ nonisolated enum GameCore {
         case eraIntermissionConfirmed(playerID: PlayerID)
         case railPrepared(RailPreparedDetails)
         case gameEnded(GameEndedDetails)
+        case shortCanalScored(ShortCanalScoredDetails)
     }
 
     struct RejectedIntent: Codable, Equatable, Error, Sendable {

@@ -73,6 +73,54 @@ extension GameCore {
             ))
         }
 
+        /// 短局追加分(RULES.md §11):二次产业分 → 现金分 → 收入等级分 → VP 夹到 ≥ 0。
+        /// 不重做线分与第一次产业分(它们由 scoreEra 完成);priorAwards 只用于回显。
+        static func applyShortCanalBonus(
+            priorAwards: [GameTransitionEvent.PlayerVPAward],
+            state: inout GameState,
+            catalog: VerifiedGameDataCatalog
+        ) throws -> GameTransitionEvent {
+            let definitions = Dictionary(uniqueKeysWithValues: catalog.catalog.industries.map { ($0.id, $0) })
+            var secondIndustry = Dictionary(uniqueKeysWithValues: state.players.map { ($0.id, 0) })
+            for placement in state.boardIndustryPlacements
+            where placement.isFlipped && placement.tile.level >= 2 {
+                guard let level = definitions[placement.tile.industryDefinitionID]?
+                    .levels.first(where: { $0.level == placement.tile.level })
+                else { throw ScoringRuleError.missingDefinition }
+                secondIndustry[placement.ownerID] = try checkedAdd(
+                    secondIndustry[placement.ownerID, default: 0], level.victoryPoints
+                )
+            }
+            let incomeByPosition = Dictionary(
+                uniqueKeysWithValues: catalog.catalog.incomeTrack.entries.map { ($0.position, $0.income) }
+            )
+            let awards = try state.playerOrder.map { playerID throws -> GameTransitionEvent.ShortCanalPlayerScore in
+                guard let index = state.players.firstIndex(where: { $0.id == playerID }) else {
+                    throw ScoringRuleError.missingDefinition
+                }
+                let prior = priorAwards.first(where: { $0.playerID == playerID })
+                let second = secondIndustry[playerID, default: 0]
+                let cashPoints = min(15, max(0, state.players[index].cash) / 4)
+                guard let income = incomeByPosition[state.players[index].incomePosition] else {
+                    throw ScoringRuleError.missingDefinition
+                }
+                state.players[index].victoryPoints = try checkedAdd(state.players[index].victoryPoints, second)
+                state.players[index].victoryPoints = try checkedAdd(state.players[index].victoryPoints, cashPoints)
+                state.players[index].victoryPoints = try checkedAdd(state.players[index].victoryPoints, income)
+                if state.players[index].victoryPoints < 0 { state.players[index].victoryPoints = 0 }
+                return .init(
+                    playerID: playerID,
+                    linkPoints: prior?.linkPoints ?? 0,
+                    industryPoints: prior?.industryPoints ?? 0,
+                    secondIndustryPoints: second,
+                    cashPoints: cashPoints,
+                    incomePoints: income,
+                    victoryPoints: state.players[index].victoryPoints
+                )
+            }
+            return .shortCanalScored(.init(awards: awards))
+        }
+
         /// 已计分的连接片全部撤下,退回各自主人(余量+1);不加 VP、不发事件。
         /// 缺主人的孤儿线抛 missingDefinition 且一条余量都不改。
         static func returnScoredLinks(state: inout GameState) throws {

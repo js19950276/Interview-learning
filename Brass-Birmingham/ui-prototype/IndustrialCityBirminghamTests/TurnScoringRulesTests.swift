@@ -1024,6 +1024,7 @@ struct TurnScoringRulesTests {
             //(夹具 incomePosition 15 = £3,现金 20 → 23),不得提前跳过。
             #expect(Dictionary(uniqueKeysWithValues: engine.gameState.players.map { ($0.id, $0.cash) })
                 == Dictionary(uniqueKeysWithValues: state.players.map { ($0.id, 23) }))
+            #expect(event.transitions.contains { if case .shortCanalScored = $0 { true } else { false } } == false)
             // 全员确认后进入铁路时代;最后一家的确认事件携带 railPrepared。
             var lastConfirmEvent: GameCore.AuthoritativeGameEvent?
             for player in state.players.map(\.id) {
