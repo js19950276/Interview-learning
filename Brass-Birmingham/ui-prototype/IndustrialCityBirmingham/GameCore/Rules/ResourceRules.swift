@@ -167,33 +167,6 @@ extension GameCore {
             return effects
         }
 
-        static func consumeResources(
-            for target: ValidatedNetworkTarget,
-            roomID: RoomID,
-            state: inout GameState,
-            catalog verifiedCatalog: VerifiedGameDataCatalog,
-            authority: GameRulesEngine.Authority
-        ) throws -> [ResourceEffect] {
-            var effects: [ResourceEffect] = []
-            let actionNumber = try nextActionNumber(state.actionNumber)
-            try executeRequests(
-                target.resourceRequests,
-                context: .init(
-                    roomID: roomID,
-                    actionID: "network-\(state.authoritativeVersion.rawValue)-\(actionNumber)",
-                    actorID: target.actorID,
-                    target: .network(
-                        routeIDs: target.intent.routeIDs,
-                        consumerLocationID: target.resourceRequests.first?.consumerLocationID ?? ""
-                    )
-                ),
-                state: &state,
-                catalog: verifiedCatalog,
-                effects: &effects
-            )
-            return effects
-        }
-
         static func settleBuiltIndustryMarket(
             for target: ValidatedBuildTarget,
             placementID: String,
@@ -524,6 +497,32 @@ extension GameCore {
             }
         }
 
+        /// 单条资源请求结算(与 executeRequests 同语义):合法源按"当前状态"判定,
+        /// 供网络行动逐条放线时调用,保证与 NetworkRules.validate 逐条同序。
+        static func executeRequest(
+            _ request: ResourceRequest,
+            actorID: PlayerID,
+            state: inout GameState,
+            catalog verifiedCatalog: VerifiedGameDataCatalog,
+            effects: inout [ResourceEffect]
+        ) throws {
+            let legal = legalResourceSources(
+                resource: request.resource,
+                consumerLocationID: request.consumerLocationID,
+                context: request.context,
+                state: state,
+                catalog: verifiedCatalog
+            )
+            guard legal.contains(request.source) else { throw ResourceRuleError.illegalSource }
+            try consume(
+                request,
+                actorID: actorID,
+                state: &state,
+                catalog: verifiedCatalog.catalog,
+                effects: &effects
+            )
+        }
+
         private static func executeRequests(
             _ requests: [ResourceRequest],
             context: ResourceActionContext,
@@ -532,20 +531,9 @@ extension GameCore {
             effects: inout [ResourceEffect]
         ) throws {
             for request in requests {
-                let legal = legalResourceSources(
-                    resource: request.resource,
-                    consumerLocationID: request.consumerLocationID,
-                    context: request.context,
-                    state: state,
-                    catalog: verifiedCatalog
-                )
-                guard legal.contains(request.source) else { throw ResourceRuleError.illegalSource }
-                try consume(
-                    request,
-                    actorID: context.actorID,
-                    state: &state,
-                    catalog: verifiedCatalog.catalog,
-                    effects: &effects
+                try executeRequest(
+                    request, actorID: context.actorID, state: &state,
+                    catalog: verifiedCatalog, effects: &effects
                 )
             }
         }

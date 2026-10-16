@@ -1572,6 +1572,89 @@ struct BuildAndNetworkRulesTests {
         #expect(unchanged == before)
     }
 
+    @Test func doubleRailResolvesCoalLinkByLinkSoSecondLinkCannotRetakeFirstLinkSource() throws {
+        // 回归:resolve 曾把两条线全部放上地图再一次性结煤,第二条铁路接通更近
+        // 煤矿后,第一条线在 validate 时合法的煤源(唯一可达)dudley 反而变非法,
+        // 合法行动提交被拒。resolve 必须与 validate 同序:逐条放线、逐条结煤。
+        let catalog = try verifiedCatalog()
+        var state = try setupState(catalog: catalog)
+        state.era = .rail
+        state.actionsRemaining = 2
+        let actor = try #require(state.activePlayerID)
+        let opponent = try #require(state.players.first { $0.id != actor }).id
+        let playerIndex = try #require(state.players.firstIndex { $0.id == actor })
+        let card = GameCore.CardInstance(id: "wild-industry-1", definitionID: "wild-industry")
+        state.players[playerIndex].hand = [card]
+        state.players[playerIndex].cash = 30
+        // 既有对手线 dudley-wolverhampton:行动前 dudley 煤矿只从 cannock 方向可达(距离 2)。
+        state.placedLinks = [
+            .init(routeID: "dudley-wolverhampton", ownerID: opponent, era: .rail),
+        ]
+        // 自己在 wolverhampton 的产业 = 网络起点;A=dudley 煤、B=burton-on-trent 煤。
+        state.boardIndustryPlacements = [
+            .init(
+                locationID: "wolverhampton", slotIndex: 0, ownerID: actor,
+                tile: .init(id: "own-origin", industryDefinitionID: "manufacturer", level: 1)
+            ),
+            .init(
+                locationID: "dudley", slotIndex: 0, ownerID: actor,
+                tile: .init(id: "mine-a", industryDefinitionID: "coal-mine", level: 2),
+                resourceCount: 1
+            ),
+            .init(
+                locationID: "burton-on-trent", slotIndex: 0, ownerID: actor,
+                tile: .init(id: "mine-b", industryDefinitionID: "coal-mine", level: 2),
+                resourceCount: 1
+            ),
+            .init(
+                locationID: "walsall", slotIndex: 1, ownerID: actor,
+                tile: .init(id: "own-beer", industryDefinitionID: "brewery", level: 2),
+                resourceCount: 1
+            ),
+        ]
+        state.publicSupply.beer -= 1
+        repairCardFixture(&state, catalog: catalog)
+        let before = state
+        let intent = GameCore.NetworkIntent(
+            cardID: card.id,
+            routeIDs: ["cannock-wolverhampton", "burton-on-trent-cannock"],
+            coalSources: [
+                .industry(placementID: "dudley#0"),
+                .industry(placementID: "burton-on-trent#0"),
+            ],
+            beerSource: .industry(placementID: "walsall#1")
+        )
+
+        // validate(逐条放线):link1 时 dudley 是 cannock 唯一可达煤矿 → 合法;
+        // link2 接通 burton-on-trent 后,link2 的煤从 cannock 最近的就是 B。
+        let target = try GameCore.NetworkRules.validate(
+            intent, actorID: actor, state: state, catalog: catalog
+        )
+        #expect(target.resourceRequests.count == 3)
+        #expect(target.resourceRequests[0].source == .industry(placementID: "dudley#0"))
+        #expect(target.resourceRequests[0].consumerLocationID == "cannock")
+
+        // resolve 必须接受这条 validate 认可的行动(修复前这里抛 illegalSource)。
+        let event = try GameCore.GameRulesEngine.resolveNetwork(
+            target, roomID: .init(rawValue: "build-network-tests"), state: &state, catalog: catalog
+        )
+        #expect(state.players[playerIndex].cash == 15)
+        #expect(state.players[playerIndex].spent == 15)
+        #expect(state.players[playerIndex].linksRemaining == 12)
+        #expect(state.placedLinks.suffix(2).map(\.routeID) == intent.routeIDs)
+        for placementID in ["dudley#0", "burton-on-trent#0", "walsall#1"] {
+            let placement = try #require(
+                state.boardIndustryPlacements.first { $0.placementID == placementID }
+            )
+            #expect(placement.resourceCount == 0)
+        }
+        var replayed = before
+        try GameCore.GameRulesEngine.replay(
+            event, expectedRoomID: .init(rawValue: "build-network-tests"), to: &replayed, catalog: catalog
+        )
+        #expect(replayed == state)
+    }
+
     @Test func opponentBeerConnectsOnlyAfterSecondRailAndWrongOrderOrSecondRouteRejectAtomically() throws {
         let catalog = try verifiedCatalog()
         var state = try setupState(catalog: catalog)

@@ -297,11 +297,30 @@ extension GameCore {
             let links = target.intent.routeIDs.map {
                 PlacedLink(routeID: $0, ownerID: target.actorID, era: candidate.era)
             }
-            candidate.placedLinks.append(contentsOf: links)
-            let effects = try ResourceRules.consumeResources(
-                for: target, roomID: roomID, state: &candidate, catalog: verifiedCatalog,
-                authority: authority
-            )
+            // 与 NetworkRules.validate 同序:逐条放线、逐条结煤(官方双铁路逐条施工)。
+            // 若把两条线都放上地图再一次性结煤,第二条铁路接通的更近煤矿会让
+            // 第一条线在 validate 时合法的煤源反遭拒绝。
+            var effects: [ResourceEffect] = []
+            var pendingRequests = target.resourceRequests[...]
+            for link in links {
+                candidate.placedLinks.append(link)
+                // 铁路每条线各需一煤;运河行动没有煤请求。
+                if candidate.era == .rail, let request = pendingRequests.first,
+                   request.resource == .coal {
+                    try ResourceRules.executeRequest(
+                        request, actorID: target.actorID, state: &candidate,
+                        catalog: verifiedCatalog, effects: &effects
+                    )
+                    pendingRequests = pendingRequests.dropFirst()
+                }
+            }
+            // 剩余请求(双铁路的啤酒)在全部连接片就位后结算,与 validate 的啤酒检查同位。
+            for request in pendingRequests {
+                try ResourceRules.executeRequest(
+                    request, actorID: target.actorID, state: &candidate,
+                    catalog: verifiedCatalog, effects: &effects
+                )
+            }
             candidate.players[playerIndex].cash = try checkedSubtract(
                 candidate.players[playerIndex].cash, target.cashCost
             )
