@@ -19,7 +19,7 @@ struct ActionGridView: View {
         .padding(.horizontal, 8)
         .padding(.vertical, 7)
         .frame(minHeight: 58)
-        .modifier(IndustrialPanelSurface(axis: .horizontal))
+        .modifier(IndustrialPanelSurface())
         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 8, style: .continuous)

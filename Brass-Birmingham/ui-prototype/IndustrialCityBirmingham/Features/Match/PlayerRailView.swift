@@ -1,5 +1,40 @@
 import SwiftUI
 
+/// 左侧玩家栏的宽度预算。每一行都落在栏宽里，避免名字和分数互相盖住。
+nonisolated enum PlayerRailLayout {
+    static let phoneSymbol: CGFloat = 15
+    /// “行动”两个字加胶囊内边距，不能再和“你”并排。
+    static let phoneBadgeWidth: CGFloat = 26
+
+    static let avatar: CGFloat = 36
+    static let cardPadding: CGFloat = 6
+    static let columnSpacing: CGFloat = 6
+    static let cashWidth: CGFloat = 50
+    static let victoryWidth: CGFloat = 42
+    static let statSpacing: CGFloat = 6
+    static let incomeWidth: CGFloat = 72
+    static let spentWidth: CGFloat = 64
+
+    static func phoneClearWidth(railWidth: CGFloat) -> CGFloat {
+        railWidth - MatchLayoutMetrics.panelEdgeInset * 2
+    }
+
+    static func phoneLinesFit(railWidth: CGFloat) -> Bool {
+        let clear = phoneClearWidth(railWidth: railWidth)
+        return clear > 0 && phoneSymbol <= clear && phoneBadgeWidth <= clear
+    }
+
+    static func textColumn(railWidth: CGFloat) -> CGFloat {
+        railWidth - MatchLayoutMetrics.panelEdgeInset * 2 - cardPadding * 2 - avatar - columnSpacing
+    }
+
+    static func rowsFit(railWidth: CGFloat) -> Bool {
+        let column = textColumn(railWidth: railWidth)
+        let moneyRow = cashWidth + statSpacing + victoryWidth
+        return column > 0 && moneyRow <= column && incomeWidth <= column && spentWidth <= column
+    }
+}
+
 struct PlayerRailView: View {
     let players: [PlayerSummary]
     let metrics: MatchLayoutMetrics
@@ -31,8 +66,10 @@ struct PlayerRailView: View {
                 phoneRail
             }
         }
+        .padding(.horizontal, MatchLayoutMetrics.panelEdgeInset)
         .frame(width: metrics.leftRailWidth)
-        .modifier(IndustrialPanelSurface(axis: .vertical))
+        .modifier(IndustrialPanelSurface())
+        .clipped()
         .overlay(alignment: .trailing) {
             Rectangle()
                 .fill(BrassColor.brass.color.opacity(0.45))
@@ -52,108 +89,141 @@ struct PlayerRailView: View {
     private var tabletRail: some View {
         VStack(spacing: 8) {
             Text("玩家顺序")
-                .font(BrassTypography.label)
+                .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(BrassColor.brass.color)
+                .lineLimit(1)
 
-            ForEach(players) { player in
-                tabletPlayer(player)
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 8) {
+                    ForEach(players) { player in
+                        tabletPlayer(player)
+                    }
+                }
+                .padding(.vertical, 1)
             }
-
-            Spacer(minLength: 4)
+            .scrollBounceBehavior(.basedOnSize)
+            .frame(maxHeight: .infinity)
         }
-        .padding(10)
+        .padding(.vertical, 8)
     }
 
     private var phoneRail: some View {
-        VStack(spacing: 4) {
-            ForEach(players) { player in
-                ZStack(alignment: .leading) {
-                    VStack(spacing: 2) {
-                        Image(systemName: playerSymbol(player.color))
-                            .font(.system(size: 17, weight: .bold))
-                            .foregroundStyle(playerTint(player.color))
-                        Text("\(player.order)")
-                            .font(BrassTypography.number)
-                            .monospacedDigit()
-                        Text("£\(player.spent)")
-                            .font(.system(size: 11, weight: .bold, design: .monospaced))
-                            .foregroundStyle(player.spent > 0 ? BrassColor.brass.color : BrassColor.paper.color.opacity(0.75))
-                        phoneStatusBadges(player)
-                    }
-                    .frame(maxWidth: .infinity)
+        ScrollView(showsIndicators: false) {
+            VStack(spacing: 4) {
+                ForEach(players) { player in
+                    phonePlayer(player)
+                }
+            }
+            .padding(.vertical, 4)
+        }
+        .scrollBounceBehavior(.basedOnSize)
+        .frame(maxHeight: .infinity)
+    }
 
-                    if player.isCurrent {
-                        RoundedRectangle(cornerRadius: 2, style: .continuous)
-                            .fill(BrassColor.brass.color)
-                            .frame(width: 3, height: 24)
-                            .padding(.leading, 1)
-                    }
-                }
-                .foregroundStyle(BrassColor.paper.color)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(player.isCurrent
-                    ? playerTint(player.color).opacity(0.26)
-                    : Color.clear)
-                .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 7, style: .continuous)
-                        .stroke(
-                            player.isCurrent ? playerTint(player.color) : BrassColor.fog.color.opacity(0.2),
-                            lineWidth: player.isCurrent ? 2.5 : 1
-                        )
-                }
-                .shadow(
-                    color: player.isCurrent ? playerTint(player.color).opacity(0.65) : Color.clear,
-                    radius: 9
-                )
-                .animation(reduceMotion ? nil : .easeInOut(duration: 0.25), value: player.isCurrent)
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel(Self.playerAccessibilityLabel(
-                    player,
-                    showsColorAssistSymbols: showsColorAssistSymbols,
-                    localPlayerID: localPlayerID
-                ))
-                .accessibilityValue(Self.playerAccessibilityValue(player))
-                .accessibilityIdentifier(accessibilityEnabled ? "match.player.\(player.id)" : "")
-                .accessibilityHidden(!accessibilityEnabled)
+    private func phonePlayer(_ player: PlayerSummary) -> some View {
+        ZStack(alignment: .leading) {
+            VStack(spacing: 1) {
+                Image(systemName: playerSymbol(player.color))
+                    .font(.system(size: PlayerRailLayout.phoneSymbol, weight: .bold))
+                    .foregroundStyle(playerTint(player.color))
+                Text("\(player.order)")
+                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                    .monospacedDigit()
+                    .lineLimit(1)
+                Text("£\(player.spent)")
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .monospacedDigit()
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
+                    .foregroundStyle(player.spent > 0 ? BrassColor.brass.color : BrassColor.paper.color.opacity(0.75))
+                phoneStatusBadges(player)
+            }
+            .frame(maxWidth: .infinity)
+
+            if player.isCurrent {
+                RoundedRectangle(cornerRadius: 2, style: .continuous)
+                    .fill(BrassColor.brass.color)
+                    .frame(width: 3, height: 18)
             }
         }
-        .padding(.vertical, 4)
+        .foregroundStyle(BrassColor.paper.color)
+        .frame(maxWidth: .infinity, minHeight: 44)
+        .fixedSize(horizontal: false, vertical: true)
+        .background(player.isCurrent
+            ? playerTint(player.color).opacity(0.26)
+            : Color.clear)
+        .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .stroke(
+                    player.isCurrent ? playerTint(player.color) : BrassColor.fog.color.opacity(0.2),
+                    lineWidth: player.isCurrent ? 2.5 : 1
+                )
+        }
+        .shadow(
+            color: player.isCurrent ? playerTint(player.color).opacity(0.65) : Color.clear,
+            radius: 9
+        )
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.25), value: player.isCurrent)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Self.playerAccessibilityLabel(
+            player,
+            showsColorAssistSymbols: showsColorAssistSymbols,
+            localPlayerID: localPlayerID
+        ))
+        .accessibilityValue(Self.playerAccessibilityValue(player))
+        .accessibilityIdentifier(accessibilityEnabled ? "match.player.\(player.id)" : "")
+        .accessibilityHidden(!accessibilityEnabled)
     }
 
     private func tabletPlayer(_ player: PlayerSummary) -> some View {
-        HStack(spacing: 7) {
+        HStack(alignment: .center, spacing: PlayerRailLayout.columnSpacing) {
             industryAvatar(player)
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 4) {
                     Text(displayName(player))
-                        .font(BrassTypography.label)
+                        .font(.system(size: 12, weight: .semibold))
                         .lineLimit(1)
-                    if player.isHost { status("主机", icon: "crown.fill") }
-                    if player.isConnected == false { status("离线", icon: "wifi.slash") }
+                        .minimumScaleFactor(0.75)
+                    if player.isHost {
+                        Image(systemName: "crown.fill")
+                            .font(.system(size: 10))
+                            .foregroundStyle(BrassColor.brass.color)
+                            .accessibilityLabel("主机")
+                    }
+                    if player.isConnected == false {
+                        Image(systemName: "wifi.slash")
+                            .font(.system(size: 10))
+                            .foregroundStyle(BrassColor.danger.color)
+                            .accessibilityLabel("离线")
+                    }
                 }
-                HStack(spacing: 8) {
-                    Label("£\(player.cash)", systemImage: "sterlingsign.circle.fill")
-                    Label("收入 £\(player.incomeLevel)", systemImage: "chart.line.uptrend.xyaxis")
-                    Label("VP \(player.victoryPoints)", systemImage: "shield.fill")
+                HStack(spacing: PlayerRailLayout.statSpacing) {
+                    tabletStat("£\(player.cash)", icon: "sterlingsign.circle.fill", width: PlayerRailLayout.cashWidth)
+                    tabletStat("VP \(player.victoryPoints)", icon: "shield.fill", width: PlayerRailLayout.victoryWidth)
                 }
-                .font(BrassTypography.number)
-                .monospacedDigit()
-                HStack(spacing: 6) {
-                    Text("本轮 £\(player.spent)")
+                tabletStat(
+                    "收入 £\(player.incomeLevel)",
+                    icon: "chart.line.uptrend.xyaxis",
+                    width: PlayerRailLayout.incomeWidth
+                )
+                HStack(spacing: PlayerRailLayout.statSpacing) {
+                    tabletStat("本轮 £\(player.spent)", icon: "clock", width: PlayerRailLayout.spentWidth)
                     if player.isCurrent {
                         status("行动", icon: "play.fill")
+                            .font(.system(size: 10, weight: .semibold))
                             .foregroundStyle(BrassColor.brass.color)
+                            .lineLimit(1)
                             .modifier(ActionBadgePulse(active: true))
                     }
                 }
-                .font(.caption2)
             }
-            Spacer(minLength: 0)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .foregroundStyle(BrassColor.paper.color)
-        .padding(7)
-        .frame(minHeight: 56)
+        .padding(PlayerRailLayout.cardPadding)
+        .frame(maxWidth: .infinity, minHeight: 56, alignment: .leading)
+        .fixedSize(horizontal: false, vertical: true)
         .background(player.isCurrent
             ? playerTint(player.color).opacity(0.20)
             : Color.clear)
@@ -188,7 +258,7 @@ struct PlayerRailView: View {
 
     @ViewBuilder
     private func phoneStatusBadges(_ player: PlayerSummary) -> some View {
-        HStack(spacing: 2) {
+        VStack(spacing: 1) {
             if player.isCurrent {
                 phoneBadge("行动", emphasized: true)
                     .modifier(ActionBadgePulse(active: true))
@@ -202,11 +272,29 @@ struct PlayerRailView: View {
     private func phoneBadge(_ title: String, emphasized: Bool) -> some View {
         Text(title)
             .font(.system(size: 7, weight: .heavy, design: .rounded))
+            .lineLimit(1)
+            .minimumScaleFactor(0.7)
             .foregroundStyle(emphasized ? BrassColor.coal.color : BrassColor.paper.color)
-            .padding(.horizontal, 3)
+            .frame(width: PlayerRailLayout.phoneBadgeWidth)
             .padding(.vertical, 1)
             .background(emphasized ? BrassColor.brass.color : BrassColor.fog.color.opacity(0.55))
             .clipShape(Capsule())
+    }
+
+    private func tabletStat(_ text: String, icon: String, width: CGFloat) -> some View {
+        Label {
+            Text(text)
+                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                .monospacedDigit()
+        } icon: {
+            Image(systemName: icon)
+                .font(.system(size: 10))
+        }
+        .labelStyle(.titleAndIcon)
+        .lineLimit(1)
+        .minimumScaleFactor(0.7)
+        .frame(width: width, alignment: .leading)
+        .clipped()
     }
 
     /// “行动”徽章呼吸闪烁,让轮到谁一目了然;开启减弱动态效果时保持常亮。
@@ -301,10 +389,10 @@ struct PlayerRailView: View {
         ZStack {
             Circle()
                 .fill(playerTint(player.color).opacity(0.18))
-                .frame(width: 40, height: 40)
+                .frame(width: PlayerRailLayout.avatar, height: PlayerRailLayout.avatar)
             Circle()
                 .stroke(playerTint(player.color), lineWidth: 2)
-                .frame(width: 40, height: 40)
+                .frame(width: PlayerRailLayout.avatar, height: PlayerRailLayout.avatar)
             Text(String(player.name.prefix(1)))
                 .font(.system(size: 16, weight: .bold, design: .serif))
                 .foregroundStyle(playerTint(player.color))

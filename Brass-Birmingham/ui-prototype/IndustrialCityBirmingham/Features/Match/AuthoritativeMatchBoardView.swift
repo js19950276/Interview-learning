@@ -83,10 +83,7 @@ struct AuthoritativeMatchBoardView: View {
                         highlightedIDs: highlightedIDs,
                         onTargetTap: selectMapTarget,
                         onBackgroundTap: dismissTransientOverlay,
-                        legendInsets: MapLegendInsets(
-                            top: metrics.mapLegendInsetsWithinPaddedViewport.top,
-                            trailing: metrics.mapLegendInsetsWithinPaddedViewport.trailing
-                        ),
+                        legendInsets: metrics.mapLegendInsetsWithinPaddedViewport,
                         viewportInsets: metrics.mapViewportInsets
                     )
                     .padding(.top, metrics.mapTopInset)
@@ -101,7 +98,6 @@ struct AuthoritativeMatchBoardView: View {
                     transientRailLayer(state: state, metrics: metrics)
                     leftRail(state: state, metrics: metrics)
                     rightRail(state: state, metrics: metrics)
-                    header(state: state, activeTurn: activeTurn, metrics: metrics)
                     hand(state: state, metrics: metrics)
                     if metrics.marketPlacement == .bottomLeftCompact {
                         compactMarket(state: state, metrics: metrics)
@@ -116,6 +112,9 @@ struct AuthoritativeMatchBoardView: View {
                         confirmation(state: state, metrics: metrics)
                     }
                     forcedSale(metrics: metrics)
+
+                    // 顶栏最后画:铺满屏幕上沿,盖住两侧栏留出的空档,下面的点击仍交给地图。
+                    header(state: state, activeTurn: activeTurn, metrics: metrics)
 
                     // 时代结算确认:暂停操作,全员确认后进入铁路时代。
                     if let intermission = store.snapshot?.eraIntermission {
@@ -280,18 +279,17 @@ struct AuthoritativeMatchBoardView: View {
     private func leftRail(state: DemoMatchState, metrics: MatchLayoutMetrics) -> some View {
         VStack(spacing: 0) {
             if metrics.formFactor == .phone {
-                Button {
-                    toggleRailOverlay(.playerRail)
-                } label: {
-                    PlayerRailView(
-                        players: state.players,
-                        metrics: metrics,
-                        localPlayerID: store.localPlayerID.rawValue,
-                        accessibilityEnabled: false
-                    )
-                    .frame(height: phoneRailHeight(metrics: metrics))
-                }
-                .buttonStyle(.plain)
+                PlayerRailView(
+                    players: state.players,
+                    metrics: metrics,
+                    localPlayerID: store.localPlayerID.rawValue,
+                    accessibilityEnabled: false
+                )
+                .frame(height: phoneRailHeight(metrics: metrics))
+                .clipped()
+                .contentShape(Rectangle())
+                .simultaneousGesture(TapGesture().onEnded { toggleRailOverlay(.playerRail) })
+                .accessibilityAddTraits(.isButton)
                 .accessibilityLabel(PlayerRailView.accessibilitySummary(
                     players: state.players,
                     showsColorAssistSymbols: preferences.colorAssistEnabled,
@@ -324,19 +322,17 @@ struct AuthoritativeMatchBoardView: View {
     private func rightRail(state: DemoMatchState, metrics: MatchLayoutMetrics) -> some View {
         Group {
             if metrics.formFactor == .phone {
-                Button {
-                    toggleRailOverlay(.industryRail)
-                } label: {
-                    IndustryRailView(
-                        industries: state.industries,
-                        metrics: metrics,
-                        reduceMotion: true,
-                        accessibilityEnabled: false
-                    )
-                    .frame(height: phoneRailHeight(metrics: metrics))
-                    .clipped()
-                }
-                .buttonStyle(.plain)
+                IndustryRailView(
+                    industries: state.industries,
+                    metrics: metrics,
+                    reduceMotion: true,
+                    accessibilityEnabled: false
+                )
+                .frame(height: phoneRailHeight(metrics: metrics))
+                .clipped()
+                .contentShape(Rectangle())
+                .simultaneousGesture(TapGesture().onEnded { toggleRailOverlay(.industryRail) })
+                .accessibilityAddTraits(.isButton)
                 .accessibilityLabel("产业板块，点按展开详情")
                 .accessibilityValue(
                     interaction.overlay == .industryRail ? "已展开" : "已收起"
@@ -427,19 +423,23 @@ struct AuthoritativeMatchBoardView: View {
         activeTurn: ActiveTurnPresentation?,
         metrics: MatchLayoutMetrics
     ) -> some View {
-        MatchHeaderView(
-            state: state,
-            roomID: store.roomID.rawValue,
-            syncStatus: store.syncStatus.rawValue,
-            isSynchronized: store.syncStatus == .synchronized,
-            activeTurn: activeTurn,
-            metrics: metrics,
-            modeLabel: matchMode == .shortCanal ? "运河短局" : nil,
-            onShowActionLog: { showsActionLog = true }
-        )
-        .padding(.horizontal, max(metrics.leftRailWidth, metrics.rightRailWidth) + 8)
-        .frame(height: metrics.headerHeight)
-        .frame(maxHeight: .infinity, alignment: .top)
+        VStack(spacing: 0) {
+            MatchHeaderView(
+                state: state,
+                roomID: store.roomID.rawValue,
+                syncStatus: store.syncStatus.rawValue,
+                isSynchronized: store.syncStatus == .synchronized,
+                activeTurn: activeTurn,
+                metrics: metrics,
+                modeLabel: matchMode == .shortCanal ? "运河短局" : nil,
+                onShowActionLog: { showsActionLog = true },
+                leadingObstruction: NearbySessionExit.headerLeadingClearance
+            )
+            Color.clear
+                .frame(maxHeight: .infinity)
+                .allowsHitTesting(false)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 
     @ViewBuilder

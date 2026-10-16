@@ -10,6 +10,8 @@ struct MatchHeaderView: View {
     /// 附加模式标签(短局标题),nil 不显示;时代字符串继续给地图样式解析用。
     var modeLabel: String?
     var onShowActionLog: (() -> Void)?
+    /// 左上角退出键占用的宽度。顶栏底仍铺满，只把文字往右让开。
+    var leadingObstruction: CGFloat = 0
 
     init(
         state: DemoMatchState,
@@ -19,7 +21,8 @@ struct MatchHeaderView: View {
         activeTurn: ActiveTurnPresentation? = nil,
         metrics: MatchLayoutMetrics? = nil,
         modeLabel: String? = nil,
-        onShowActionLog: (() -> Void)? = nil
+        onShowActionLog: (() -> Void)? = nil,
+        leadingObstruction: CGFloat = 0
     ) {
         self.state = state
         self.roomID = roomID
@@ -29,6 +32,7 @@ struct MatchHeaderView: View {
         self.metrics = metrics
         self.modeLabel = modeLabel
         self.onShowActionLog = onShowActionLog
+        self.leadingObstruction = leadingObstruction
     }
 
     var body: some View {
@@ -36,9 +40,11 @@ struct MatchHeaderView: View {
             header(spacing: 10, compact: false)
             header(spacing: 7, compact: true)
         }
-        .padding(.horizontal, metrics?.formFactor == .tablet ? 12 : 8)
+        .padding(.leading, (metrics?.formFactor == .tablet ? 12 : 8) + leadingObstruction)
+        .padding(.trailing, metrics?.formFactor == .tablet ? 12 : 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .frame(height: metrics?.headerHeight ?? 44)
-        .modifier(IndustrialPanelSurface(axis: .horizontal))
+        .modifier(IndustrialPanelSurface())
         .foregroundStyle(BrassColor.paper.color)
         .accessibilityElement(children: .contain)
         .accessibilityLabel(accessibilitySummary)

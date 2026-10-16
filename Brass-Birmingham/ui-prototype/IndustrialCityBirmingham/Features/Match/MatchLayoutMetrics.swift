@@ -25,11 +25,16 @@ nonisolated struct MatchLayoutMetrics: Equatable {
     let marketPlacement: MarketPlacement
 
     var mapLegendInsets: MapLegendInsets {
-        MapLegendInsets(top: mapTopInset, trailing: rightRailWidth + safeAreaTrailing + Self.railLabelClearance)
+        // 路线图例贴在地图右下角:让开右手产业栏、横屏安全区和底部手牌。
+        MapLegendInsets(
+            top: 0,
+            trailing: rightRailWidth + safeAreaTrailing + 8,
+            bottom: handHeight + 8
+        )
     }
 
     var mapLegendInsetsWithinPaddedViewport: MapLegendInsets {
-        MapLegendInsets(top: 0, trailing: mapLegendInsets.trailing)
+        mapLegendInsets
     }
 
     var mapViewportInsets: MapViewportInsets {
@@ -49,6 +54,9 @@ nonisolated struct MatchLayoutMetrics: Equatable {
         )
     }
 
+    /// 左右栏不再叠锻铁框，内容可以用满栏宽。
+    static let panelEdgeInset: CGFloat = 0
+
     /// 右栏内侧为城市名牌保留的横向净空:名牌以节点为中心、半宽可达 45pt
     /// (如“特伦特河畔伯顿”)。90 = 默认居中偏移 45(东侧名牌完全离栏)
     /// + 最大平移时的边缘余量,确保任何缩放/平移下名牌都不滑进产业栏。
@@ -66,7 +74,7 @@ nonisolated struct MatchLayoutMetrics: Equatable {
             handHeight = 132
             headerHeight = 48
             mapTopInset = 48
-            marketPlacement = .underPlayerRail
+            marketPlacement = .bottomLeftCompact
         } else {
             formFactor = .phone
             leftRailWidth = 44

@@ -20,7 +20,7 @@ struct MatchLayoutMetricsTests {
         #expect(metrics.formFactor == .tablet)
         #expect(metrics.leftRailWidth == 184)
         #expect(metrics.rightRailWidth == 176)
-        #expect(metrics.marketPlacement == .underPlayerRail)
+        #expect(metrics.marketPlacement == .bottomLeftCompact)
         #expect(metrics.headerHeight == 48)
         #expect(metrics.mapTopInset == 48)
     }
@@ -37,14 +37,16 @@ struct MatchLayoutMetricsTests {
         #expect(metrics.handHeight == 132)
     }
 
-    @Test func mapLegendInsetsClearHeaderAndRightRail() {
+    @Test func mapLegendSitsInTheBottomRightCorner() {
         let phone = MatchLayoutMetrics(viewport: CGSize(width: 852, height: 393))
-        #expect(phone.mapLegendInsets.top == phone.mapTopInset)
-        #expect(phone.mapLegendInsets.trailing == 146)
+        #expect(phone.mapLegendInsets.top == 0)
+        #expect(phone.mapLegendInsets.bottom == phone.handHeight + 8)
+        #expect(phone.mapLegendInsets.trailing == phone.rightRailWidth + 8)
 
         let tablet = MatchLayoutMetrics(viewport: CGSize(width: 1_194, height: 834))
-        #expect(tablet.mapLegendInsets.top == tablet.mapTopInset)
-        #expect(tablet.mapLegendInsets.trailing == 266)
+        #expect(tablet.mapLegendInsets.top == 0)
+        #expect(tablet.mapLegendInsets.bottom == tablet.handHeight + 8)
+        #expect(tablet.mapLegendInsets.trailing == tablet.rightRailWidth + 8)
     }
 
     @Test func mapLegendInsetsWithinPaddedViewportDoNotDoubleCountHeader() {
@@ -53,11 +55,13 @@ struct MatchLayoutMetricsTests {
             safeAreaTrailing: 59
         )
         #expect(phone.mapLegendInsetsWithinPaddedViewport.top == 0)
-        #expect(phone.mapLegendInsetsWithinPaddedViewport.trailing == 205)
+        #expect(phone.mapLegendInsetsWithinPaddedViewport.bottom == phone.handHeight + 8)
+        #expect(phone.mapLegendInsetsWithinPaddedViewport.trailing == 123)
 
         let tablet = MatchLayoutMetrics(viewport: CGSize(width: 1_194, height: 834))
         #expect(tablet.mapLegendInsetsWithinPaddedViewport.top == 0)
-        #expect(tablet.mapLegendInsetsWithinPaddedViewport.trailing == 266)
+        #expect(tablet.mapLegendInsetsWithinPaddedViewport.bottom == tablet.handHeight + 8)
+        #expect(tablet.mapLegendInsetsWithinPaddedViewport.trailing == tablet.rightRailWidth + 8)
     }
 
     @Test func mapLegendInsetsAlsoClearLandscapeSafeArea() {
@@ -66,7 +70,8 @@ struct MatchLayoutMetricsTests {
             safeAreaTrailing: 59
         )
 
-        #expect(phone.mapLegendInsets.trailing == 205)
+        #expect(phone.mapLegendInsets.trailing == 123)
+        #expect(phone.mapLegendInsets.bottom == 100)
     }
 
     @Test func phoneMapViewportInsetsClearHandAndMiniRailsWithoutDoubleCountingHeader() {
@@ -106,7 +111,8 @@ struct MatchLayoutMetricsTests {
         #expect(phone.rightRailWidth == 56)
         #expect(phone.handHeight == 92)
         #expect(phone.mapViewportInsets.top == 0)
-        #expect(phone.mapLegendInsets.top == phone.mapTopInset)
+        #expect(phone.mapLegendInsets.bottom == phone.handHeight + 8)
+        #expect(phone.mapLegendInsets.trailing == phone.rightRailWidth + 8)
 
         let tablet = MatchLayoutMetrics(viewport: CGSize(width: 1_194, height: 834))
         #expect(tablet.headerHeight == 48)
@@ -117,6 +123,23 @@ struct MatchLayoutMetricsTests {
         #expect(tablet.mapViewportInsets == MapViewportInsets(
             top: 0, leading: 184, bottom: 132, trailing: 266
         ))
-        #expect(tablet.mapLegendInsets.top == tablet.mapTopInset)
+        #expect(tablet.mapLegendInsets.bottom == tablet.handHeight + 8)
+        #expect(tablet.mapLegendInsets.trailing == tablet.rightRailWidth + 8)
+    }
+
+    @Test func playerRailRowsFitInsideTheClearRail() {
+        let phone = MatchLayoutMetrics(viewport: CGSize(width: 852, height: 393))
+        #expect(PlayerRailLayout.phoneLinesFit(railWidth: phone.leftRailWidth))
+
+        let tablet = MatchLayoutMetrics(viewport: CGSize(width: 1_194, height: 834))
+        #expect(PlayerRailLayout.rowsFit(railWidth: tablet.leftRailWidth))
+    }
+
+    @Test func industryRailRowsFitInsideTheClearRail() {
+        let phone = MatchLayoutMetrics(viewport: CGSize(width: 852, height: 393))
+        #expect(IndustryRailLayout.phoneRowsFit(railWidth: phone.rightRailWidth))
+
+        let tablet = MatchLayoutMetrics(viewport: CGSize(width: 1_194, height: 834))
+        #expect(IndustryRailLayout.tabletRowsFit(railWidth: tablet.rightRailWidth))
     }
 }

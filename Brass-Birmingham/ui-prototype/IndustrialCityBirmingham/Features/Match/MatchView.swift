@@ -84,8 +84,8 @@ struct RealMatchView: View {
             Text("地图、煤铁市场、产业为静态预览，规则待验证").font(.caption.bold())
                 .accessibilityIdentifier("real.previewNotice")
         }
-        .foregroundStyle(BrassColor.paper.color).brassPanel().padding(.horizontal, max(metrics.leftRailWidth, metrics.rightRailWidth) + 8)
-        .padding(.top, 4).frame(maxHeight: .infinity, alignment: .top)
+        .foregroundStyle(BrassColor.paper.color).brassPanel()
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 
     private func authoritativePlayers(metrics: MatchLayoutMetrics) -> some View {
@@ -251,7 +251,6 @@ struct MatchView: View {
                         .allowsHitTesting(isSubmitting == false)
                     industryRail(state: state, metrics: metrics)
                         .allowsHitTesting(isSubmitting == false)
-                    header(state: state, metrics: metrics)
                     hand(state: state, metrics: metrics)
                         .allowsHitTesting(isSubmitting == false)
 
@@ -269,6 +268,7 @@ struct MatchView: View {
                     eventFeedback(metrics: metrics)
                     rejectionFeedback(metrics: metrics)
                     technicalFailureFeedback(metrics: metrics)
+                    header(state: state, metrics: metrics)
 
                     if isSubmitting {
                         Color.clear
@@ -308,16 +308,16 @@ struct MatchView: View {
     private func playerRail(state: DemoMatchState, metrics: MatchLayoutMetrics) -> some View {
         VStack(spacing: 0) {
             if metrics.formFactor == .phone {
-                Button {
-                    toggleMeasuredOverlay(.playerRail)
-                } label: {
-                    PlayerRailView(
-                        players: state.players,
-                        metrics: metrics,
-                        showsColorAssistSymbols: preferences.colorAssistEnabled
-                    )
-                }
-                .buttonStyle(.plain)
+                PlayerRailView(
+                    players: state.players,
+                    metrics: metrics,
+                    showsColorAssistSymbols: preferences.colorAssistEnabled
+                )
+                .frame(height: phoneRailHeight(metrics: metrics))
+                .clipped()
+                .contentShape(Rectangle())
+                .simultaneousGesture(TapGesture().onEnded { toggleMeasuredOverlay(.playerRail) })
+                .accessibilityAddTraits(.isButton)
                 .frame(height: phoneRailHeight(metrics: metrics))
                 .accessibilityLabel(PlayerRailView.accessibilitySummary(
                     players: state.players,
@@ -363,17 +363,15 @@ struct MatchView: View {
     private func industryRail(state: DemoMatchState, metrics: MatchLayoutMetrics) -> some View {
         Group {
             if metrics.formFactor == .phone && industrySelectionIsActive == false {
-                Button {
-                    toggleMeasuredOverlay(.industryRail)
-                } label: {
-                    industryRailContent(state: state, metrics: metrics)
-                        .frame(height: phoneRailHeight(metrics: metrics), alignment: .top)
-                        .clipped()
-                }
-                .buttonStyle(.plain)
-                .frame(height: phoneRailHeight(metrics: metrics))
-                .accessibilityLabel("展开产业板块")
-                .accessibilityIdentifier("match.industryRail")
+                industryRailContent(state: state, metrics: metrics)
+                    .frame(height: phoneRailHeight(metrics: metrics), alignment: .top)
+                    .clipped()
+                    .contentShape(Rectangle())
+                    .simultaneousGesture(TapGesture().onEnded { toggleMeasuredOverlay(.industryRail) })
+                    .accessibilityAddTraits(.isButton)
+                    .frame(height: phoneRailHeight(metrics: metrics))
+                    .accessibilityLabel("展开产业板块")
+                    .accessibilityIdentifier("match.industryRail")
             } else if metrics.formFactor == .phone {
                 ScrollView(.vertical) {
                     industryRailContent(state: state, metrics: metrics)
@@ -457,10 +455,13 @@ struct MatchView: View {
     }
 
     private func header(state: DemoMatchState, metrics: MatchLayoutMetrics) -> some View {
-        MatchHeaderView(state: state)
-            .padding(.horizontal, max(metrics.leftRailWidth, metrics.rightRailWidth) + 8)
-            .padding(.top, 4)
-            .frame(maxHeight: .infinity, alignment: .top)
+        VStack(spacing: 0) {
+            MatchHeaderView(state: state, metrics: metrics)
+            Color.clear
+                .frame(maxHeight: .infinity)
+                .allowsHitTesting(false)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 
     private func hand(state: DemoMatchState, metrics: MatchLayoutMetrics) -> some View {

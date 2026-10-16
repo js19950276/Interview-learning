@@ -2,10 +2,11 @@ import SpriteKit
 import SwiftUI
 
 nonisolated struct MapLegendInsets: Equatable, Sendable {
-    static let zero = MapLegendInsets(top: 0, trailing: 0)
+    static let zero = MapLegendInsets(top: 0, trailing: 0, bottom: 0)
 
     let top: CGFloat
     let trailing: CGFloat
+    let bottom: CGFloat
 }
 
 nonisolated struct GameMapAccessibilityTarget: Identifiable, Equatable, Sendable {
@@ -143,7 +144,7 @@ struct GameMapView: View {
 
     var body: some View {
         GeometryReader { proxy in
-            ZStack(alignment: .topTrailing) {
+            ZStack(alignment: .bottomTrailing) {
                 SpriteView(scene: scene)
                     .contentShape(Rectangle())
                     .simultaneousGesture(dragGesture)
@@ -176,8 +177,8 @@ struct GameMapView: View {
                     .onChange(of: highlightedIDs) { _, _ in synchronizeScene(viewportSize: proxy.size) }
 
                 MapRouteLegend()
-                    .padding(.top, 8 + legendInsets.top)
-                    .padding(.trailing, 8 + legendInsets.trailing)
+                    .padding(.bottom, legendInsets.bottom)
+                    .padding(.trailing, legendInsets.trailing)
             }
             .accessibilityRepresentation {
                 if accessibilityEnabled {

@@ -1,5 +1,89 @@
 import SwiftUI
 
+/// 右侧产业栏的宽度预算。每一行都落在栏宽里，避免费用、徽章和分数互相盖住。
+nonisolated enum IndustryRailLayout {
+    struct Row: Equatable, Sendable {
+        var itemWidths: [CGFloat]
+        var spacing: CGFloat
+        var horizontalPadding: CGFloat
+
+        var minimumWidth: CGFloat {
+            let items = itemWidths.reduce(0, +)
+            let gaps = spacing * CGFloat(max(0, itemWidths.count - 1))
+            return items + gaps + horizontalPadding * 2
+        }
+    }
+
+    static let ironEdgeInset = MatchLayoutMetrics.panelEdgeInset
+
+    static let phoneMedallion: CGFloat = 18
+    static let phoneLevelWidth: CGFloat = 15
+    static let phoneCoin: CGFloat = 14
+    static let phoneInlineSpacing: CGFloat = 3
+    static let phoneChipWidth: CGFloat = 17
+    static let phoneChipSpacing: CGFloat = 4
+    static let phoneScoreWidth: CGFloat = 18
+    static let phoneScoreSpacing: CGFloat = 2
+
+    static let phoneRows: [Row] = [
+        Row(itemWidths: [phoneMedallion], spacing: 0, horizontalPadding: 0),
+        Row(itemWidths: [phoneLevelWidth, phoneCoin], spacing: phoneInlineSpacing, horizontalPadding: 0),
+        Row(itemWidths: [phoneChipWidth, phoneChipWidth], spacing: phoneChipSpacing, horizontalPadding: 0),
+        Row(itemWidths: [phoneScoreWidth, phoneScoreWidth], spacing: phoneScoreSpacing, horizontalPadding: 0)
+    ]
+
+    static let tabletCardPadding: CGFloat = 6
+    static let tabletMedallion: CGFloat = 26
+    static let tabletColumnSpacing: CGFloat = 6
+    static let tabletNameWidth: CGFloat = 42
+    static let tabletLevelWidth: CGFloat = 20
+    static let tabletCostWidth: CGFloat = 28
+    static let tabletStatusWidth: CGFloat = 12
+    static let tabletTitleSpacing: CGFloat = 4
+    static let tabletRemainWidth: CGFloat = 44
+    static let tabletChipWidth: CGFloat = 28
+    static let tabletChipSpacing: CGFloat = 4
+    static let tabletScoreWidth: CGFloat = 34
+    static let tabletLinkWidth: CGFloat = 30
+    static let tabletAvailabilityWidth: CGFloat = 32
+
+    static let tabletRows: [Row] = [
+        Row(
+            itemWidths: [tabletNameWidth, tabletLevelWidth, tabletCostWidth, tabletStatusWidth],
+            spacing: tabletTitleSpacing,
+            horizontalPadding: 0
+        ),
+        Row(
+            itemWidths: [tabletRemainWidth, tabletChipWidth, tabletChipWidth],
+            spacing: tabletChipSpacing,
+            horizontalPadding: 0
+        ),
+        Row(
+            itemWidths: [tabletScoreWidth, tabletLinkWidth, tabletAvailabilityWidth],
+            spacing: tabletChipSpacing,
+            horizontalPadding: 0
+        )
+    ]
+
+    static func phoneClearWidth(railWidth: CGFloat) -> CGFloat {
+        railWidth - ironEdgeInset * 2
+    }
+
+    static func tabletTextColumn(railWidth: CGFloat) -> CGFloat {
+        phoneClearWidth(railWidth: railWidth) - tabletCardPadding * 2 - tabletMedallion - tabletColumnSpacing
+    }
+
+    static func phoneRowsFit(railWidth: CGFloat) -> Bool {
+        let clear = phoneClearWidth(railWidth: railWidth)
+        return clear > 0 && phoneRows.allSatisfy { $0.minimumWidth <= clear }
+    }
+
+    static func tabletRowsFit(railWidth: CGFloat) -> Bool {
+        let column = tabletTextColumn(railWidth: railWidth)
+        return column > 0 && tabletRows.allSatisfy { $0.minimumWidth <= column }
+    }
+}
+
 struct IndustryRailView: View {
     let industries: [IndustrySummary]
     let metrics: MatchLayoutMetrics
@@ -36,9 +120,9 @@ struct IndustryRailView: View {
     var body: some View {
         railContent
         .padding(.vertical, metrics.formFactor == .tablet ? 10 : 4)
-        .padding(.horizontal, metrics.formFactor == .tablet ? 8 : 0)
+        .padding(.horizontal, IndustryRailLayout.ironEdgeInset)
         .frame(width: metrics.rightRailWidth)
-        .modifier(IndustrialPanelSurface(axis: .vertical))
+        .modifier(IndustrialPanelSurface())
         .overlay(alignment: .leading) {
             Rectangle()
                 .fill(BrassColor.brass.color.opacity(0.45))
@@ -62,39 +146,36 @@ struct IndustryRailView: View {
                 .allowsHitTesting(false)
             }
         }
+        .clipped()
     }
 
     private var railContent: some View {
         VStack(spacing: metrics.formFactor == .tablet ? 8 : 4) {
             if metrics.formFactor == .tablet {
-                HStack {
+                HStack(spacing: 4) {
                     Text("产业板块")
-                    Spacer()
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                    Spacer(minLength: 2)
                     selectionCount
                 }
-                .font(BrassTypography.label)
+                .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(BrassColor.brass.color)
             } else if selectionCountText != nil {
                 selectionCount
             }
 
-            if metrics.formFactor == .tablet {
-                ForEach(industries) { industry in
-                    industryRow(industry)
-                }
-            } else {
-                // 手机端竖条高度有限:瓦片用紧凑定高布局并允许条内滚动,
-                // 保证任意屏高下内容都不会互相压叠。
-                ScrollView(showsIndicators: false) {
-                    VStack(spacing: 4) {
-                        ForEach(industries) { industry in
-                            industryRow(industry)
-                        }
+            // 瓦片按栏宽排成固定列，条内滚动，避免费用、徽章和分数互相盖住。
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: metrics.formFactor == .tablet ? 8 : 4) {
+                    ForEach(industries) { industry in
+                        industryRow(industry)
                     }
-                    .padding(.vertical, 1)
                 }
-                .scrollBounceBehavior(.basedOnSize)
+                .padding(.vertical, 1)
             }
+            .scrollBounceBehavior(.basedOnSize)
+            .frame(maxHeight: .infinity)
         }
     }
 
@@ -109,7 +190,7 @@ struct IndustryRailView: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .frame(minWidth: 44, minHeight: 44)
+            .frame(maxWidth: .infinity, minHeight: 44)
             .accessibilityLabel("选择产业，\(industryAccessibilityLabel(industry))")
             .accessibilityIdentifier(accessibilityEnabled ? "industry.select.\(industry.id)" : "")
             .accessibilityAddTraits(selectedIndustryIDs.contains(industry.id) ? .isSelected : [])
@@ -123,7 +204,9 @@ struct IndustryRailView: View {
     private var selectionCount: some View {
         if let selectionCountText {
             Text(selectionCountText)
-                .font(BrassTypography.number)
+                .font(.system(size: 12, weight: .bold, design: .monospaced))
+                .monospacedDigit()
+                .lineLimit(1)
                 .foregroundStyle(BrassColor.brass.color)
                 .accessibilityIdentifier("develop.selectionCount")
         }
@@ -158,61 +241,84 @@ struct IndustryRailView: View {
     }
 
     private func tabletIndustry(_ industry: IndustrySummary) -> some View {
-        HStack(spacing: 7) {
-            industryMedallion(industry, size: 30)
+        HStack(alignment: .center, spacing: IndustryRailLayout.tabletColumnSpacing) {
+            industryMedallion(industry, size: IndustryRailLayout.tabletMedallion)
             VStack(alignment: .leading, spacing: 3) {
-                HStack {
+                HStack(spacing: IndustryRailLayout.tabletTitleSpacing) {
                     Text(industryName(industry.kind))
-                        .font(BrassTypography.label)
-                    Spacer()
-                    Text("L\(industry.level) · £\(industry.cost)")
-                        .font(BrassTypography.number)
+                        .font(.system(size: 12, weight: .semibold))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
+                        .frame(width: IndustryRailLayout.tabletNameWidth, alignment: .leading)
+                    Text("L\(industry.level)")
+                        .font(.system(size: 11, weight: .bold, design: .rounded))
                         .monospacedDigit()
+                        .lineLimit(1)
+                        .frame(width: IndustryRailLayout.tabletLevelWidth, alignment: .trailing)
+                    Text("£\(industry.cost)")
+                        .font(.system(size: 11, weight: .bold, design: .monospaced))
+                        .monospacedDigit()
+                        .lineLimit(1)
+                        .frame(width: IndustryRailLayout.tabletCostWidth, alignment: .trailing)
+                    Image(systemName: industry.isAvailable ? "checkmark.circle.fill" : "xmark.circle.fill")
+                        .font(.system(size: 11))
+                        .foregroundStyle(industry.isAvailable ? BrassColor.legalGreen.color : BrassColor.unavailableRed.color)
+                        .frame(width: IndustryRailLayout.tabletStatusWidth)
                 }
-                HStack(spacing: 8) {
+                HStack(spacing: IndustryRailLayout.tabletChipSpacing) {
                     if let remain = industry.remainingTotal {
-                        resource("剩", value: remain, icon: "square.stack.fill")
+                        tabletChip(
+                            title: "剩",
+                            value: remain,
+                            icon: "square.stack.fill",
+                            width: IndustryRailLayout.tabletRemainWidth
+                        )
                     }
-                    resource("煤", value: industry.coalCost, icon: "seal.fill")
-                    resource("铁", value: industry.ironCost, icon: "cube.fill")
-                    resource("VP", value: industry.victoryPoints ?? 0, icon: "shield.fill")
-                    resource("路", value: industry.linkPoints ?? 0, icon: "arrow.triangle.turn.up.right.diamond.fill")
-                    Spacer()
-                    Label(industry.isAvailable ? "可用" : "已用", systemImage: industry.isAvailable ? "checkmark.circle.fill" : "xmark.circle.fill")
-                        .font(.caption2)
+                    tabletChip(title: nil, value: industry.coalCost, icon: "seal.fill", width: IndustryRailLayout.tabletChipWidth)
+                    tabletChip(title: nil, value: industry.ironCost, icon: "cube.fill", width: IndustryRailLayout.tabletChipWidth)
+                }
+                HStack(spacing: IndustryRailLayout.tabletChipSpacing) {
+                    tabletChip(title: "VP", value: industry.victoryPoints ?? 0, icon: nil, width: IndustryRailLayout.tabletScoreWidth)
+                    tabletChip(title: "路", value: industry.linkPoints ?? 0, icon: nil, width: IndustryRailLayout.tabletLinkWidth)
+                    Text(industry.isAvailable ? "可用" : "已用")
+                        .font(.system(size: 10, weight: .semibold))
+                        .lineLimit(1)
+                        .frame(width: IndustryRailLayout.tabletAvailabilityWidth, alignment: .leading)
                 }
             }
         }
         .foregroundStyle(BrassColor.paper.color)
-        .padding(7)
-        .frame(minHeight: 44)
+        .padding(IndustryRailLayout.tabletCardPadding)
+        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+        .fixedSize(horizontal: false, vertical: true)
         .accessibilityElement(children: .contain)
         .accessibilityLabel(industryAccessibilityLabel(industry))
     }
 
     private func phoneIndustry(_ industry: IndustrySummary) -> some View {
-        // 垫板式紧凑卡:左列费用+材料,中间徽章,右列 VP/路分(参照实体玩家垫板)。
-        VStack(spacing: 2) {
-            HStack(spacing: 0) {
+        // 四行各自不超出栏宽，避免费用和分数叠在徽章上。
+        VStack(spacing: 1) {
+            industryMedallion(industry, size: IndustryRailLayout.phoneMedallion)
+            HStack(spacing: IndustryRailLayout.phoneInlineSpacing) {
+                Text("L\(industry.level)")
+                    .font(.system(size: 8, weight: .heavy, design: .rounded))
+                    .monospacedDigit()
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                    .frame(width: IndustryRailLayout.phoneLevelWidth)
                 costCoin(industry.cost)
-                Spacer(minLength: 2)
-                industryMedallion(industry, size: 22)
-                Spacer(minLength: 2)
-                statBadge("VP", industry.victoryPoints, tint: BrassColor.paper.color)
             }
-            HStack(spacing: 3) {
-                materialChip("煤", industry.coalCost, icon: "seal.fill")
-                materialChip("铁", industry.ironCost, icon: "cube.fill")
-                Spacer(minLength: 2)
-                statBadge("路", industry.linkPoints, tint: BrassColor.brass.color)
+            HStack(spacing: IndustryRailLayout.phoneChipSpacing) {
+                materialChip(industry.coalCost, icon: "seal.fill", width: IndustryRailLayout.phoneChipWidth)
+                materialChip(industry.ironCost, icon: "cube.fill", width: IndustryRailLayout.phoneChipWidth)
+            }
+            HStack(spacing: IndustryRailLayout.phoneScoreSpacing) {
+                iconValue("shield.fill", industry.victoryPoints ?? 0, width: IndustryRailLayout.phoneScoreWidth, tint: BrassColor.paper.color)
+                labeledValue("路", industry.linkPoints ?? 0, width: IndustryRailLayout.phoneScoreWidth, tint: BrassColor.brass.color)
             }
         }
-        .padding(.horizontal, 2)
-        .frame(
-            maxWidth: .infinity,
-            minHeight: selectableIndustryIDs.contains(industry.id) ? 54 : 46,
-            maxHeight: selectableIndustryIDs.contains(industry.id) ? 54 : 46
-        )
+        .frame(maxWidth: .infinity, minHeight: 44, alignment: .center)
+        .fixedSize(horizontal: false, vertical: true)
         .foregroundStyle(BrassColor.paper.color)
         .accessibilityElement(children: .contain)
         .accessibilityLabel(industryAccessibilityLabel(industry) + industrialValueLabel(industry))
@@ -221,16 +327,18 @@ struct IndustryRailView: View {
     /// 建造费用:黄铜圆底钱币数字。
     private func costCoin(_ cost: Int) -> some View {
         Text("\(cost)")
-            .font(.system(size: 9, weight: .heavy, design: .rounded))
+            .font(.system(size: 8, weight: .heavy, design: .rounded))
             .monospacedDigit()
+            .lineLimit(1)
+            .minimumScaleFactor(0.7)
             .foregroundStyle(BrassColor.coal.color)
-            .frame(width: 14, height: 14)
+            .frame(width: IndustryRailLayout.phoneCoin, height: IndustryRailLayout.phoneCoin)
             .background(Circle().fill(BrassColor.brass.color))
             .overlay(Circle().stroke(BrassColor.paper.color.opacity(0.4), lineWidth: 0.5))
     }
 
     /// 材料(煤/铁)用量:图标 + 数字,无需求时置灰显示 0。
-    private func materialChip(_ name: String, _ value: Int, icon: String) -> some View {
+    private func materialChip(_ value: Int, icon: String, width: CGFloat) -> some View {
         HStack(spacing: 1) {
             Image(systemName: icon)
                 .font(.system(size: 7))
@@ -239,19 +347,60 @@ struct IndustryRailView: View {
                 .monospacedDigit()
         }
         .foregroundStyle(value > 0 ? BrassColor.paper.color : BrassColor.paper.color.opacity(0.4))
+        .lineLimit(1)
+        .minimumScaleFactor(0.7)
+        .frame(width: width)
+        .clipped()
     }
 
-    /// VP/路分徽章:数值加标签缩写。
-    private func statBadge(_ label: String, _ value: Int?, tint: Color) -> some View {
+    private func iconValue(_ icon: String, _ value: Int, width: CGFloat, tint: Color) -> some View {
+        HStack(spacing: 1) {
+            Image(systemName: icon)
+                .font(.system(size: 7))
+            Text("\(value)")
+                .font(.system(size: 8, weight: .heavy, design: .rounded))
+                .monospacedDigit()
+        }
+        .foregroundStyle(tint)
+        .lineLimit(1)
+        .minimumScaleFactor(0.6)
+        .frame(width: width)
+        .clipped()
+    }
+
+    private func labeledValue(_ label: String, _ value: Int, width: CGFloat, tint: Color) -> some View {
         HStack(spacing: 1) {
             Text(label)
                 .font(.system(size: 7, weight: .bold))
-                .foregroundStyle(tint.opacity(0.7))
-            Text("\(value ?? 0)")
-                .font(.system(size: 10, weight: .heavy, design: .rounded))
+            Text("\(value)")
+                .font(.system(size: 8, weight: .heavy, design: .rounded))
                 .monospacedDigit()
-                .foregroundStyle(tint)
         }
+        .foregroundStyle(tint)
+        .lineLimit(1)
+        .minimumScaleFactor(0.6)
+        .frame(width: width)
+        .clipped()
+    }
+
+    private func tabletChip(title: String?, value: Int, icon: String?, width: CGFloat) -> some View {
+        HStack(spacing: 2) {
+            if let icon {
+                Image(systemName: icon)
+                    .font(.system(size: 9))
+            }
+            if let title {
+                Text(title)
+                    .font(.system(size: 9, weight: .bold))
+            }
+            Text("\(value)")
+                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                .monospacedDigit()
+        }
+        .lineLimit(1)
+        .minimumScaleFactor(0.7)
+        .frame(width: width, alignment: .leading)
+        .clipped()
     }
 
     private func industrialValueLabel(_ industry: IndustrySummary) -> String {
@@ -274,11 +423,6 @@ struct IndustryRailView: View {
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(label)
             .accessibilityIdentifier(identifier)
-    }
-
-    private func resource(_ title: String, value: Int, icon: String) -> some View {
-        Label("\(title) \(value)", systemImage: icon)
-            .font(.caption2.monospacedDigit())
     }
 
     private func industryName(_ kind: IndustryKind) -> String {

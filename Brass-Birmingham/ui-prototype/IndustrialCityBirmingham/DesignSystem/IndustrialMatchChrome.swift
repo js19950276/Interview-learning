@@ -30,58 +30,10 @@ nonisolated enum IndustrialMatchAsset: String, CaseIterable, Sendable {
     }
 }
 
-nonisolated enum IndustrialPanelAxis: Sendable {
-    case horizontal
-    case vertical
-}
-
 struct IndustrialPanelSurface: ViewModifier {
-    let axis: IndustrialPanelAxis
-
     func body(content: Content) -> some View {
         content
             .background(BrassColor.darkWood.color.opacity(0.96))
-            .overlay {
-                ironEdges
-                    .allowsHitTesting(false)
-                    .accessibilityHidden(true)
-            }
-    }
-
-    @ViewBuilder
-    private var ironEdges: some View {
-        switch axis {
-        case .horizontal:
-            VStack(spacing: 0) {
-                ironEdge(.horizontal)
-                Spacer(minLength: 0)
-                ironEdge(.horizontal)
-            }
-        case .vertical:
-            HStack(spacing: 0) {
-                ironEdge(.vertical)
-                Spacer(minLength: 0)
-                ironEdge(.vertical)
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func ironEdge(_ orientation: Axis) -> some View {
-        switch orientation {
-        case .horizontal:
-            Image(IndustrialMatchAsset.ironHorizontal.name)
-                .resizable()
-                .scaledToFill()
-                .frame(height: 8)
-                .clipped()
-        case .vertical:
-            Image(IndustrialMatchAsset.ironVertical.name)
-                .resizable()
-                .scaledToFill()
-                .frame(width: 8)
-                .clipped()
-        }
     }
 }
 

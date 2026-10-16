@@ -492,6 +492,14 @@ private struct ProductionNearbyRoomView: View {
     }
 }
 
+enum NearbySessionExit {
+    static let buttonSide: CGFloat = 44
+    static let padding = BrassSpacing.medium
+    /// 退出键右缘再留一点空隙，避免顶栏文字贴到圆钮上。
+    static let headerGap: CGFloat = 8
+    static var headerLeadingClearance: CGFloat { padding + buttonSide + headerGap }
+}
+
 private struct NearbySessionContainer: View {
     @Environment(\.dismiss) private var dismiss
     let store: SessionViewStore
@@ -505,10 +513,10 @@ private struct NearbySessionContainer: View {
                 Image(systemName: "xmark")
                     .font(.headline)
                     .foregroundStyle(BrassColor.paper.color)
-                    .frame(width: 44, height: 44)
+                    .frame(width: NearbySessionExit.buttonSide, height: NearbySessionExit.buttonSide)
                     .background(BrassColor.coal.color.opacity(0.84), in: Circle())
             }
-            .padding(BrassSpacing.medium)
+            .padding(NearbySessionExit.padding)
             .accessibilityLabel("退出附近房间")
         }
     }
