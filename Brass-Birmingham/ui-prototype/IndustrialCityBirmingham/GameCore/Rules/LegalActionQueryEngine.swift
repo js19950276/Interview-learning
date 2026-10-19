@@ -10,9 +10,10 @@ extension GameCore {
             to query: LegalActionQuery,
             actorID: PlayerID,
             state: GameState,
-            catalog: VerifiedGameDataCatalog
+            catalog: VerifiedGameDataCatalog,
+            fastPath: Bool = false
         ) throws -> LegalActionResponse {
-            try validateStructure(query)
+            if fastPath == false { try validateStructure(query) }
             guard query.baseVersion == state.authoritativeVersion else { throw LegalActionQueryError.staleVersion }
             guard state.activePlayerID == actorID,
                   let player = state.players.first(where: { $0.id == actorID })
@@ -22,9 +23,11 @@ extension GameCore {
                 let result = try forcedSale(query.draft, actorID: actorID, state: state, catalog: catalog)
                 return .init(
                     requestID: query.requestID, baseVersion: query.baseVersion,
-                    draftDigest: try query.draft.canonicalDigest(),
+                    draftDigest: fastPath ? "" : (try query.draft.canonicalDigest()),
                     nextChoices: result.choices,
-                    confirmation: result.payload.flatMap {
+                    // fastPath(枚举器):跳过确认增量——每个完整 payload 都要二次
+                    // 验证+整体 resolve 才能算出 delta,纯表现层数据,枚举不需要。
+                    confirmation: fastPath ? nil : result.payload.flatMap {
                         confirmation(payload: $0, actorID: actorID, state: state, catalog: catalog)
                     }, completePayload: result.payload
                 )
@@ -38,25 +41,27 @@ extension GameCore {
 
             let result: (choices: [LegalChoice], payload: PlayerIntent.Payload?)
             switch draft.action {
-            case .build: result = try build(draft, actorID: actorID, state: state, catalog: catalog)
-            case .network: result = try network(draft, actorID: actorID, state: state, catalog: catalog)
-            case .develop: result = try develop(draft, actorID: actorID, state: state, catalog: catalog)
-            case .sell: result = try sell(draft, actorID: actorID, state: state, catalog: catalog)
+            case .build: result = try build(draft, actorID: actorID, state: state, catalog: catalog, fastPath: fastPath)
+            case .network: result = try network(draft, actorID: actorID, state: state, catalog: catalog, fastPath: fastPath)
+            case .develop: result = try develop(draft, actorID: actorID, state: state, catalog: catalog, fastPath: fastPath)
+            case .sell: result = try sell(draft, actorID: actorID, state: state, catalog: catalog, fastPath: fastPath)
             case .loan:
                 guard draft.selections.isEmpty else { throw LegalActionQueryError.invalidPrefix }
                 result = try complete(.loan(.init(cardID: cardID)), actorID: actorID, state: state, catalog: catalog)
             case .pass:
                 guard draft.selections.isEmpty else { throw LegalActionQueryError.invalidPrefix }
                 result = try complete(.pass(.init(cardID: cardID)), actorID: actorID, state: state, catalog: catalog)
-            case .scout: result = try scout(draft, actorID: actorID, state: state, catalog: catalog)
+            case .scout: result = try scout(draft, actorID: actorID, state: state, catalog: catalog, fastPath: fastPath)
             case .forcedSale: throw LegalActionQueryError.invalidPrefix
             }
-            let delta = result.payload.flatMap {
-                confirmation(payload: $0, actorID: actorID, state: state, catalog: catalog)
-            }
+            let delta: ConfirmationDelta? = fastPath
+                ? nil
+                : result.payload.flatMap {
+                    confirmation(payload: $0, actorID: actorID, state: state, catalog: catalog)
+                }
             return .init(
                 requestID: query.requestID, baseVersion: query.baseVersion,
-                draftDigest: try query.draft.canonicalDigest(),
+                draftDigest: fastPath ? "" : (try query.draft.canonicalDigest()),
                 nextChoices: result.choices, confirmation: delta,
                 completePayload: result.payload
             )
@@ -141,7 +146,7 @@ extension GameCore {
 
         private static func build(
             _ draft: LegalActionDraft, actorID: PlayerID,
-            state: GameState, catalog: VerifiedGameDataCatalog
+            state: GameState, catalog: VerifiedGameDataCatalog, fastPath: Bool = false
         ) throws -> ([LegalChoice], PlayerIntent.Payload?) {
             let cardID = try requiredCardID(in: draft)
             guard let player = state.players.first(where: { $0.id == actorID }) else {
@@ -225,12 +230,12 @@ extension GameCore {
                 industryDefinitionID: tile.industryDefinitionID,
                 slotIndex: targets[0].slotIndex, resourceSources: sources
             )
-            return try complete(.build(intent), actorID: actorID, state: state, catalog: catalog)
+            return try complete(.build(intent), actorID: actorID, state: state, catalog: catalog, fastPath: fastPath)
         }
 
         private static func network(
             _ draft: LegalActionDraft, actorID: PlayerID,
-            state: GameState, catalog: VerifiedGameDataCatalog
+            state: GameState, catalog: VerifiedGameDataCatalog, fastPath: Bool = false
         ) throws -> ([LegalChoice], PlayerIntent.Payload?) {
             let cardID = try requiredCardID(in: draft)
             if state.era == .canal {
@@ -379,12 +384,12 @@ extension GameCore {
             return try complete(.network(.init(
                 cardID: cardID, routeIDs: routes,
                 coalSources: coalSources, beerSource: beerSources[0]
-            )), actorID: actorID, state: state, catalog: catalog)
+            )), actorID: actorID, state: state, catalog: catalog, fastPath: fastPath)
         }
 
         private static func develop(
             _ draft: LegalActionDraft, actorID: PlayerID,
-            state: GameState, catalog: VerifiedGameDataCatalog
+            state: GameState, catalog: VerifiedGameDataCatalog, fastPath: Bool = false
         ) throws -> ([LegalChoice], PlayerIntent.Payload?) {
             let cardID = try requiredCardID(in: draft)
             if let first = draft.selections.first {
@@ -471,12 +476,12 @@ extension GameCore {
             }
             return try complete(.develop(.init(
                 cardID: cardID, tileIDs: tileIDs, ironSources: sources
-            )), actorID: actorID, state: state, catalog: catalog)
+            )), actorID: actorID, state: state, catalog: catalog, fastPath: fastPath)
         }
 
         private static func sell(
             _ draft: LegalActionDraft, actorID: PlayerID,
-            state: GameState, catalog: VerifiedGameDataCatalog
+            state: GameState, catalog: VerifiedGameDataCatalog, fastPath: Bool = false
         ) throws -> ([LegalChoice], PlayerIntent.Payload?) {
             let cardID = try requiredCardID(in: draft)
             var cursor = 0
@@ -600,7 +605,7 @@ extension GameCore {
                 if continueSelling == false {
                     guard cursor == draft.selections.count else { throw LegalActionQueryError.invalidPrefix }
                     return try complete(.sell(.init(cardID: cardID, sales: proposed)),
-                                        actorID: actorID, state: state, catalog: catalog)
+                                        actorID: actorID, state: state, catalog: catalog, fastPath: fastPath)
                 }
                 completedSales = proposed
                 candidate = state
@@ -612,7 +617,7 @@ extension GameCore {
 
         private static func scout(
             _ draft: LegalActionDraft, actorID: PlayerID,
-            state: GameState, catalog: VerifiedGameDataCatalog
+            state: GameState, catalog: VerifiedGameDataCatalog, fastPath: Bool = false
         ) throws -> ([LegalChoice], PlayerIntent.Payload?) {
             let cardID = try requiredCardID(in: draft)
             guard let player = state.players.first(where: { $0.id == actorID }) else {
@@ -635,7 +640,7 @@ extension GameCore {
             }
             guard selected.count == 2 else { throw LegalActionQueryError.invalidPrefix }
             return try complete(.scout(.init(cardIDs: [cardID] + selected)),
-                                actorID: actorID, state: state, catalog: catalog)
+                                actorID: actorID, state: state, catalog: catalog, fastPath: fastPath)
         }
 
         private static func requiredCardID(in draft: LegalActionDraft) throws -> String {
@@ -675,8 +680,23 @@ extension GameCore {
 
         private static func complete(
             _ payload: PlayerIntent.Payload, actorID: PlayerID,
-            state: GameState, catalog: VerifiedGameDataCatalog
+            state: GameState, catalog: VerifiedGameDataCatalog, fastPath: Bool = false
         ) throws -> ([LegalChoice], PlayerIntent.Payload?) {
+            // 注意:此处验证是承重的(如运河时代 network 分支组装后仅靠这里把关现金),
+            // fastPath 也不可跳过;fastPath 只允许跳过纯派生数据(confirmation/摘要)。
+            if fastPath {
+                // 枚举器路径:build/develop/sell/scout 的分支函数已完整预验证,
+                // 跳过整体重验(network 的运河分支现金把关承重,不可跳;loan/pass/forcedSale 同样保留)。
+                // build 跳过的安全性依赖两条非局部不变量,改动以下任一处必须重新评估此跳过:
+                // ① legalBuildTargets 对每个候选目标内部跑完整 BuildRules.validate——含现金检查;
+                // ② 市场购买永远只给"最便宜一格"的单一强制选项(ResourceRules marketSource)
+                //    ——市场成本与 DFS 来源方案无关,默认方案验证通过即所有枚举变体可负担。
+                switch payload {
+                case .build, .develop, .sell, .scout:
+                    return ([], payload)
+                default: break
+                }
+            }
             let valid: Bool = switch payload {
             case .build(let intent): (try? BuildRules.validate(intent, actorID: actorID, state: state, catalog: catalog)) != nil
             case .network(let intent): (try? NetworkRules.validate(intent, actorID: actorID, state: state, catalog: catalog)) != nil
