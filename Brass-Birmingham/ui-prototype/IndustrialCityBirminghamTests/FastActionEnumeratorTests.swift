@@ -363,4 +363,40 @@ struct FastActionEnumeratorTests {
         #expect(head.payloads == Array(complete.payloads.prefix(3)))
         #expect(head.truncated == (complete.payloads.count > 3))
     }
+
+    /// Task 4 Step 6:待确认阶段(turnPhase == .awaitingTurnEndConfirmation)无可枚举动作。
+    @Test func awaitingTurnEndConfirmationEnumeratesEmpty() throws {
+        let catalog = try verifiedCatalog()
+        let state = try freshFourPlayerState(catalog: catalog)
+        let roomID = GameCore.RoomID(rawValue: "await-room")
+        let tokens = Dictionary(uniqueKeysWithValues: state.players.map {
+            ($0.id, GameCore.ReconnectToken(rawValue: "await-token-\($0.id.rawValue)"))
+        })
+        var host = try state.makeHostEngine(
+            roomID: roomID, reconnectTokens: tokens, protocolVersion: 2
+        )
+        // 打满本回合行动(运河第 1 回合只有 1 行动,之后是 2,用循环兼容两种),
+        // 每次提交 loan(总是合法);进入待确认即停。
+        for _ in 0..<3 {
+            guard host.gameState.turnPhase == .active else { break }
+            let s = host.gameState
+            let actor = try #require(s.activePlayerID)
+            let player = try #require(s.players.first { $0.id == actor })
+            let card = try #require(player.hand.first)
+            let r = host.submit(.init(
+                protocolVersion: 2, rulesetVersion: s.rulesetVersion, roomID: roomID,
+                senderID: actor, reconnectToken: try #require(tokens[actor]),
+                baseVersion: s.authoritativeVersion, payload: .loan(.init(cardID: card.id))
+            ), catalog: catalog)
+            guard case .accepted = r else { Issue.record("loan 被拒"); return }
+        }
+        guard case .awaitingTurnEndConfirmation = host.gameState.turnPhase else {
+            Issue.record("打满行动后应进入待确认,实际 \(host.gameState.turnPhase)"); return
+        }
+        let result = try GameCore.FastActionEnumerator.enumerate(
+            state: host.gameState, actorID: try #require(host.gameState.activePlayerID),
+            catalog: catalog
+        )
+        #expect(result.payloads.isEmpty)
+    }
 }
