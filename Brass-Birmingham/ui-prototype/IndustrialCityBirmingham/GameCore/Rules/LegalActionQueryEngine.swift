@@ -10,9 +10,10 @@ extension GameCore {
             to query: LegalActionQuery,
             actorID: PlayerID,
             state: GameState,
-            catalog: VerifiedGameDataCatalog
+            catalog: VerifiedGameDataCatalog,
+            fastPath: Bool = false
         ) throws -> LegalActionResponse {
-            try validateStructure(query)
+            if fastPath == false { try validateStructure(query) }
             guard query.baseVersion == state.authoritativeVersion else { throw LegalActionQueryError.staleVersion }
             guard state.activePlayerID == actorID,
                   let player = state.players.first(where: { $0.id == actorID })
@@ -22,7 +23,7 @@ extension GameCore {
                 let result = try forcedSale(query.draft, actorID: actorID, state: state, catalog: catalog)
                 return .init(
                     requestID: query.requestID, baseVersion: query.baseVersion,
-                    draftDigest: try query.draft.canonicalDigest(),
+                    draftDigest: fastPath ? "" : (try query.draft.canonicalDigest()),
                     nextChoices: result.choices,
                     confirmation: result.payload.flatMap {
                         confirmation(payload: $0, actorID: actorID, state: state, catalog: catalog)
@@ -56,7 +57,7 @@ extension GameCore {
             }
             return .init(
                 requestID: query.requestID, baseVersion: query.baseVersion,
-                draftDigest: try query.draft.canonicalDigest(),
+                draftDigest: fastPath ? "" : (try query.draft.canonicalDigest()),
                 nextChoices: result.choices, confirmation: delta,
                 completePayload: result.payload
             )
