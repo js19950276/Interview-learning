@@ -687,6 +687,10 @@ extension GameCore {
             if fastPath {
                 // 枚举器路径:build/develop/sell/scout 的分支函数已完整预验证,
                 // 跳过整体重验(network 的运河分支现金把关承重,不可跳;loan/pass/forcedSale 同样保留)。
+                // build 跳过的安全性依赖两条非局部不变量,改动以下任一处必须重新评估此跳过:
+                // ① legalBuildTargets 对每个候选目标内部跑完整 BuildRules.validate——含现金检查;
+                // ② 市场购买永远只给"最便宜一格"的单一强制选项(ResourceRules marketSource)
+                //    ——市场成本与 DFS 来源方案无关,默认方案验证通过即所有枚举变体可负担。
                 switch payload {
                 case .build, .develop, .sell, .scout:
                     return ([], payload)
