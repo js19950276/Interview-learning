@@ -69,7 +69,9 @@ struct LegalActionQueryFastPathTests {
         #expect(slow.draftDigest.isEmpty == false)
         #expect(fast.completePayload == slow.completePayload)
         #expect(fast.nextChoices == slow.nextChoices)
-        #expect(fast.confirmation == slow.confirmation)
+        // fastPath 跳过确认增量(枚举器不需要;每个 payload 二次验证+resolve 的纯表现层开销)
+        #expect(fast.confirmation == nil)
+        #expect(slow.confirmation != nil)
     }
 
     @Test func fastPathSkipsMalformedQueryBoundButSlowPathKeepsIt() throws {

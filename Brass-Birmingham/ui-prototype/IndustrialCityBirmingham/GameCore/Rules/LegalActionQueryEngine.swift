@@ -25,7 +25,9 @@ extension GameCore {
                     requestID: query.requestID, baseVersion: query.baseVersion,
                     draftDigest: fastPath ? "" : (try query.draft.canonicalDigest()),
                     nextChoices: result.choices,
-                    confirmation: result.payload.flatMap {
+                    // fastPath(枚举器):跳过确认增量——每个完整 payload 都要二次
+                    // 验证+整体 resolve 才能算出 delta,纯表现层数据,枚举不需要。
+                    confirmation: fastPath ? nil : result.payload.flatMap {
                         confirmation(payload: $0, actorID: actorID, state: state, catalog: catalog)
                     }, completePayload: result.payload
                 )
@@ -52,9 +54,11 @@ extension GameCore {
             case .scout: result = try scout(draft, actorID: actorID, state: state, catalog: catalog)
             case .forcedSale: throw LegalActionQueryError.invalidPrefix
             }
-            let delta = result.payload.flatMap {
-                confirmation(payload: $0, actorID: actorID, state: state, catalog: catalog)
-            }
+            let delta: ConfirmationDelta? = fastPath
+                ? nil
+                : result.payload.flatMap {
+                    confirmation(payload: $0, actorID: actorID, state: state, catalog: catalog)
+                }
             return .init(
                 requestID: query.requestID, baseVersion: query.baseVersion,
                 draftDigest: fastPath ? "" : (try query.draft.canonicalDigest()),
@@ -678,6 +682,8 @@ extension GameCore {
             _ payload: PlayerIntent.Payload, actorID: PlayerID,
             state: GameState, catalog: VerifiedGameDataCatalog
         ) throws -> ([LegalChoice], PlayerIntent.Payload?) {
+            // 注意:此处验证是承重的(如运河时代 network 分支组装后仅靠这里把关现金),
+            // fastPath 也不可跳过;fastPath 只允许跳过纯派生数据(confirmation/摘要)。
             let valid: Bool = switch payload {
             case .build(let intent): (try? BuildRules.validate(intent, actorID: actorID, state: state, catalog: catalog)) != nil
             case .network(let intent): (try? NetworkRules.validate(intent, actorID: actorID, state: state, catalog: catalog)) != nil
