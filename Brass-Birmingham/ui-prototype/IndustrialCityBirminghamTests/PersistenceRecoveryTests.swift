@@ -1578,31 +1578,36 @@ struct PersistenceRecoveryTests {
         #expect(await pair.host.snapshot?.authoritativeVersion == .init(rawValue: 1))
     }
 
-    @Test func firstSaveFailureLeavesHostAndGuestAtPreviousAuthorityWithoutFanout() async throws {
+    @Test func saveFailureDoesNotBlockActionsFanoutOrRecoveryWhenSavesResume() async throws {
         let pair = makePersistentCoordinatorPair()
         try await pair.host.createRoom(); try await pair.guest.joinRoom()
         try await pair.host.setReady(true); try await pair.guest.setReady(true)
         try await eventually { await pair.host.readyPlayerIDs.count == 2 }
         try await pair.host.startGame(); try await eventually { await pair.guest.snapshot != nil }
-        let initialHost = try #require(await pair.host.snapshot)
-        let initialGuest = try #require(await pair.guest.snapshot)
         await pair.persistence.failSaves(true)
 
-        let card = try #require(initialHost.players.first(where: { $0.id.rawValue == "host" })?.hand?.first)
-        await #expect(throws: SessionCoordinator.Error.persistenceUnavailable) {
-            try await pair.host.pass(discardCardID: card)
-        }
-        #expect(await pair.host.snapshot == initialHost)
-        #expect(await pair.guest.snapshot == initialGuest)
-        #expect(await pair.persistence.savedArchives.allSatisfy { $0.authoritativeVersion != .init(rawValue: 1) })
-        #expect(await pair.observations.clientEventSendCount == 0)
-        #expect(await pair.host.persistenceError == .saveFailed)
+        // 存盘全部失败:主机行动照常落地并扇出,不抛错、不冻结、不回滚。
+        let card = try #require(
+            await pair.host.snapshot?.players.first(where: { $0.id.rawValue == "host" })?.hand?.first
+        )
+        try await pair.host.pass(discardCardID: card)
+        try await eventually { await pair.guest.snapshot?.authoritativeVersion == .init(rawValue: 1) }
+        #expect(await pair.host.snapshot?.authoritativeVersion == .init(rawValue: 1))
+        // 存盘失败只留下诊断信号,不再是阻塞错误。
+        try await eventually { await pair.host.persistenceError == .saveFailed }
 
-        let guestCard = try #require(initialGuest.players.first(where: { $0.id == player })?.hand?.first)
+        // 客机行动也不因主机存盘失败被拒,对局继续推进。
+        let guestCard = try #require(
+            await pair.guest.snapshot?.players.first(where: { $0.id == player })?.hand?.first
+        )
         try await pair.guest.pass(discardCardID: guestCard)
-        try await eventually { await pair.guest.lastIntentRejection?.reasonCode == .persistenceUnavailable }
-        #expect(await pair.host.snapshot == initialHost)
-        #expect(await pair.guest.lastIntentRejection?.reasonCode == .persistenceUnavailable)
+        try await eventually { await pair.host.snapshot?.authoritativeVersion == .init(rawValue: 2) }
+
+        // 存盘恢复后,后台循环自动把最新权威状态落盘并清除诊断信号。
+        await pair.persistence.failSaves(false)
+        try await eventually(timeout: .seconds(5)) { await pair.host.persistenceError == nil }
+        let durable = try #require(await pair.persistence.savedArchives.last)
+        #expect(durable.authoritativeVersion.rawValue >= 2)
     }
 
     @Test func progressSaveFailureKeepsDurableAuthorityAndRecoveryEvidenceForRelaunch() async throws {
@@ -1617,9 +1622,12 @@ struct PersistenceRecoveryTests {
         let card = try #require(await pair.host.snapshot?.players.first(where: { $0.id.rawValue == "host" })?.hand?.first)
         try await pair.host.pass(discardCardID: card)
 
-        let durable = try #require(await pair.persistence.savedArchives.last)
+        // 行动前的预投递档案(序列 1)是带恢复证据的权威落盘。
+        try await eventually {
+            await pair.persistence.savedArchives.contains { $0.commitSequence == 1 }
+        }
+        let durable = try #require(await pair.persistence.savedArchives.first { $0.commitSequence == 1 })
         #expect(durable.authoritativeVersion == .init(rawValue: 1))
-        #expect(durable.commitSequence == 1)
         guard case let .host(payload) = durable.payload else {
             Issue.record("Expected host archive")
             return
@@ -1627,7 +1635,6 @@ struct PersistenceRecoveryTests {
         #expect(payload.peersNeedingRecovery == [player])
         #expect(payload.eventWindows[player]?.count == 1)
         #expect(await pair.host.snapshot?.authoritativeVersion == .init(rawValue: 1))
-        #expect(await pair.host.persistenceError == .saveFailed)
 
         let restored = RestoredHostSession(
             state: .init(
@@ -1755,15 +1762,15 @@ struct PersistenceRecoveryTests {
         try await pair.host.startGame(); try await eventually { await pair.host.snapshot != nil }
         let savesBefore = await pair.persistence.savedArchives.count
 
-        try await pair.host.persistForBackground()
-        try await pair.host.persistForBackground()
+        await pair.host.persistForBackground()
+        await pair.host.persistForBackground()
 
         #expect(await pair.persistence.savedArchives.count == savesBefore + 2)
         #expect(await pair.persistence.savedArchives.suffix(2).map(\.commitSequence) == [1, 2])
         #expect(await pair.persistence.savedArchives.last?.authoritativeVersion == .init(rawValue: 0))
     }
 
-    @Test func actionPrecommitBackgroundAndRetryShareOnePersistenceGate() async throws {
+    @Test func actionSaveBackgroundAndRetrySerializeThroughOnePersistenceGate() async throws {
         let hostID = GameCore.PlayerID(rawValue: "host")
         let hub = LoopbackTransportHub()
         let persistence = PausedSessionArchivePersistence()
@@ -1792,8 +1799,8 @@ struct PersistenceRecoveryTests {
 
         let action = Task { try await host.pass(discardCardID: card) }
         await persistence.waitUntilFirstSaveIsPaused()
-        let background = Task { try await host.persistForBackground() }
-        let retry = Task { try await host.retryPersistence() }
+        let background = Task { await host.persistForBackground() }
+        let retry = Task { await host.retryPersistence() }
         try await Task.sleep(for: .milliseconds(30))
         #expect(await persistence.attemptedSequences == [1])
 
@@ -1802,6 +1809,7 @@ struct PersistenceRecoveryTests {
         try await background.value
         try await retry.value
 
+        // 行动预提交、切后台刷盘、手动重试共享同一条串行存盘路径:序列严格递增、无重复。
         #expect(await persistence.savedSequences == [1, 2, 3, 4])
         #expect(await Set(persistence.savedSequences).count == 4)
         #expect(await host.persistenceError == nil)
@@ -1948,12 +1956,12 @@ struct PersistenceRecoveryTests {
         #expect(await host.peersNeedingRecovery == restored.peersNeedingRecovery)
         try await host.createRoom()
         #expect(await host.snapshot?.authoritativeVersion == .init(rawValue: 4))
-        try await host.persistForBackground()
+        await host.persistForBackground()
         #expect(await persistence.savedArchives.last?.commitSequence == restored.commitSequence + 1)
     }
 
     @MainActor
-    @Test func viewStoreFailsClosedOnPersistenceErrorAndLifecycleBackgroundCanRetry() async throws {
+    @Test func viewStoreKeepsPlayingThroughPersistenceFailuresAndSilentlyHeals() async throws {
         let pair = makePersistentCoordinatorPair()
         let store = SessionViewStore(
             coordinator: pair.host, role: .host, roomID: room,
@@ -1966,15 +1974,24 @@ struct PersistenceRecoveryTests {
         await pair.persistence.failSaves(true)
         store.selectCard("card-0-a")
 
+        // 存盘失败:行动照常提交,不弹"无法安全保存对局"、不进 failed、不冻结。
+        // 扇出完成后的稳态是 synchronized(投递成功后待恢复名单清空)。
         await store.submitPass()
-        try await eventuallyMainActor { store.syncStatus == .failed }
-        #expect(!store.canSubmitPass)
-        #expect(store.errorMessage == "无法安全保存对局，已暂停新行动。请重试恢复。")
-        #expect(store.errorMessage?.contains("token") == false)
+        try await eventuallyMainActor {
+            store.snapshot?.authoritativeVersion == .init(rawValue: 1)
+                && store.syncStatus == .synchronized
+        }
+        #expect(store.errorMessage == nil)
 
+        // 存盘恢复:后台自动补盘,全程无需玩家干预。
         await pair.persistence.failSaves(false)
-        await store.handleScenePhase(.background)
-        try await eventuallyMainActor { store.syncStatus == .synchronized }
+        let deadline = ContinuousClock.now.advanced(by: .seconds(5))
+        while ContinuousClock.now < deadline {
+            if await pair.host.persistenceError == nil { break }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(await pair.host.persistenceError == nil)
+        #expect(store.syncStatus == .synchronized)
         #expect(store.errorMessage == nil)
     }
 

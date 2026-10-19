@@ -259,6 +259,29 @@ actor NearbyTransport: Transport {
         connectionReady(peer: peer, connection: connection)
     }
 
+    func isConnected(to peer: GameCore.PlayerID) async -> Bool {
+        connections[peer]?.state == .ready
+    }
+
+    /// 前台自愈:挂起可能悄悄杀死监听 socket 而不触发 .failed 回调。
+    /// 监听器死亡/缺失时原地重建,保持房间可被发现;存活(.ready/.setup/.waiting)则不动。
+    func reviveHostingIfNeeded() async {
+        guard !didShutDown, hostingRoomID != nil else { return }
+        let needsRestart: Bool
+        switch listener?.state {
+        case .none, .some(.failed), .some(.cancelled): needsRestart = true
+        default: needsRestart = false
+        }
+        guard needsRestart else { return }
+        listener?.stateUpdateHandler = nil
+        listener?.newConnectionHandler = nil
+        listener?.cancel()
+        listener = nil
+        listenerRestartAttempts = 0
+        do { try await startListener() }
+        catch { print("INDUSTRIALCITY_LOCAL host listener revive failed") }
+    }
+
     func send(_ data: Data, to peer: GameCore.PlayerID) async throws {
         guard let connection = connections[peer] else { throw TransportError.notConnected }
         let framed = try LengthPrefixedFrameCodec.frame(data)

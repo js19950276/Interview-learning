@@ -815,12 +815,15 @@ final class SessionViewStore {
     }
 
     func handleScenePhase(_ phase: ScenePhase) async {
-        guard phase == .background else { return }
-        do {
-            try await coordinator.persistForBackground()
-        } catch {
-            syncStatus = .failed
-            errorMessage = Self.persistenceFailureMessage
+        switch phase {
+        case .background:
+            // 尽力落盘;失败由协调器后台循环自动重试,不再弹错或暂停对局。
+            await coordinator.persistForBackground()
+        case .active:
+            // 切回 app:立即自愈断链(客机重拨/房主复活监听器),回来直接继续。
+            await coordinator.applicationDidBecomeActive()
+        default:
+            break
         }
     }
 
@@ -853,12 +856,7 @@ final class SessionViewStore {
         do { try await coordinator.submit(payload) }
         catch {
             pendingSubmissionVersion = nil
-            if error as? SessionCoordinator.Error == .persistenceUnavailable {
-                syncStatus = .failed
-                errorMessage = Self.persistenceFailureMessage
-            } else {
-                errorMessage = Self.message(for: error)
-            }
+            errorMessage = Self.message(for: error)
         }
     }
 
@@ -882,9 +880,6 @@ final class SessionViewStore {
         if state.recoveryError != nil {
             syncStatus = .failed
             errorMessage = Self.recoveryMaterialFailureMessage
-        } else if state.persistenceError != nil {
-            syncStatus = .failed
-            errorMessage = Self.persistenceFailureMessage
         } else if state.pauseReason == .hostDisconnected {
             syncStatus = .recovering
             errorMessage = Self.hostDisconnectedMessage
@@ -896,10 +891,10 @@ final class SessionViewStore {
         } else if didConnect && (state.snapshot != nil || !state.playerIDs.isEmpty) {
             syncStatus = .synchronized
         }
+        // 存盘失败(persistenceError)只由后台循环自动重试,不再是错误弹窗,
+        // 也不再暂停对局——真实对局的权威状态在主机内存与广播里,不依赖单次写盘。
 
         if state.recoveryError != nil {
-            pendingSubmissionVersion = nil
-        } else if state.persistenceError != nil {
             pendingSubmissionVersion = nil
         } else if state.pauseReason == .hostDisconnected || state.pauseReason == .stateRecovery {
             pendingSubmissionVersion = nil
@@ -914,8 +909,6 @@ final class SessionViewStore {
             cancelLegalFlow()
             errorMessage = nil
         } else if previousVersion != state.snapshot?.authoritativeVersion {
-            errorMessage = nil
-        } else if errorMessage == Self.persistenceFailureMessage {
             errorMessage = nil
         } else if state.pauseReason == nil, errorMessage == Self.hostDisconnectedMessage {
             errorMessage = nil
@@ -973,7 +966,6 @@ final class SessionViewStore {
     }
 #endif
 
-    private static let persistenceFailureMessage = "无法安全保存对局，已暂停新行动。请重试恢复。"
     private static let hostDisconnectedMessage = "正在等待原房主恢复连接，期间无法提交新行动。"
     private static let recoveryMaterialFailureMessage = "本机恢复材料连续校验失败，已安全清理。请返回附近房间重新连接。"
 
@@ -1006,7 +998,7 @@ final class SessionViewStore {
         case .staleAuthoritativeVersion: "对局状态已更新，请重新选择。"
         case .missingDiscardCard: "所选手牌已不可用，请重新选择。"
         case .invalidAction: "该行动不合法，请修改选择。"
-        case .persistenceUnavailable: persistenceFailureMessage
+        case .persistenceUnavailable: "本地存档暂时失败，后台会自动重试，不影响对局。"
         case .internalFailure: "房主规则引擎已暂停，等待恢复。"
         case .wrongRoom, .protocolVersionMismatch, .rulesetVersionMismatch,
              .unknownSender, .invalidReconnectToken:

@@ -681,9 +681,8 @@ struct GameSetupTests {
             tokenStore: tokenStore,
             rulesMode: .fixtureOnlyLegacy
         )
-        await #expect(throws: SessionCoordinator.Error.persistenceUnavailable) {
-            try await coordinator.persistForBackground()
-        }
+        // 不完整权威态(旧档)尽力刷盘:跳过存档、不抛错、不阻断。
+        await coordinator.persistForBackground()
         let loadedAgain = try await store.load(expected: .init(
             protocolVersion: 1,
             rulesetVersion: setup.state.rulesetVersion,

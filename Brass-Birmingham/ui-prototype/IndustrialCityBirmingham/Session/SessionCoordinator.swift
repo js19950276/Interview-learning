@@ -457,7 +457,6 @@ actor SessionCoordinator {
     }
 
     func submit(_ payload: GameCore.PlayerIntent.Payload) async throws {
-        guard persistenceError == nil else { throw Error.persistenceUnavailable }
         if !isHost, pauseReason != nil { throw Error.sessionPaused }
         guard let snapshot else { throw Error.gameNotStarted }
         let intent = GameCore.PlayerIntent(
@@ -497,11 +496,84 @@ actor SessionCoordinator {
     }
 
     func disconnect() async {
+        hostReconnectTask?.cancel()
+        hostReconnectTask = nil
         processingTask?.cancel()
         processingTask = nil
         for continuation in stateContinuations.values { continuation.finish() }
         stateContinuations.removeAll()
         await transport.disconnect()
+    }
+
+    // MARK: - 断线自愈(切出 app 后回来直接继续)
+
+    private var hostReconnectTask: Task<Void, Never>?
+
+    /// 前台自愈入口:客机对断链/paused 状态立即重试重连;房主确保监听器
+    /// 在挂起后仍可被发现。由 SessionViewStore.handleScenePhase(.active) 调用。
+    func applicationDidBecomeActive() async {
+        if isHost {
+            await transport.reviveHostingIfNeeded()
+            return
+        }
+        var linkAlive = pauseReason == nil
+        if linkAlive {
+            linkAlive = await transport.isConnected(to: configuration.hostPlayerID)
+        }
+        if linkAlive == false {
+            hostReconnectTask?.cancel()
+            hostReconnectTask = nil
+            beginHostReconnectLoop()
+        }
+    }
+
+    /// 客机自动重拨房主:重放 joinRoom 的 connect+hello 握手,座位凭
+    /// reconnect token 重新绑定,再由既有 createRoom→catchUp 流程补齐状态。
+    private func beginHostReconnectLoop() {
+        guard hostReconnectTask == nil else { return }
+        hostReconnectTask = Task { [weak self] in
+            await self?.runHostReconnectLoop()
+        }
+    }
+
+    private func runHostReconnectLoop() async {
+        var delay: Duration = .milliseconds(500)
+        while Task.isCancelled == false {
+            if await attemptHostReconnect() { break }
+            try? await Task.sleep(for: delay)
+            delay = min(delay * 2, .seconds(5))
+        }
+        hostReconnectTask = nil
+    }
+
+    /// 单次重连尝试。返回 true 表示停止循环(恢复成功,或座位被拒重试无意义)。
+    private func attemptHostReconnect() async -> Bool {
+        do {
+            try await transport.connect(to: configuration.hostPlayerID)
+            joinOutcome = .pending
+            try await send(
+                .hello(reconnectToken: configuration.reconnectToken, displayName: configuration.displayName),
+                to: configuration.hostPlayerID
+            )
+        } catch {
+            return false
+        }
+        SessionDiagnostics.log("HOST-RECONNECT seat=\(configuration.playerID.rawValue) dialed")
+        let deadline = ContinuousClock.now.advanced(by: .seconds(2))
+        while ContinuousClock.now < deadline {
+            if Task.isCancelled { return true }
+            if pauseReason == nil { return true }
+            if case .accepted = joinOutcome { return true }
+            if case .rejected(let reason) = joinOutcome {
+                // 令牌不符/房间不符/协议不符:座位已不可用,停止重试。
+                switch reason {
+                case .reconnectTokenMismatch, .roomMismatch, .incompatiblePeer: return true
+                default: return false
+                }
+            }
+            try? await Task.sleep(for: .milliseconds(50))
+        }
+        return false
     }
 
     /// 更新自己的显示名:房主本地登记并重播大厅;客人发送 rename 给房主。
@@ -525,31 +597,23 @@ actor SessionCoordinator {
         }
     }
 
-    func persistForBackground() async throws {
+    /// 切后台时尽力同步刷盘一次。存盘失败不抛错、不阻断对局——
+    /// 后台循环会持续重试,回来时对局照常继续。
+    func persistForBackground() async {
         await acquireResolveGate()
-        do {
-            if isHost {
-                try await persistCommittedState()
-            } else {
-                try await persistGuestState(newEvent: nil)
-            }
-            releaseResolveGate()
-        } catch {
-            releaseResolveGate()
-            throw error
+        // 有失败积压时优先重试最新积压档案,否则按当前状态落盘。
+        if let pending = latestPendingArchive {
+            await persistArchiveNow(pending)
+        } else {
+            await persistCurrentStateNow()
         }
+        releaseResolveGate()
+        await waitForPendingPersistenceToDrain(timeout: .seconds(2))
     }
 
-    func retryPersistence() async throws {
-        guard isHost else { throw Error.hostOnly }
-        await acquireResolveGate()
-        do {
-            try await persistCommittedState()
-            releaseResolveGate()
-        } catch {
-            releaseResolveGate()
-            throw error
-        }
+    /// 手动触发一次同步刷盘(诊断兜底);同样不抛错。
+    func retryPersistence() async {
+        await persistForBackground()
     }
 
     private var isHost: Bool { configuration.playerID == configuration.hostPlayerID }
@@ -578,6 +642,8 @@ actor SessionCoordinator {
         case let .disconnected(peer, _):
             if !isHost, peer == configuration.hostPlayerID {
                 pauseReason = .hostDisconnected
+                // 切出 app/网络抖动导致的断链由客机自动重拨,不需要玩家手动重进。
+                beginHostReconnectLoop()
                 publishState()
             } else if isHost, let player = peerByPlayer.first(where: { $0.value == peer })?.key {
                 peersNeedingRecovery.insert(player)
@@ -697,15 +763,7 @@ actor SessionCoordinator {
                   envelope.senderID == intent.senderID,
                   peerByPlayer[intent.senderID] == peer, tokens[intent.senderID] == intent.reconnectToken else { return }
             guard acceptUnique(envelope, peer: peer) else { return }
-            if persistenceError != nil {
-                try? await send(.rejection(.init(
-                    reasonCode: .persistenceUnavailable,
-                    recoverySuggestion: "Wait while the host safely saves the latest committed state, then retry."
-                )), to: intent.senderID)
-                return
-            }
             do { try await resolve(intent) }
-            catch Error.persistenceUnavailable { return }
             catch Error.sessionPaused { return }
             catch {
                 // 规则/状态级失败不是投递失败:回 rejected 而不是把发送者
@@ -909,11 +967,7 @@ actor SessionCoordinator {
             lastIntentRejection = nil
             lastInternalFailure = nil
             publishState()
-            do {
-                await acquireResolveGate()
-                do { try await persistGuestState(newEvent: nil); releaseResolveGate() }
-                catch { releaseResolveGate(); return }
-            }
+            await persistGuestArchive(newEvent: nil)
         case .clientEvent:
             guard let current = snapshot else {
                 // 缺初始快照时无法应用增量事件:向房主请求一次完整恢复,
@@ -973,11 +1027,7 @@ actor SessionCoordinator {
                 )
             }
             publishState()
-            do {
-                await acquireResolveGate()
-                do { try await persistGuestState(newEvent: envelope); releaseResolveGate() }
-                catch { releaseResolveGate(); return }
-            }
+            await persistGuestArchive(newEvent: envelope)
             print("INDUSTRIALCITY_LOCAL converged version=\(value.event.version.rawValue) actor=\(value.event.actor.rawValue)")
         default: break
         }
@@ -1013,7 +1063,6 @@ actor SessionCoordinator {
     }
 
     private func resolveSerially(_ intent: GameCore.PlayerIntent) async throws {
-        guard persistenceError == nil else { throw Error.persistenceUnavailable }
         SessionDiagnostics.log("INTENT seat=\(configuration.playerID.rawValue) sender=\(intent.senderID.rawValue) base=v\(intent.baseVersion.rawValue) \(SessionDiagnostics.describe(intent.payload))")
         guard pauseReason == nil else {
             if intent.senderID != configuration.playerID {
@@ -1133,39 +1182,16 @@ actor SessionCoordinator {
             let remoteRecipients = Set(outgoing.keys.filter { $0 != configuration.playerID })
             let candidateRecovery = peersNeedingRecovery.union(remoteRecipients)
 
-            if let persistence {
-                guard authorityCompleteness == .complete else {
-                    persistenceError = .saveFailed
-                    publishState()
-                    throw Error.persistenceUnavailable
-                }
-                let nextCommitSequence = try nextPersistenceCommitSequence()
-                let archive = SessionArchive.host(
-                    protocolVersion: configuration.protocolVersion,
-                    rulesetVersion: configuration.rulesetVersion,
-                    recipientID: configuration.hostPlayerID,
+            if persistence != nil, authorityCompleteness == .complete {
+                // 扇出前尽力落盘保守恢复证据(崩溃安全:事件发出前对局可恢复)。
+                // 存盘失败不再丢弃行动、不再冻结对局——交给后台循环自动重试。
+                if let conservative = try? buildHostArchive(
                     state: candidateEngine.state,
                     gameState: candidateEngine.gameState,
                     eventWindows: candidateEventWindows,
-                    tokenReferences: playerIDs.map {
-                        .init(roomID: configuration.roomID, playerID: $0)
-                    },
-                    peersNeedingRecovery: candidateRecovery,
-                    commitSequence: nextCommitSequence
-                )
-                do {
-                    try await persistence.save(archive)
-                    persistenceCommitSequence = nextCommitSequence
-                } catch {
-                    persistenceError = .saveFailed
-                    publishState()
-                    if intent.senderID != configuration.playerID {
-                        try? await send(.rejection(.init(
-                            reasonCode: .persistenceUnavailable,
-                            recoverySuggestion: "Wait while the host safely saves the latest committed state, then retry."
-                        )), to: intent.senderID)
-                    }
-                    throw Error.persistenceUnavailable
+                    peersNeedingRecovery: candidateRecovery
+                ) {
+                    await persistArchiveNow(conservative)
                 }
             }
 
@@ -1177,7 +1203,6 @@ actor SessionCoordinator {
             peersNeedingRecovery = candidateRecovery
             lastIntentRejection = nil
             lastDeliveryError = nil
-            persistenceError = nil
             appendActionLog(
                 event: event,
                 era: candidateEngine.gameState.era,
@@ -1190,11 +1215,8 @@ actor SessionCoordinator {
                 do {
                     try await send(envelope, to: player)
                     peersNeedingRecovery.remove(player)
-                    do {
-                        try await persistCommittedState()
-                    } catch {
-                        break
-                    }
+                    // 投递成功后落盘"已送达"状态(尽力而为,失败后台重试)。
+                    await persistCurrentStateNow()
                 } catch {
                     recordDeliveryFailure(for: player, error: error)
                 }
@@ -1443,71 +1465,179 @@ actor SessionCoordinator {
         eventWindows[player] = values
     }
 
-    private func persistCommittedState() async throws {
-        guard let persistence, let engine else { return }
-        guard authorityCompleteness == .complete else {
-            persistenceError = .saveFailed
-            publishState()
-            throw Error.persistenceUnavailable
+    // MARK: - 持久化(尽力而为:先于扇出尝试落盘,失败自动后台重试,从不阻断对局)
+
+    private var latestPendingArchive: SessionArchive?
+    private var persistenceWorker: Task<Void, Never>?
+    private var persistenceGeneration = 0
+    private var highestPersistedSequence: UInt64 = 0
+
+    /// 同步尽力落盘一次(扇出前/客机应用事件后/切后台刷盘共用)。
+    /// 成功即权威;失败交给后台重试循环——行动从不因存盘失败被丢弃或冻结。
+    private func persistArchiveNow(_ archive: SessionArchive) async {
+        guard let persistence else { return }
+        do {
+            try await persistence.save(archive)
+            highestPersistedSequence = max(highestPersistedSequence, archive.commitSequence)
+            if latestPendingArchive?.commitSequence ?? 0 <= archive.commitSequence {
+                latestPendingArchive = nil
+            }
+            if persistenceError != nil {
+                persistenceError = nil
+                publishState()
+            }
+        } catch {
+            if persistenceError == nil {
+                persistenceError = .saveFailed
+                publishState()
+            }
+            SessionDiagnostics.log(
+                "PERSIST-SAVE-FAILED seat=\(configuration.playerID.rawValue) seq=\(archive.commitSequence)"
+            )
+            enqueueForRetry(archive)
         }
-        let nextCommitSequence = try nextPersistenceCommitSequence()
-        let archive = SessionArchive.host(
+    }
+
+    /// 把失败档案交给后台重试:只保留最新(全量快照),新档案入队立即唤醒退避循环。
+    private func enqueueForRetry(_ archive: SessionArchive) {
+        guard persistence != nil else { return }
+        persistenceGeneration += 1
+        if (latestPendingArchive?.commitSequence ?? 0) < archive.commitSequence {
+            latestPendingArchive = archive
+        }
+        guard persistenceWorker == nil else { return }
+        persistenceWorker = Task { [weak self] in
+            await self?.drainPersistenceQueue()
+        }
+    }
+
+    private func drainPersistenceQueue() async {
+        guard let persistence else {
+            persistenceWorker = nil
+            return
+        }
+        var backoff: Duration = .milliseconds(500)
+        while Task.isCancelled == false {
+            guard let archive = latestPendingArchive else { break }
+            do {
+                try await persistence.save(archive)
+                highestPersistedSequence = max(highestPersistedSequence, archive.commitSequence)
+                if latestPendingArchive?.commitSequence == archive.commitSequence {
+                    latestPendingArchive = nil
+                }
+                if persistenceError != nil {
+                    persistenceError = nil
+                    publishState()
+                }
+                backoff = .milliseconds(500)
+            } catch {
+                if archive.commitSequence < highestPersistedSequence {
+                    // 迟到的过期档案:已被更新提交覆盖,直接丢弃,不算失败。
+                    if latestPendingArchive?.commitSequence == archive.commitSequence {
+                        latestPendingArchive = nil
+                    }
+                    continue
+                }
+                if persistenceError == nil {
+                    persistenceError = .saveFailed
+                    publishState()
+                }
+                SessionDiagnostics.log(
+                    "PERSIST-SAVE-RETRY seat=\(configuration.playerID.rawValue) seq=\(archive.commitSequence)"
+                )
+                // 分片退避:新档案入队(代际变化)立即唤醒,退避封顶 2 秒。
+                let generation = persistenceGeneration
+                var waited: Duration = .zero
+                while waited < backoff, persistenceGeneration == generation, Task.isCancelled == false {
+                    try? await Task.sleep(for: .milliseconds(100))
+                    waited += .milliseconds(100)
+                }
+                backoff = min(backoff * 2, .seconds(2))
+            }
+        }
+        persistenceWorker = nil
+    }
+
+    /// 按当前最新状态构造并同步尝试落盘一份档案(主机完整权威态/客机私有投影)。
+    private func persistCurrentStateNow() async {
+        if isHost {
+            guard let engine, authorityCompleteness == .complete else { return }
+            try? await persistArchiveNow(try buildHostArchive(
+                state: engine.state,
+                gameState: engine.gameState,
+                eventWindows: eventWindows,
+                peersNeedingRecovery: peersNeedingRecovery
+            ))
+        } else {
+            guard let snapshot else { return }
+            try? await persistArchiveNow(try buildGuestArchive(
+                snapshot: snapshot,
+                eventWindow: eventWindows[configuration.playerID] ?? []
+            ))
+        }
+    }
+
+    private func buildHostArchive(
+        state: GameCore.AuthoritativeGameState,
+        gameState: GameCore.GameState,
+        eventWindows: [GameCore.PlayerID: [SessionProtocol.SessionEnvelope]],
+        peersNeedingRecovery: Set<GameCore.PlayerID>
+    ) throws -> SessionArchive {
+        SessionArchive.host(
             protocolVersion: configuration.protocolVersion,
             rulesetVersion: configuration.rulesetVersion,
             recipientID: configuration.hostPlayerID,
-            state: engine.state,
-            gameState: engine.gameState,
+            state: state,
+            gameState: gameState,
             eventWindows: eventWindows,
             tokenReferences: playerIDs.map {
                 .init(roomID: configuration.roomID, playerID: $0)
             },
             peersNeedingRecovery: peersNeedingRecovery,
-            commitSequence: nextCommitSequence
+            commitSequence: try nextPersistenceCommitSequence()
         )
-        do {
-            try await persistence.save(archive)
-            persistenceCommitSequence = nextCommitSequence
-            persistenceError = nil
-            publishState()
-        } catch {
-            persistenceError = .saveFailed
-            publishState()
-            throw Error.persistenceUnavailable
-        }
     }
 
-    private func persistGuestState(newEvent: SessionProtocol.SessionEnvelope?) async throws {
-        guard let persistence, let snapshot else { return }
-        if let newEvent { appendToEventWindow(newEvent, for: configuration.playerID) }
-        let nextCommitSequence = try nextPersistenceCommitSequence()
-        let archive = SessionArchive.guest(
+    private func buildGuestArchive(
+        snapshot: GameCore.ViewSnapshot,
+        eventWindow: [SessionProtocol.SessionEnvelope]
+    ) throws -> SessionArchive {
+        SessionArchive.guest(
             protocolVersion: configuration.protocolVersion,
             rulesetVersion: configuration.rulesetVersion,
             hostPlayerID: configuration.hostPlayerID,
             snapshot: snapshot,
-            eventWindow: eventWindows[configuration.playerID] ?? [],
+            eventWindow: eventWindow,
             tokenReference: .init(roomID: configuration.roomID, playerID: configuration.playerID),
-            commitSequence: nextCommitSequence
+            commitSequence: try nextPersistenceCommitSequence()
         )
-        do {
-            try await persistence.save(archive)
-            persistenceCommitSequence = nextCommitSequence
-            persistenceError = nil
-        } catch {
-            persistenceError = .saveFailed
-            publishState()
-            throw Error.persistenceUnavailable
+    }
+
+    /// 等待排队档案落盘(有界);供切后台/手动重试的同步语义,超时交给后台循环。
+    private func waitForPendingPersistenceToDrain(timeout: Duration) async {
+        let deadline = ContinuousClock.now.advanced(by: timeout)
+        while ContinuousClock.now < deadline {
+            if latestPendingArchive == nil { return }
+            try? await Task.sleep(for: .milliseconds(20))
         }
-        publishState()
+    }
+
+    /// 客机私有投影存档:先并入事件窗,再同步尝试落盘;失败由后台循环重试。
+    private func persistGuestArchive(newEvent: SessionProtocol.SessionEnvelope?) async {
+        guard persistence != nil, let snapshot else { return }
+        if let newEvent { appendToEventWindow(newEvent, for: configuration.playerID) }
+        try? await persistArchiveNow(try buildGuestArchive(
+            snapshot: snapshot,
+            eventWindow: eventWindows[configuration.playerID] ?? []
+        ))
     }
 
     private func nextPersistenceCommitSequence() throws -> UInt64 {
         let (next, overflow) = persistenceCommitSequence.addingReportingOverflow(1)
         guard !overflow else {
-            persistenceError = .saveFailed
-            publishState()
             throw Error.persistenceUnavailable
         }
+        persistenceCommitSequence = next
         return next
     }
 

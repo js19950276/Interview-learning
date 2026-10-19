@@ -15,6 +15,15 @@ final class LoopbackTransportHub: @unchecked Sendable {
     nonisolated fileprivate func hostPeer() -> GameCore.PlayerID? { lock.withLock { hostID } }
     nonisolated fileprivate func endpoint(_ peerID: GameCore.PlayerID) -> LoopbackTransport? { lock.withLock { endpoints[peerID] } }
     nonisolated fileprivate func remove(_ peerID: GameCore.PlayerID) { lock.withLock { endpoints[peerID] = nil } }
+
+#if DEBUG
+    /// 模拟进程挂起导致的链路中断:两端各收到 disconnected,但端点保留,重拨可达。
+    nonisolated func severLink(between a: GameCore.PlayerID, and b: GameCore.PlayerID) {
+        let pair = lock.withLock { (endpoints[a], endpoints[b]) }
+        guard let transportA = pair.0, let transportB = pair.1 else { return }
+        Task { await transportA.sever(b); await transportB.sever(a) }
+    }
+#endif
 }
 
 actor LoopbackTransport: Transport {
@@ -60,7 +69,16 @@ actor LoopbackTransport: Transport {
         hub.remove(peerID)
     }
 
+    func isConnected(to peer: GameCore.PlayerID) async -> Bool { connectedPeers.contains(peer) }
+
     private func accept(_ peer: GameCore.PlayerID) { connectedPeers.insert(peer); continuation.yield(.connected(peer)) }
     private func receive(_ data: Data, from peer: GameCore.PlayerID) { continuation.yield(.received(data, from: peer)) }
     private func drop(_ peer: GameCore.PlayerID) { connectedPeers.remove(peer); continuation.yield(.disconnected(peer, nil)) }
+
+#if DEBUG
+    fileprivate func sever(_ peer: GameCore.PlayerID) {
+        guard connectedPeers.remove(peer) != nil else { return }
+        continuation.yield(.disconnected(peer, nil))
+    }
+#endif
 }

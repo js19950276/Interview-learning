@@ -924,6 +924,64 @@ struct SessionCoordinatorTests {
                 coordinator(id: "guest", token: "t-guest", transport: guestTransport), hostTransport, guestTransport, hub)
     }
 
+    @Test func guestAutomaticallyRejoinsAfterLinkDropAndMatchContinues() async throws {
+        let hub = LoopbackTransportHub()
+        let host = coordinator(id: "host", token: "t-host", transport: hub.makeTransport(peerID: hostID))
+        let guest = coordinator(id: "guest", token: "t-guest", transport: hub.makeTransport(peerID: guestID))
+        try await host.createRoom(); try await guest.joinRoom()
+        try await eventually { await host.playerIDs.count == 2 }
+        try await host.setReady(true); try await guest.setReady(true)
+        try await eventually { await host.readyPlayerIDs.count == 2 }
+        try await host.startGame(); try await eventually { await guest.snapshot != nil }
+
+        // 模拟切出 app 导致的链路中断:两端都收到断线,但端点保留(重拨可达)。
+        hub.severLink(between: guestID, and: hostID)
+        // 给断线事件与重连循环留出运行窗口(重连握手在毫秒级完成,
+        // 不对中间的 hostDisconnected 状态做时序断言,以免竞态)。
+        try await Task.sleep(for: .milliseconds(300))
+
+        // 对局继续:不做任何手动操作,主机行动仍能到达客机
+        // (若客机未自动重拨,快照会永远停在 v0)。
+        let card = try #require(await host.snapshot?.players.first(where: { $0.id == hostID })?.hand?.first)
+        try await host.pass(discardCardID: card)
+        try await eventually(timeout: .seconds(5)) {
+            await guest.snapshot?.authoritativeVersion == .init(rawValue: 1)
+        }
+        #expect(await guest.pauseReason == nil)
+    }
+
+    @Test func foregroundActivationRevivesSilentlyDroppedLinkAndHostListener() async throws {
+        let hub = LoopbackTransportHub()
+        let hostTransport = ReviveRecordingTransport(base: hub.makeTransport(peerID: hostID))
+        // 静默断链:客机收不到 disconnected 事件,只能靠前台探测 + 重拨恢复。
+        let guest = coordinator(
+            id: "guest", token: "t-guest",
+            transport: DisconnectionBlindTransport(base: hub.makeTransport(peerID: guestID))
+        )
+        let host = coordinator(id: "host", token: "t-host", transport: hostTransport)
+        try await host.createRoom(); try await guest.joinRoom()
+        try await eventually { await host.playerIDs.count == 2 }
+        try await host.setReady(true); try await guest.setReady(true)
+        try await eventually { await host.readyPlayerIDs.count == 2 }
+        try await host.startGame(); try await eventually { await guest.snapshot != nil }
+
+        hub.severLink(between: guestID, and: hostID)
+        try await Task.sleep(for: .milliseconds(200))
+        #expect(await guest.pauseReason == nil, "静默断链:客机尚未感知")
+
+        // 切回前台:isConnected 探测到断链并立即重拨。
+        await guest.applicationDidBecomeActive()
+        let card = try #require(await host.snapshot?.players.first(where: { $0.id == hostID })?.hand?.first)
+        try await host.pass(discardCardID: card)
+        try await eventually(timeout: .seconds(5)) {
+            await guest.snapshot?.authoritativeVersion == .init(rawValue: 1)
+        }
+
+        // 房主前台自愈会触发监听器复活检查。
+        await host.applicationDidBecomeActive()
+        #expect(await hostTransport.reviveCallCount >= 1)
+    }
+
     private func coordinator(id: String, token: String, transport: some Transport) -> SessionCoordinator {
         SessionCoordinator(configuration: .init(protocolVersion: 1, rulesetVersion: "rules-v1", roomID: room,
             playerID: .init(rawValue: id), reconnectToken: .init(rawValue: token), hostPlayerID: hostID),
@@ -1062,6 +1120,51 @@ private actor SelectiveFailingTransport: Transport {
         try await base.send(data, to: peer)
     }
     func disconnect() async { await base.disconnect() }
+}
+
+/// 静默断链模拟:转发除 disconnected 外的全部事件(挂起后 nw 未及上报的场景)。
+private actor DisconnectionBlindTransport: Transport {
+    nonisolated let events: AsyncStream<TransportEvent>
+    private nonisolated let continuation: AsyncStream<TransportEvent>.Continuation
+    private let base: LoopbackTransport
+
+    init(base: LoopbackTransport) {
+        self.base = base
+        (events, continuation) = AsyncStream.makeStream(of: TransportEvent.self)
+        let continuation = self.continuation
+        Task { [base, continuation] in
+            for await event in await base.events {
+                if case .disconnected = event { continue }
+                continuation.yield(event)
+            }
+        }
+    }
+
+    func startHosting(roomID: GameCore.RoomID, port: UInt16?) async throws { try await base.startHosting(roomID: roomID, port: port) }
+    func browse() async throws { try await base.browse() }
+    func connect(to peer: GameCore.PlayerID) async throws { try await base.connect(to: peer) }
+    func send(_ data: Data, to peer: GameCore.PlayerID) async throws { try await base.send(data, to: peer) }
+    func disconnect() async { await base.disconnect() }
+    func isConnected(to peer: GameCore.PlayerID) async -> Bool { await base.isConnected(to: peer) }
+}
+
+/// 记录前台自愈是否触达传输层(房主监听器复活)。
+private actor ReviveRecordingTransport: Transport {
+    nonisolated let events: AsyncStream<TransportEvent>
+    private let base: LoopbackTransport
+    private var reviveCalls = 0
+    var reviveCallCount: Int { reviveCalls }
+
+    init(base: LoopbackTransport) {
+        self.base = base; self.events = base.events
+    }
+
+    func startHosting(roomID: GameCore.RoomID, port: UInt16?) async throws { try await base.startHosting(roomID: roomID, port: port) }
+    func browse() async throws { try await base.browse() }
+    func connect(to peer: GameCore.PlayerID) async throws { try await base.connect(to: peer) }
+    func send(_ data: Data, to peer: GameCore.PlayerID) async throws { try await base.send(data, to: peer) }
+    func disconnect() async { await base.disconnect() }
+    func reviveHostingIfNeeded() async { reviveCalls += 1 }
 }
 
 private struct TestTimeout: Error {}

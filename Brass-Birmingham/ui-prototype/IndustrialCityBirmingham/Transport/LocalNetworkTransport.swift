@@ -30,6 +30,8 @@ actor LocalNetworkTransport: Transport {
     private let serviceName: String?
     private var listener: NWListener?
     private var browser: NWBrowser?
+    private var hostingRoomID: GameCore.RoomID?
+    private var hostedPort: UInt16?
     private var connections: [GameCore.PlayerID: NWConnection] = [:]
     private var decoders: [GameCore.PlayerID: LengthPrefixedFrameCodec.Decoder] = [:]
     private var terminationRegistry = ConnectionTerminationRegistry()
@@ -53,6 +55,8 @@ actor LocalNetworkTransport: Transport {
     }
 
     func startHosting(roomID: GameCore.RoomID, port: UInt16?) async throws {
+        hostingRoomID = roomID
+        hostedPort = port
         let parameters = Self.makeParameters()
         let listener: NWListener
         if let port {
@@ -127,6 +131,27 @@ actor LocalNetworkTransport: Transport {
         }
     }
 
+    func isConnected(to peer: GameCore.PlayerID) async -> Bool {
+        connections[peer]?.state == .ready
+    }
+
+    /// 前台自愈:挂起可能悄悄杀死监听 socket;死亡/缺失时按原房间重建监听器。
+    func reviveHostingIfNeeded() async {
+        guard hostingRoomID != nil else { return }
+        let needsRestart: Bool
+        switch listener?.state {
+        case .none, .some(.failed), .some(.cancelled): needsRestart = true
+        default: needsRestart = false
+        }
+        guard needsRestart, let roomID = hostingRoomID else { return }
+        listener?.stateUpdateHandler = nil
+        listener?.newConnectionHandler = nil
+        listener?.cancel()
+        listener = nil
+        do { try await startHosting(roomID: roomID, port: hostedPort) }
+        catch { logger.error("Listener revive failed: \(String(reflecting: error), privacy: .public)") }
+    }
+
     func send(_ data: Data, to peer: GameCore.PlayerID) async throws {
         guard let connection = connections[peer] else { throw TransportError.notConnected }
         let framed = try LengthPrefixedFrameCodec.frame(data)
@@ -138,6 +163,8 @@ actor LocalNetworkTransport: Transport {
     }
 
     func disconnect() async {
+        hostingRoomID = nil
+        hostedPort = nil
         hostingContinuation?.resume(throwing: TransportError.connectionFailed)
         hostingContinuation = nil
         connectionContinuations.values.forEach { $0.resume(throwing: TransportError.connectionFailed) }
