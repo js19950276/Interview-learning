@@ -1162,27 +1162,15 @@ struct BuildAndNetworkRulesTests {
                 tile: .init(id: "existing-iron", industryDefinitionID: "iron-works", level: 1)
             )
         ]
-        // 官方例外:运河时代伯明翰每人可建 2 个产业——第 2 个合法
-        // (棉纺厂 L1 无资源需求,避免与资源校验纠缠)。
-        _ = try GameCore.BuildRules.validate(
-            .init(
-                cardID: "birmingham", locationID: "birmingham",
-                industryDefinitionID: "cotton-mill", slotIndex: 0,
-                resourceSources: []
-            ),
-            actorID: canalActor, state: canal, catalog: catalog
-        )
-        // 第 3 个(其他地点)仍受每人 1 个限制。
-        canal.boardIndustryPlacements.append(.init(
-            locationID: "birmingham", slotIndex: 1, ownerID: canalActor,
-            tile: .init(id: "second-man", industryDefinitionID: "manufacturer", level: 1)
-        ))
+        // 官方规则书 v2018.11 没有伯明翰例外(Canal Era Building: 每人每地点
+        // 最多 1 个产业):已有 1 座自有产业后,同城第 2 座(棉纺厂 L1,无资源
+        // 需求)必须因运河限建被拒。
         #expect(throws: GameCore.BuildRuleError.canalLocationLimit) {
             try GameCore.BuildRules.validate(
                 .init(
                     cardID: "birmingham", locationID: "birmingham",
-                    industryDefinitionID: "manufacturer", slotIndex: 3,
-                    resourceSources: [.marketSlot(resource: .coal, index: 1), .merchantBeer(slotID: "oxford-1")]
+                    industryDefinitionID: "cotton-mill", slotIndex: 0,
+                    resourceSources: []
                 ),
                 actorID: canalActor, state: canal, catalog: catalog
             )
@@ -1251,25 +1239,21 @@ struct BuildAndNetworkRulesTests {
         let actor = try #require(state.activePlayerID)
         let index = try #require(state.players.firstIndex { $0.id == actor })
         state.players[index].hand = [.init(id: "wild-build", definitionID: "wild-industry")]
-        // 伯明翰已有自己的两块(槽 0、槽 1);覆盖槽 1 不算"第三个产业",
-        // 拒绝理由必须是槽位规则而非 canalLocationLimit。
+        // 斯塔福德(stoke-on-trent)槽 0 已有自己的制造厂;同槽覆盖不算"第二个产业",
+        // 拒绝理由必须是槽位规则而非 canalLocationLimit(槽 2 仍空)。
         state.boardIndustryPlacements.append(.init(
-            locationID: "birmingham", slotIndex: 0, ownerID: actor,
+            locationID: "stoke-on-trent", slotIndex: 0, ownerID: actor,
             tile: .init(id: "own-a", industryDefinitionID: "manufacturer", level: 1)
         ))
-        state.boardIndustryPlacements.append(.init(
-            locationID: "birmingham", slotIndex: 1, ownerID: actor,
-            tile: .init(id: "own-b", industryDefinitionID: "manufacturer", level: 1)
-        ))
-        // 栈顶升到制造厂 2 级,构造合法的同产业覆盖意图(槽 3 仍空,应报 emptySlotAvailable)。
+        // 栈顶升到制造厂 2 级,构造合法的同产业覆盖意图(槽 2 仍空,应报 emptySlotAvailable)。
         let stackIndex = try #require(
             state.players[index].industryStacks.firstIndex { $0.industryDefinitionID == "manufacturer" }
         )
         state.players[index].industryStacks[stackIndex].tiles.removeFirst()
         do {
             _ = try GameCore.BuildRules.validate(
-                .init(cardID: "wild-build", locationID: "birmingham",
-                      industryDefinitionID: "manufacturer", slotIndex: 1, resourceSources: []),
+                .init(cardID: "wild-build", locationID: "stoke-on-trent",
+                      industryDefinitionID: "manufacturer", slotIndex: 0, resourceSources: []),
                 actorID: actor, state: state, catalog: catalog
             )
             Issue.record("expected a non-limit rejection for same-slot overbuild")

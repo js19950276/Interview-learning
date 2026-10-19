@@ -100,13 +100,14 @@ extension GameCore {
                       cardDefinition.kind == .industry || cardDefinition.kind == .wildIndustry
                 else { throw BuildRuleError.farmRestricted }
             }
-            // 运河时代每人同地点限 1 个产业;伯明翰是官方例外,可建 2 个。
-            let canalPerLocationLimit = intent.locationID == "birmingham" ? 2 : 1
+            // 运河时代每人同地点限 1 个产业。官方规则书 v2018.11(Canal Era
+            // Building: "a maximum of 1 Industry tile per location")没有任何
+            // 城市例外——此前伯明翰可建 2 个是误写,已按规则书更正。
             if state.era == .canal,
-               state.boardIndustryPlacements.filter({
+               state.boardIndustryPlacements.contains(where: {
                    $0.ownerID == actorID && $0.locationID == intent.locationID
                         && $0.slotIndex != intent.slotIndex
-               }).count >= canalPerLocationLimit {
+               }) {
                 throw BuildRuleError.canalLocationLimit
             }
 
