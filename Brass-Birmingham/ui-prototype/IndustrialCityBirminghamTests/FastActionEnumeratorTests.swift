@@ -301,4 +301,66 @@ struct FastActionEnumeratorTests {
         #expect(result.payloads.isEmpty == false)
         try assertAllAccepted(state, payloads: result.payloads, catalog: catalog, roomID: roomID, tokens: tokens)
     }
+
+    @Test func truncatedModeKeepsTopPrioritizedActionsAndStaysLegal() throws {
+        let catalog = try verifiedCatalog()
+        let state = try freshFourPlayerState(catalog: catalog)
+        let actor = try #require(state.activePlayerID)
+        let complete = try GameCore.FastActionEnumerator.enumerate(state: state, actorID: actor, catalog: catalog)
+        #expect(complete.payloads.count > 3, "需要足够多的动作才有截断意义")
+
+        // 人为先验:loan > network > 其他。
+        func prior(_ payload: GameCore.PlayerIntent.Payload) -> Double {
+            switch payload {
+            case .loan: return 3
+            case .network: return 2
+            default: return 1
+            }
+        }
+        let top2 = try GameCore.FastActionEnumerator.enumerate(
+            state: state, actorID: actor, catalog: catalog, limit: 2, prioritizer: prior
+        )
+        #expect(top2.payloads.count == 2)
+        #expect(top2.truncated == true)
+        #expect(prior(top2.payloads[0]) >= prior(top2.payloads[1]))
+
+        // 截断结果与完备模式按同一先验排序后的前缀一致(稳定顺序)。
+        let ranked = complete.payloads.enumerated()
+            .sorted { lhs, rhs in
+                let l = prior(lhs.element), r = prior(rhs.element)
+                return l == r ? lhs.offset < rhs.offset : l > r
+            }
+            .map(\.element)
+        #expect(Array(ranked.prefix(2)) == top2.payloads)
+
+        // limit ≥ 总数:不截断。
+        let big = try GameCore.FastActionEnumerator.enumerate(
+            state: state, actorID: actor, catalog: catalog,
+            limit: complete.payloads.count, prioritizer: prior
+        )
+        #expect(big.truncated == false)
+        #expect(Set(big.payloads.map { String(describing: $0) })
+            == Set(complete.payloads.map { String(describing: $0) }))
+
+        // Review Focus 3:截断模式产物仍然全部合法。
+        let tokens = Dictionary(uniqueKeysWithValues: state.players.map {
+            ($0.id, GameCore.ReconnectToken(rawValue: "trunc-token-\($0.id.rawValue)"))
+        })
+        try assertAllAccepted(
+            state, payloads: top2.payloads, catalog: catalog,
+            roomID: .init(rawValue: "trunc-room"), tokens: tokens
+        )
+    }
+
+    @Test func limitWithoutPrioritizerKeepsDiscoveryOrder() throws {
+        let catalog = try verifiedCatalog()
+        let state = try freshFourPlayerState(catalog: catalog)
+        let actor = try #require(state.activePlayerID)
+        let complete = try GameCore.FastActionEnumerator.enumerate(state: state, actorID: actor, catalog: catalog)
+        let head = try GameCore.FastActionEnumerator.enumerate(
+            state: state, actorID: actor, catalog: catalog, limit: 3
+        )
+        #expect(head.payloads == Array(complete.payloads.prefix(3)))
+        #expect(head.truncated == (complete.payloads.count > 3))
+    }
 }
