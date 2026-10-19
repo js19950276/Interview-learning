@@ -218,4 +218,87 @@ struct FastActionEnumeratorTests {
         )
         #expect(intermissionResult.payloads.isEmpty)
     }
+
+    /// Review Focus 1:卖货链(sellDisposition continue 分支)下的枚举必须在有限步内终止,
+    /// 且产物全部合法。构造"当前行动玩家拥有可卖产业(cotton/manufacturer)"的状态后全量枚举。
+    @Test func sellChainStateEnumeratesAndSubmitsWithoutLooping() throws {
+        let catalog = try verifiedCatalog()
+        var state = try freshFourPlayerState(catalog: catalog)
+        let roomID = GameCore.RoomID(rawValue: "sell-room")
+        let tokens = Dictionary(uniqueKeysWithValues: state.players.map {
+            ($0.id, GameCore.ReconnectToken(rawValue: "sell-token-\($0.id.rawValue)"))
+        })
+        var host = try state.makeHostEngine(
+            roomID: roomID, reconnectTokens: tokens, protocolVersion: 2
+        )
+        var builtSellable = false
+        for _ in 0..<20 {
+            let current = try #require(host.gameState.activePlayerID)
+            let result = try GameCore.FastActionEnumerator.enumerate(
+                state: host.gameState, actorID: current, catalog: catalog
+            )
+            // 优先构造可卖产业(cotton/manufacturer),没有就退而求其次任意 build。
+            let buildPayloads = result.payloads.filter { payload in
+                if case .build = payload { return true } else { return false }
+            }
+            let sellable = buildPayloads.first { payload in
+                if case .build(let intent) = payload {
+                    return intent.industryDefinitionID == "cotton-mill"
+                        || intent.industryDefinitionID == "manufacturer"
+                }
+                return false
+            }
+            guard let buildPayload = sellable ?? buildPayloads.first else { break }
+            let intent = GameCore.PlayerIntent(
+                protocolVersion: 2, rulesetVersion: host.gameState.rulesetVersion,
+                roomID: roomID, senderID: current,
+                reconnectToken: try #require(tokens[current]),
+                baseVersion: host.gameState.authoritativeVersion, payload: buildPayload
+            )
+            guard case .accepted = host.submit(intent, catalog: catalog) else {
+                Issue.record("构造用 build 提交被拒"); return
+            }
+            // 回合确认推进(待确认与时代结算都自动确认)。
+            for _ in 0..<6 {
+                let s = host.gameState
+                if case .awaitingTurnEndConfirmation = s.turnPhase {
+                    let actor2 = try #require(s.activePlayerID)
+                    let r = host.submit(.init(
+                        protocolVersion: 2, rulesetVersion: s.rulesetVersion, roomID: roomID,
+                        senderID: actor2, reconnectToken: try #require(tokens[actor2]),
+                        baseVersion: s.authoritativeVersion, payload: .confirmTurnEnd
+                    ), catalog: catalog)
+                    guard case .accepted = r else { Issue.record("turn confirm rejected"); return }
+                } else if case .eraIntermission(let inter) = s.turnPhase {
+                    guard let p = s.players.map(\.id).first(where: { inter.confirmedPlayerIDs.contains($0) == false }) else { break }
+                    let r = host.submit(.init(
+                        protocolVersion: 2, rulesetVersion: s.rulesetVersion, roomID: roomID,
+                        senderID: p, reconnectToken: try #require(tokens[p]),
+                        baseVersion: s.authoritativeVersion, payload: .confirmEraIntermission
+                    ), catalog: catalog)
+                    guard case .accepted = r else { Issue.record("era confirm rejected"); return }
+                } else { break }
+            }
+            if host.gameState.turnPhase == .ended { break }
+            // 换到下一位行动玩家后,检查其是否拥有可卖产业。
+            if let c = host.gameState.activePlayerID,
+               host.gameState.turnPhase == .active,
+               host.gameState.boardIndustryPlacements.contains(where: {
+                   $0.ownerID == c
+                       && ($0.tile.industryDefinitionID == "cotton-mill"
+                           || $0.tile.industryDefinitionID == "manufacturer")
+               }) {
+                builtSellable = true
+                state = host.gameState
+                break
+            }
+        }
+        guard builtSellable, let actor = state.activePlayerID else {
+            Issue.record("种子 20_242 未能构造出可卖产业状态,需要换种子(见计划 Step 6 说明)")
+            return
+        }
+        let result = try GameCore.FastActionEnumerator.enumerate(state: state, actorID: actor, catalog: catalog)
+        #expect(result.payloads.isEmpty == false)
+        try assertAllAccepted(state, payloads: result.payloads, catalog: catalog, roomID: roomID, tokens: tokens)
+    }
 }
