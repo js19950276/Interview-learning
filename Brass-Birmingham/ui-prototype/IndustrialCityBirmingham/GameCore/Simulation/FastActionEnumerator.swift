@@ -49,6 +49,9 @@ extension GameCore {
 
             var complete: [PlayerIntent.Payload] = []
             var seen: Set<String> = []
+            // 无先验的 limit:DFS 收满即停(MCTS 内部节点用,免去全量展开);
+            // 有先验的 limit 仍需全量枚举后排序截断(保证取到先验最高的 K 个)。
+            let earlyExitPayloadLimit = (limit != nil && prioritizer == nil) ? limit! : nil
             while let draft = stack.popLast() {
                 guard draft.selections.count <= 128 else { throw EnumerationError.depthExceeded }
                 let query = LegalActionQuery(
@@ -63,8 +66,13 @@ extension GameCore {
                     continue // 死分支:该 draft 在此状态不可完成
                 }
                 if let payload = response.completePayload {
-                    let key = String(describing: payload)
-                    if seen.insert(key).inserted { complete.append(payload) }
+                    let key = payloadKey(payload)
+                    if seen.insert(key).inserted {
+                        complete.append(payload)
+                        if let earlyExitPayloadLimit, complete.count >= earlyExitPayloadLimit {
+                            return .init(payloads: complete, truncated: true)
+                        }
+                    }
                     continue
                 }
                 for choice in response.nextChoices {
@@ -92,6 +100,42 @@ extension GameCore {
                 }
             }
             return .init(payloads: complete, truncated: truncated)
+        }
+
+        /// 轻量 payload 键:比 String(describing:) 便宜一个量级,
+        /// 只用于单次枚举内的去重(进程内一致即可,不跨进程稳定)。
+        private static func payloadKey(_ payload: PlayerIntent.Payload) -> String {
+            func srcs(_ sources: [ResourceSource]) -> String {
+                sources.map { source -> String in
+                    switch source {
+                    case .industry(let id): return "i\(id)"
+                    case .merchantBeer(let id): return "m\(id)"
+                    case .marketSlot(let kind, let index): return "s\(kind.rawValue)\(index)"
+                    case .unlimitedMarket(let kind, let price): return "u\(kind.rawValue)\(price)"
+                    }
+                }.joined(separator: ",")
+            }
+            switch payload {
+            case .pass(let i): return "p|\(i.cardID)"
+            case .loan(let i): return "l|\(i.cardID)"
+            case .build(let i):
+                return "b|\(i.cardID)|\(i.locationID)|\(i.slotIndex)|\(i.industryDefinitionID)|\(srcs(i.resourceSources))"
+            case .network(let i):
+                let beer = i.beerSource.map { srcs([$0]) } ?? "-"
+                return "n|\(i.cardID)|\(i.routeIDs.joined(separator: ","))|\(srcs(i.coalSources))|\(beer)"
+            case .develop(let i):
+                return "d|\(i.cardID)|\(i.tileIDs.joined(separator: ","))|\(srcs(i.ironSources))"
+            case .sell(let i):
+                let sales = i.sales.map { sale in
+                    "\(sale.industryPlacementID)|\(sale.merchantSlotID)|\(srcs(sale.beerSources))|\(sale.bonusDevelopTileID ?? "-")"
+                }.joined(separator: ";")
+                return "s|\(i.cardID)|\(sales)"
+            case .scout(let i): return "c|\(i.cardIDs.joined(separator: ","))"
+            case .forcedSale(let i): return "f|\(i.placementIDs.joined(separator: ","))"
+            case .confirmEraIntermission: return "e"
+            case .confirmTurnEnd: return "t"
+            case .retractTurnActions: return "r"
+            }
         }
     }
 }
