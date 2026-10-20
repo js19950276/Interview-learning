@@ -1,0 +1,718 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>双11凑满减小助手</title>
+<style>
+  :root {
+    --red: #e8402a; --red-deep: #c22814; --bg: #f6f4f2; --card: #fff;
+    --ink: #221f1d; --ink-2: #7a736e; --line: #ece7e2; --gold: #b8860b;
+    --green: #0a8f56;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", "Microsoft YaHei", sans-serif;
+    background: var(--bg); color: var(--ink); line-height: 1.5; padding-bottom: 40px;
+  }
+  .wrap { max-width: 640px; margin: 0 auto; padding: 12px 14px; }
+  header { display: flex; align-items: baseline; justify-content: space-between; padding: 6px 2px 10px; }
+  header h1 { font-size: 20px; font-weight: 800; }
+  header .sub { font-size: 12px; color: var(--ink-2); }
+  .card { background: var(--card); border-radius: 14px; padding: 14px; margin-bottom: 12px; box-shadow: 0 1px 3px rgba(0,0,0,.05); }
+  .card h2 { font-size: 15px; font-weight: 700; margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
+  .card h2 .hint { font-size: 11px; color: var(--ink-2); font-weight: 400; margin-left: auto; }
+
+  /* 总览 */
+  .overview { background: linear-gradient(135deg, var(--red) 0%, var(--red-deep) 100%); color: #fff; }
+  .overview .row { display: flex; justify-content: space-between; gap: 8px; text-align: center; }
+  .overview .cell { flex: 1; }
+  .overview .k { font-size: 11px; opacity: .85; }
+  .overview .v { font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums; margin-top: 2px; }
+  .overview .v small { font-size: 12px; font-weight: 400; }
+  .overview .saved { color: #ffe3b0; }
+
+  /* 表单元素 */
+  input, select, button { font-family: inherit; font-size: 14px; }
+  input[type=text], input[type=number], select {
+    border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; background: #fff; color: var(--ink); min-width: 0;
+  }
+  input:focus, select:focus { outline: 2px solid rgba(232,64,42,.25); border-color: var(--red); }
+  button { border: none; border-radius: 8px; padding: 8px 14px; background: var(--red); color: #fff; font-weight: 600; cursor: pointer; }
+  button:active { transform: scale(.97); }
+  button.ghost { background: #fff; color: var(--red); border: 1px solid var(--red); }
+  button.mini { padding: 4px 10px; font-size: 12px; border-radius: 6px; }
+  button.plain { background: #f1ede9; color: var(--ink-2); }
+  .err { color: var(--red); font-size: 12px; margin-top: 6px; display: none; }
+
+  /* 池 */
+  .pool-row { display: grid; grid-template-columns: 1fr auto auto auto; gap: 6px; align-items: center; margin-bottom: 8px; }
+  .pool-row input[type=text] { width: 100%; }
+  .pool-row .num { width: 76px; }
+  .pool-row .sep, .pool-row .del { font-size: 12px; color: var(--ink-2); }
+  .pool-row .del { cursor: pointer; padding: 4px 6px; }
+  .presets { display: flex; gap: 6px; flex-wrap: wrap; }
+
+  /* 添加商品 */
+  .add-form { display: grid; grid-template-columns: 1.4fr 1fr auto; gap: 6px; }
+  .add-form .second { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 84px auto; gap: 6px; }
+
+  /* 商品列表，按池分组 */
+  .group { border: 1px solid var(--line); border-radius: 10px; margin-bottom: 10px; overflow: hidden; }
+  .group-head { display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: #faf7f4; font-size: 12px; flex-wrap: wrap; }
+  .group-head .tag { background: #fdeeeb; color: var(--red); border-radius: 5px; padding: 1px 7px; font-weight: 600; }
+  .group-head .stat { color: var(--ink-2); }
+  .group-head .stat b { color: var(--red); font-variant-numeric: tabular-nums; }
+  .group-head .btn-coudan { margin-left: auto; }
+  .item-row { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-top: 1px solid var(--line); font-size: 14px; }
+  .item-row .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .item-row .pr { font-variant-numeric: tabular-nums; color: var(--ink); }
+  .qty { display: flex; align-items: center; gap: 4px; }
+  .qty button { width: 22px; height: 22px; padding: 0; background: #f1ede9; color: var(--ink); font-size: 14px; border-radius: 5px; line-height: 1; }
+  .qty .n { min-width: 18px; text-align: center; font-variant-numeric: tabular-nums; }
+  .del-x { color: #c4bbb4; cursor: pointer; padding: 2px 4px; font-size: 16px; }
+  .empty-tip { color: var(--ink-2); font-size: 13px; padding: 10px 2px; }
+
+  /* 凑单助手 */
+  .cd-config { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; margin-bottom: 8px; }
+  .cd-gap { font-size: 13px; color: var(--ink-2); margin-bottom: 8px; }
+  .cd-gap b { color: var(--red); font-size: 16px; font-variant-numeric: tabular-nums; }
+  .filler-list { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+  .filler-chip { display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--line); border-radius: 999px; padding: 3px 8px 3px 6px; font-size: 12px; cursor: pointer; user-select: none; }
+  .filler-chip.on { border-color: var(--red); background: #fdeeeb; }
+  .filler-chip .p { color: var(--ink-2); font-variant-numeric: tabular-nums; }
+  .filler-chip .del { color: #c4bbb4; padding: 0 2px; }
+  .filler-add { display: grid; grid-template-columns: 1fr 100px auto; gap: 6px; margin-top: 6px; }
+  .combo { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin-top: 8px; }
+  .combo.best { border-color: var(--red); background: #fff8f6; }
+  .combo .t { font-size: 13px; font-weight: 700; display: flex; justify-content: space-between; gap: 6px; align-items: center; }
+  .combo .t .who { color: var(--red); }
+  .combo .list { font-size: 13px; color: var(--ink-2); margin: 4px 0; }
+  .combo .pay { font-size: 13px; margin-top: 2px; }
+  .combo .pay b { font-variant-numeric: tabular-nums; }
+  .combo .act { margin-top: 6px; text-align: right; }
+
+  /* 券 */
+  .coupon-row { display: grid; grid-template-columns: 1fr auto auto auto auto; gap: 6px; align-items: center; margin-bottom: 8px; font-size: 13px; }
+  .coupon-row .num { width: 80px; }
+  .coupon-status { font-size: 13px; padding: 6px 2px; border-top: 1px dashed var(--line); color: var(--ink-2); }
+  .coupon-status b { font-variant-numeric: tabular-nums; }
+  .coupon-status .ok { color: var(--green); }
+
+  footer { text-align: center; margin-top: 14px; display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+  .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: rgba(34,31,29,.9); color: #fff; font-size: 13px; padding: 8px 16px; border-radius: 999px; opacity: 0; transition: opacity .25s; pointer-events: none; z-index: 9; }
+  .toast.show { opacity: 1; }
+  .share-box { display: none; margin-top: 8px; }
+  .share-box input { width: 100%; font-size: 12px; color: var(--ink-2); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>🛒 双11凑满减小助手</h1>
+    <span class="sub">数据只存在本机</span>
+  </header>
+
+  <!-- 总览 -->
+  <div class="card overview">
+    <div class="row">
+      <div class="cell"><div class="k">原价合计</div><div class="v" id="ov-before">¥0<small>.00</small></div></div>
+      <div class="cell"><div class="k">已省</div><div class="v saved" id="ov-saved">¥0<small>.00</small></div></div>
+      <div class="cell"><div class="k">预计实付</div><div class="v" id="ov-after">¥0<small>.00</small></div></div>
+    </div>
+  </div>
+
+  <!-- 满减池 -->
+  <div class="card">
+    <h2>满减规则 <span class="hint">每满 X 减 Y · 可多池，满减不跨池</span></h2>
+    <div id="pools"></div>
+    <div class="presets">
+      <button class="mini ghost" data-preset="30000,5000">+ 每300减50</button>
+      <button class="mini ghost" data-preset="20000,3000">+ 每200减30</button>
+      <button class="mini ghost" data-preset="100000,12000">+ 当作消费券 满1000减120</button>
+    </div>
+  </div>
+
+  <!-- 商品清单 -->
+  <div class="card">
+    <h2>购物清单 <span class="hint">填直播间到手价（券后/折后价）</span></h2>
+    <form id="add-item" class="add-form" autocomplete="off">
+      <input type="text" id="it-name" placeholder="商品名（可留空）">
+      <input type="text" id="it-price" inputmode="decimal" placeholder="价格 如 298">
+      <button type="submit">添加</button>
+      <div class="second">
+        <select id="it-pool"></select>
+        <input type="number" id="it-qty" min="1" max="99" value="1" title="数量">
+        <button type="button" class="ghost" id="it-add2">＋加一件</button>
+      </div>
+    </form>
+    <div class="err" id="it-err"></div>
+    <div id="items"></div>
+  </div>
+
+  <!-- 凑单助手 -->
+  <div class="card">
+    <h2>凑单助手 <span class="hint">挑最划算的组合凑到下一档</span></h2>
+    <div class="cd-config">
+      <select id="cd-pool"></select>
+      <button id="cd-go">帮我凑 👉</button>
+    </div>
+    <div class="cd-gap" id="cd-gap"></div>
+    <div style="font-size:12px;color:var(--ink-2);margin-bottom:4px">候选凑单品（点选参与，价格可按实际改）：</div>
+    <div class="filler-list" id="fillers"></div>
+    <div class="filler-add">
+      <input type="text" id="fl-name" placeholder="自定义凑单品名">
+      <input type="text" id="fl-price" inputmode="decimal" placeholder="价格">
+      <button class="ghost" id="fl-add">添加</button>
+    </div>
+    <div class="err" id="fl-err"></div>
+    <div id="cd-result"></div>
+  </div>
+
+  <!-- 整单券 -->
+  <div class="card">
+    <h2>整单券 <span class="hint">门槛按满减后总价计算</span></h2>
+    <div id="coupons"></div>
+    <div class="coupon-row">
+      <input type="text" id="cp-name" placeholder="券名 如 官方消费券">
+      <input type="text" class="num" id="cp-min" inputmode="decimal" placeholder="满X">
+      <input type="text" class="num" id="cp-off" inputmode="decimal" placeholder="减Y">
+      <button class="ghost mini" id="cp-add">添加</button>
+      <span></span>
+    </div>
+    <div class="err" id="cp-err"></div>
+  </div>
+
+  <footer>
+    <button class="plain mini" id="btn-share">复制分享链接</button>
+    <button class="plain mini" id="btn-clear">清空全部</button>
+  </footer>
+  <div class="share-box" id="share-box"><input type="text" id="share-url" readonly></div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+'use strict';
+/**
+ * MJCore — 淘宝双11满减凑单核心算法
+ * 金额一律用「分」（整数）运算，避免浮点误差。
+ * 兼容 node（module.exports）与浏览器（window.MJCore）。
+ */
+const MJCore = (() => {
+
+  // ---------- 金额转换 ----------
+
+  /** 把 '89' / '89.5' / '89.55' / '1,299.00' / 12.34 转为分；非法输入抛错 */
+  function toCents(input) {
+    let s = String(input ?? '').trim().replace(/,/g, '');
+    if (typeof input === 'number') s = input.toFixed(2);
+    if (!/^\d+(\.\d{1,2})?$/.test(s)) throw new Error('价格格式不正确：' + input);
+    const [yuan, dec = ''] = s.split('.');
+    return parseInt(yuan, 10) * 100 + parseInt(dec.padEnd(2, '0'), 10);
+  }
+
+  /** 分 -> '89.00' */
+  function fmt(cents) {
+    const sign = cents < 0 ? '-' : '';
+    const abs = Math.abs(Math.round(cents));
+    return sign + Math.floor(abs / 100) + '.' + String(abs % 100).padStart(2, '0');
+  }
+
+  // ---------- 满减计算 ----------
+
+  /**
+   * 单池结算：小计、已享档数与折扣、距下一档差距、到手价。
+   * 恰为整数倍时 gap 为整档（下一档需再加满 X）。
+   */
+  function poolSummary(items, pool) {
+    const subtotal = items
+      .filter((i) => i.poolId === pool.id)
+      .reduce((acc, i) => acc + i.price * (i.qty || 1), 0);
+    const tiers = Math.floor(subtotal / pool.per);
+    const discount = tiers * pool.off;
+    const rem = subtotal % pool.per;
+    const gap = rem === 0 ? pool.per : pool.per - rem;
+    return { subtotal, tiers, discount, gap, effective: subtotal - discount };
+  }
+
+  /**
+   * 整车结算：分池汇总 + 整单券（门槛按满减后总价判定，每张独立判）。
+   */
+  function cartSummary(items, pools, coupons = []) {
+    const perPool = {};
+    for (const p of pools) perPool[p.id] = poolSummary(items, p);
+    const totalBefore = Object.values(perPool).reduce((a, s) => a + s.subtotal, 0);
+    const totalMJ = Object.values(perPool).reduce((a, s) => a + s.discount, 0);
+    const afterMJ = totalBefore - totalMJ;
+    let totalCoupon = 0;
+    const couponResults = (coupons || []).map((c) => {
+      const ok = afterMJ >= c.min;
+      if (ok) totalCoupon += c.off;
+      return { coupon: c, ok, gap: ok ? 0 : c.min - afterMJ };
+    });
+    const totalAfter = afterMJ - totalCoupon;
+    return {
+      pools: perPool,
+      totalBefore, totalMJ, afterMJ,
+      coupons: couponResults, totalCoupon,
+      totalAfter, totalSaved: totalBefore - totalAfter,
+    };
+  }
+
+  // ---------- 凑单求解（子集和 DP）----------
+
+  /**
+   * 求解：从候选凑单品中挑组合，总价≥gap 且溢出最小（over），
+   * 以及总价<gap 且最接近（under）。各返回最多 maxResults 组不同总价。
+   * 候选：{name, price(分), maxQty(默认1)}。
+   * 数量上限按有界背包展开；DP 上界 gap+maxPrice（最小溢出必在此窗口内：
+   * 若组合溢出≥maxPrice，去掉一件仍≥gap 且更优）。
+   */
+  function bestFillers(gap, candidates, maxResults = 3) {
+    const out = { over: [], under: [] };
+    if (!candidates.length || gap <= 0) return out;
+
+    const maxPrice = Math.max(...candidates.map((c) => c.price));
+    const bound = gap + maxPrice; // 可达和上界（含）
+    const reach = new Uint8Array(bound + 1);
+    const cnt = new Int32Array(bound + 1).fill(Infinity); // 达到该和的最少件数
+    const parentSum = new Int32Array(bound + 1).fill(-1);
+    const parentIdx = new Int32Array(bound + 1).fill(-1);
+    reach[0] = 1;
+    cnt[0] = 0;
+
+    // 同价候选分组，有界背包按"该价格最多用 n 件"处理会破坏路径回溯，
+    // 因此仍按件展开（数量上限封顶，展开量可控）。
+    for (let idx = 0; idx < candidates.length; idx++) {
+      const { price, maxQty = 1 } = candidates[idx];
+      if (price <= 0) continue;
+      const cap = Math.max(1, Math.min(maxQty, Math.floor(bound / price)));
+      // 01背包倒序 × cap 次展开该候选的每一"件"
+      for (let copy = 0; copy < cap; copy++) {
+        for (let s = bound; s >= price; s--) {
+          if (!reach[s - price]) continue;
+          const newCnt = cnt[s - price] + 1;
+          if (!reach[s] || newCnt < cnt[s]) {
+            reach[s] = 1;
+            cnt[s] = newCnt;
+            parentSum[s] = s - price;
+            parentIdx[s] = idx;
+          }
+        }
+      }
+    }
+
+    const rebuild = (sum) => {
+      const counts = {};
+      let s = sum;
+      while (s > 0) {
+        const idx = parentIdx[s];
+        counts[idx] = (counts[idx] || 0) + 1;
+        s = parentSum[s];
+      }
+      const items = Object.entries(counts).map(([idx, qty]) => ({
+        name: candidates[idx].name,
+        price: candidates[idx].price,
+        qty,
+      }));
+      items.sort((a, b) => b.price * a.qty - a.price * b.qty);
+      return items;
+    };
+
+    const overSums = [];
+    for (let s = gap; s <= bound; s++) if (reach[s]) overSums.push(s);
+    overSums.sort((a, b) => (a - gap) - (b - gap) || cnt[a] - cnt[b]);
+    for (const s of overSums.slice(0, maxResults)) {
+      out.over.push({ items: rebuild(s), total: s, overshoot: s - gap });
+    }
+
+    const underSums = [];
+    for (let s = 1; s < gap; s++) if (reach[s]) underSums.push(s); // 排除空组合
+    underSums.sort((a, b) => b - a || cnt[a] - cnt[b]);
+    for (const s of underSums.slice(0, maxResults)) {
+      out.under.push({ items: rebuild(s), total: s, remainGap: gap - s });
+    }
+    return out;
+  }
+
+  // ---------- 状态序列化（URL hash 分享）----------
+
+  function encodeState(state) {
+    const json = JSON.stringify(state);
+    const b64 = (typeof btoa === 'function' ? btoa(unescape(encodeURIComponent(json)))
+      : Buffer.from(json, 'utf8').toString('base64'));
+    return b64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  }
+
+  function decodeState(encoded) {
+    try {
+      let b64 = String(encoded).replace(/-/g, '+').replace(/_/g, '/');
+      while (b64.length % 4) b64 += '=';
+      const json = (typeof atob === 'function' ? decodeURIComponent(escape(atob(b64)))
+        : Buffer.from(b64, 'base64').toString('utf8'));
+      const st = JSON.parse(json);
+      if (!Array.isArray(st.pools) || !Array.isArray(st.items)) return null;
+      return st;
+    } catch {
+      return null;
+    }
+  }
+
+  return { toCents, fmt, poolSummary, cartSummary, bestFillers, encodeState, decodeState };
+})();
+
+if (typeof module !== 'undefined' && module.exports) module.exports = { MJCore };
+if (typeof window !== 'undefined') window.MJCore = MJCore;
+
+</script>
+<script>
+'use strict';
+(() => {
+  const { toCents, fmt, cartSummary, bestFillers, encodeState, decodeState } = MJCore;
+  const $ = (id) => document.getElementById(id);
+  const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+  const yuan = (c) => '¥' + fmt(c);
+  const esc = (s) => String(s).replace(/[&<>"']/g, (m) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+
+  const PRESET_FILLERS = [
+    ['发圈小皮筋', 590], ['便利贴', 790], ['数据线', 990], ['垃圾袋', 1290],
+    ['手机膜', 1590], ['袜子3双装', 1990], ['收纳袋', 2590], ['抽纸×3包', 2990],
+    ['洗衣液', 3990], ['保温杯', 5900], ['暖手宝', 9900], ['毛线帽', 12900],
+    ['香薰蜡烛', 16900],
+  ].map(([name, price]) => ({ id: uid(), name, price, maxQty: 2 }));
+
+  function initialState() {
+    const p1 = { id: 'p1', name: '跨店满减', per: 30000, off: 5000 };
+    return {
+      pools: [p1],
+      items: [
+        { id: uid(), name: '面霜（示例，可删）', price: 29800, poolId: 'p1', qty: 1 },
+        { id: uid(), name: '精华（示例，可删）', price: 40200, poolId: 'p1', qty: 1 },
+      ],
+      coupons: [],
+      fillers: PRESET_FILLERS,
+      picked: PRESET_FILLERS.map((f) => f.id),
+    };
+  }
+
+  // ---------- 持久化 ----------
+  const KEY = 'mj-tool-v1';
+  let state = null;
+  try {
+    const raw = localStorage.getItem(KEY);
+    if (raw) state = JSON.parse(raw);
+  } catch { state = null; }
+  if (!state || !Array.isArray(state.pools)) state = initialState();
+
+  // URL hash 导入（手机接收分享链接用）
+  if (location.hash.length > 1) {
+    const shared = decodeState(location.hash.slice(1));
+    if (shared) {
+      shared.fillers = Array.isArray(shared.fillers) ? shared.fillers : PRESET_FILLERS;
+      shared.picked = Array.isArray(shared.picked) ? shared.picked : shared.fillers.map((f) => f.id);
+      shared.coupons = Array.isArray(shared.coupons) ? shared.coupons : [];
+      if (confirm('检测到分享的清单，用分享内容覆盖当前清单吗？\n（取消则继续用本机已保存的清单）')) {
+        state = shared;
+      }
+    } else {
+      toast('链接里的清单无法识别，已忽略');
+    }
+    history.replaceState(null, '', location.pathname + location.search);
+  }
+
+  const save = () => { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch {} };
+
+  // ---------- 池 ----------
+  function renderPools() {
+    $('pools').innerHTML = state.pools.map((p) => `
+      <div class="pool-row" data-id="${p.id}">
+        <input type="text" value="${esc(p.name)}" data-k="name" title="池名称">
+        <span class="sep">每满</span><input type="text" class="num" value="${fmt(p.per)}" data-k="per" inputmode="decimal">
+        <span class="sep">减</span><input type="text" class="num" value="${fmt(p.off)}" data-k="off" inputmode="decimal">
+        <span class="del" data-del="1" title="删除该池（含其商品）">✕</span>
+      </div>`).join('') || '<div class="empty-tip">还没有满减池，先在下面加一个</div>';
+  }
+
+  $('pools').addEventListener('input', (e) => {
+    const row = e.target.closest('.pool-row'); if (!row) return;
+    const p = state.pools.find((x) => x.id === row.dataset.id); if (!p) return;
+    const k = e.target.dataset.k; if (!k) return;
+    if (k === 'name') { p.name = e.target.value.trim() || '未命名'; }
+    else {
+      try { p[k] = toCents(e.target.value); e.target.style.color = ''; }
+      catch { e.target.style.color = 'var(--red)'; return; }
+    }
+    save(); renderAll(false);
+  });
+
+  $('pools').addEventListener('click', (e) => {
+    if (!e.target.dataset.del) return;
+    const row = e.target.closest('.pool-row');
+    const p = state.pools.find((x) => x.id === row.dataset.id);
+    const n = state.items.filter((i) => i.poolId === p.id).length;
+    if (!confirm(`删除池「${p.name}」？该池下 ${n} 件商品会一并删除。`)) return;
+    state.pools = state.pools.filter((x) => x.id !== p.id);
+    state.items = state.items.filter((i) => i.poolId !== p.id);
+    save(); renderAll();
+  });
+
+  document.querySelectorAll('[data-preset]').forEach((b) => b.addEventListener('click', () => {
+    const [per, off] = b.dataset.preset.split(',').map(Number);
+    if (per === 100000) { // 消费券预设 -> 加为整单券
+      state.coupons.push({ id: uid(), name: '官方消费券', min: per, off });
+      toast('已加为整单券');
+    } else {
+      const exist = state.pools.some((p) => p.per === per && p.off === off);
+      if (exist) { toast('这个池已经有了'); return; }
+      state.pools.push({ id: uid(), name: `满${fmt(per)}减${fmt(off)}`, per, off });
+    }
+    save(); renderAll();
+  }));
+
+  // ---------- 商品 ----------
+  function renderPoolSelects() {
+    const opts = state.pools.map((p) => `<option value="${p.id}">${esc(p.name)}（每${fmt(p.per)}减${fmt(p.off)}）</option>`).join('');
+    const keep1 = $('it-pool').value, keep2 = $('cd-pool').value;
+    $('it-pool').innerHTML = opts;
+    $('cd-pool').innerHTML = opts;
+    if (state.pools.some((p) => p.id === keep1)) $('it-pool').value = keep1;
+    if (state.pools.some((p) => p.id === keep2)) $('cd-pool').value = keep2;
+    if (!$('cd-pool').value && state.pools[0]) $('cd-pool').value = state.pools[0].id;
+  }
+
+  function renderItems(sum) {
+    const box = $('items');
+    if (!state.items.length) { box.innerHTML = '<div class="empty-tip">还没有商品，先加上面想要的～</div>'; return; }
+    box.innerHTML = state.pools.map((p) => {
+      const s = sum.pools[p.id] || { subtotal: 0, tiers: 0, discount: 0, gap: p.per, effective: 0 };
+      const its = state.items.filter((i) => i.poolId === p.id);
+      if (!its.length) return '';
+      const rows = its.map((i) => `
+        <div class="item-row" data-id="${i.id}">
+          <span class="nm">${esc(i.name)}</span>
+          <span class="qty"><button data-q="-1">−</button><span class="n">${i.qty}</span><button data-q="1">＋</button></span>
+          <span class="pr">${yuan(i.price * i.qty)}</span>
+          <span class="del-x" data-del="1">✕</span>
+        </div>`).join('');
+      return `
+        <div class="group">
+          <div class="group-head">
+            <span class="tag">${esc(p.name)}</span>
+            <span class="stat">小计 <b>${yuan(s.subtotal)}</b> · 已减 <b>${yuan(s.discount)}</b></span>
+            <span class="stat">再花 <b>${yuan(s.gap)}</b> 再减 <b>${yuan(p.off)}</b></span>
+            <button class="mini ghost btn-coudan" data-coudan="${p.id}">去凑单</button>
+          </div>
+          ${rows}
+        </div>`;
+    }).join('');
+  }
+
+  $('items').addEventListener('click', (e) => {
+    const row = e.target.closest('.item-row'); if (!row) return;
+    const item = state.items.find((i) => i.id === row.dataset.id); if (!item) return;
+    if (e.target.dataset.del) state.items = state.items.filter((i) => i.id !== item.id);
+    else if (e.target.dataset.q) { item.qty = Math.max(1, Math.min(99, item.qty + Number(e.target.dataset.q))); }
+    else return;
+    save(); renderAll();
+  });
+
+  $('items').addEventListener('click', (e) => {
+    const pid = e.target.dataset && e.target.dataset.coudan;
+    if (!pid) return;
+    $('cd-pool').value = pid;
+    calcCoudan();
+    document.querySelector('.cd-config').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  });
+
+  const showErr = (id, msg) => { const el = $(id); el.textContent = msg || ''; el.style.display = msg ? 'block' : 'none'; };
+
+  function addItem() {
+    showErr('it-err');
+    let price;
+    try { price = toCents($('it-price').value); }
+    catch { showErr('it-err', '价格没填对，试试 298 或 298.00'); return; }
+    const name = $('it-name').value.trim() || '商品' + (state.items.length + 1);
+    const qty = Math.max(1, Math.min(99, parseInt($('it-qty').value, 10) || 1));
+    state.items.push({ id: uid(), name, price, poolId: $('it-pool').value, qty });
+    $('it-name').value = ''; $('it-price').value = ''; $('it-qty').value = 1;
+    save(); renderAll();
+    $('it-name').focus();
+  }
+  $('add-item').addEventListener('submit', (e) => { e.preventDefault(); addItem(); });
+  $('it-add2').addEventListener('click', addItem);
+
+  // ---------- 凑单助手 ----------
+  function renderFillers() {
+    $('fillers').innerHTML = state.fillers.map((f) => `
+      <span class="filler-chip ${state.picked.includes(f.id) ? 'on' : ''}" data-id="${f.id}">
+        ${esc(f.name)} <span class="p">${fmt(f.price)}</span><span class="del" data-fdel="1">✕</span>
+      </span>`).join('') || '<span class="empty-tip">没有候选凑单品</span>';
+  }
+
+  $('fillers').addEventListener('click', (e) => {
+    const chip = e.target.closest('.filler-chip'); if (!chip) return;
+    const id = chip.dataset.id;
+    if (e.target.dataset.fdel) {
+      state.fillers = state.fillers.filter((f) => f.id !== id);
+      state.picked = state.picked.filter((x) => x !== id);
+    } else {
+      state.picked = state.picked.includes(id) ? state.picked.filter((x) => x !== id) : [...state.picked, id];
+    }
+    save(); renderFillers(); calcCoudan();
+  });
+
+  $('fl-add').addEventListener('click', () => {
+    showErr('fl-err');
+    let price;
+    try { price = toCents($('fl-price').value); }
+    catch { showErr('fl-err', '价格没填对'); return; }
+    const name = $('fl-name').value.trim() || '凑单品';
+    const f = { id: uid(), name, price, maxQty: 2 };
+    state.fillers.push(f); state.picked.push(f.id);
+    $('fl-name').value = ''; $('fl-price').value = '';
+    save(); renderFillers(); calcCoudan();
+  });
+
+  function calcCoudan() {
+    const res = $('cd-result');
+    const pid = $('cd-pool').value;
+    const pool = state.pools.find((p) => p.id === pid);
+    if (!pool) { $('cd-gap').textContent = ''; res.innerHTML = ''; return; }
+    const items = state.items.filter((i) => i.poolId === pid);
+    const sub = items.reduce((a, i) => a + i.price * i.qty, 0);
+    const tiers = Math.floor(sub / pool.per);
+    const rem = sub % pool.per;
+    const gap = rem === 0 ? pool.per : pool.per - rem;
+    $('cd-gap').innerHTML = items.length
+      ? `「${esc(pool.name)}」小计 <b>${yuan(sub)}</b>，已减 ${yuan(tiers * pool.off)}；再凑 <b>${yuan(gap)}</b> 即可再减 <b>${yuan(pool.off)}</b>`
+      : `这个池还没有商品`;
+    if (!items.length) { res.innerHTML = ''; return; }
+
+    const cands = state.fillers.filter((f) => state.picked.includes(f.id) && f.price > 0);
+    const r = bestFillers(gap, cands);
+    if (!r.over.length && !r.under.length) {
+      res.innerHTML = '<div class="empty-tip">没有可用的候选凑单品，先在上面添加几个吧</div>';
+      return;
+    }
+    const card = (c, kind, i) => {
+      const list = c.items.map((x) => `${esc(x.name)}×${x.qty}`).join(' ＋ ');
+      if (kind === 'over') {
+        const newTiers = Math.floor((sub + c.total) / pool.per) - tiers;
+        const gain = newTiers * pool.off;
+        const pay = c.total - gain;
+        return `
+          <div class="combo ${i === 0 ? 'best' : ''}">
+            <div class="t"><span>${i === 0 ? '⭐ 最优' : '方案 ' + (i + 1)} · 溢出 <span class="who">${yuan(c.overshoot)}</span></span><span>共 ${yuan(c.total)}</span></div>
+            <div class="list">${list}</div>
+            <div class="pay">凑完新减 <b style="color:var(--red)">${yuan(gain)}</b>，这组凑单品实付只要 <b style="color:var(--red)">${yuan(pay)}</b>（原价 ${yuan(c.total)}）</div>
+            <div class="act"><button class="mini" data-adopt="${esc(JSON.stringify({ items: c.items, poolId: pid }))}">加入清单</button></div>
+          </div>`;
+      }
+      return `
+        <div class="combo">
+          <div class="t"><span>不想多花钱 · 差 <span class="who">${yuan(c.remainGap)}</span> 到下一档</span><span>共 ${yuan(c.total)}</span></div>
+          <div class="list">${list}</div>
+          <div class="pay">此组合不触发新的满减，按原价花 <b>${yuan(c.total)}</b></div>
+          <div class="act"><button class="mini ghost" data-adopt="${esc(JSON.stringify({ items: c.items, poolId: pid }))}">加入清单</button></div>
+        </div>`;
+    };
+    res.innerHTML =
+      (r.over.length ? '<div style="font-size:12px;color:var(--ink-2);margin-top:10px">✅ 越线方案（推荐，溢出最小）：</div>' + r.over.map((c, i) => card(c, 'over', i)).join('') : '') +
+      (r.under.length ? '<div style="font-size:12px;color:var(--ink-2);margin-top:10px">💰 不越线、最接近的方案：</div>' + r.under.map((c) => card(c, 'under', 9)).join('') : '');
+  }
+
+  $('cd-go').addEventListener('click', calcCoudan);
+  $('cd-pool').addEventListener('change', calcCoudan);
+
+  $('cd-result').addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-adopt]'); if (!btn) return;
+    const { items, poolId } = JSON.parse(btn.dataset.adopt);
+    for (const x of items) {
+      state.items.push({ id: uid(), name: x.name + '（凑单）', price: x.price, poolId, qty: x.qty || 1 });
+    }
+    save(); renderAll(); calcCoudan();
+    toast('已加入清单');
+  });
+
+  // ---------- 券 ----------
+  function renderCoupons(sum) {
+    $('coupons').innerHTML = state.coupons.map((c, i) => {
+      const st = sum.coupons[i];
+      return `
+        <div class="coupon-row">
+          <span>${esc(c.name)}</span>
+          <span>满 ${fmt(c.min)}</span><span>减 ${fmt(c.off)}</span>
+          <span style="${st.ok ? 'color:var(--green)' : 'color:var(--ink-2)'}">${st.ok ? '✓ 已达标' : '差 ' + fmt(st.gap) + ' 可用'}</span>
+          <span class="del-x" data-cpdel="${c.id}">✕</span>
+        </div>`;
+    }).join('');
+  }
+
+  $('coupons').addEventListener('click', (e) => {
+    const id = e.target.dataset.cpdel; if (!id) return;
+    state.coupons = state.coupons.filter((c) => c.id !== id);
+    save(); renderAll();
+  });
+
+  $('cp-add').addEventListener('click', () => {
+    showErr('cp-err');
+    let min, off;
+    try { min = toCents($('cp-min').value); off = toCents($('cp-off').value); }
+    catch { showErr('cp-err', '门槛和金额都要填，如 满1000 减120'); return; }
+    state.coupons.push({ id: uid(), name: $('cp-name').value.trim() || '整单券', min, off });
+    $('cp-name').value = ''; $('cp-min').value = ''; $('cp-off').value = '';
+    save(); renderAll();
+  });
+
+  // ---------- 总览 / 全量渲染 ----------
+  function renderAll(rerunCoudan = true) {
+    const sum = cartSummary(state.items, state.pools, state.coupons);
+    $('ov-before').innerHTML = yuan(sum.totalBefore);
+    $('ov-saved').innerHTML = '−' + yuan(sum.totalSaved);
+    $('ov-after').innerHTML = yuan(sum.totalAfter);
+    renderPools();
+    renderPoolSelects();
+    renderItems(sum);
+    renderFillers();
+    renderCoupons(sum);
+    if (rerunCoudan) calcCoudan();
+    save();
+  }
+
+  // ---------- 分享 / 清空 ----------
+  $('btn-share').addEventListener('click', async () => {
+    const url = location.href.split('#')[0] + '#' + encodeState(state);
+    try {
+      await navigator.clipboard.writeText(url);
+      toast('链接已复制，发到手机打开即可');
+    } catch {
+      $('share-box').style.display = 'block';
+      $('share-url').value = url;
+      $('share-url').select();
+      toast('长按/⌘C 复制下面的链接');
+    }
+  });
+
+  $('btn-clear').addEventListener('click', () => {
+    if (!confirm('清空全部商品/规则/券？（候选凑单品保留）')) return;
+    const keepFillers = state.fillers, keepPicked = state.picked;
+    state = initialState();
+    state.items = []; state.coupons = [];
+    state.fillers = keepFillers; state.picked = keepPicked;
+    save(); renderAll();
+  });
+
+  let toastTimer;
+  function toast(msg) {
+    const t = $('toast'); t.textContent = msg; t.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => t.classList.remove('show'), 2200);
+  }
+
+  renderAll();
+})();
+</script>
+</body>
+</html>
