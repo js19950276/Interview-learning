@@ -6,7 +6,7 @@ struct GameView: View {
     let onExit: () -> Void
 
     init(session: GameSession, onExit: @escaping () -> Void) {
-        _vm = StateObject(wrappedValue: GameViewModel(config: session.config, seed: session.seed))
+        _vm = StateObject(wrappedValue: GameViewModel(config: session.config, seed: session.seed, ai: session.difficulty))
         self.onExit = onExit
     }
 

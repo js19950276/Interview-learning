@@ -2,6 +2,29 @@ import Foundation
 import Combine
 import PokerEngine
 
+/// AI 难度档：baseline 沿用 VM 默认（全员 HeuristicAI），其余档位全机器人换 PIMCAI 预设。
+enum AIDifficulty: String, CaseIterable, Identifiable {
+    case baseline = "基线（启发式）"
+    case easy = "轻松"
+    case normal = "普通"
+    case hard = "困难"
+    var id: String { rawValue }
+
+    /// nil → 沿用 VM 默认（全员 HeuristicAI）
+    func bots(humanSeat: Int, playerCount: Int) -> [Int: any PokerAI]? {
+        let pimc: PIMCAI?
+        switch self {
+        case .baseline: return nil
+        case .easy: pimc = PIMCAI.easy
+        case .normal: pimc = PIMCAI.normal
+        case .hard: pimc = PIMCAI.hard
+        }
+        guard let ai = pimc else { return nil }
+        return Dictionary(uniqueKeysWithValues:
+            (0..<playerCount).filter { $0 != humanSeat }.map { ($0, ai as any PokerAI) })
+    }
+}
+
 @MainActor
 final class GameViewModel: ObservableObject {
     @Published private(set) var state: GameState
@@ -10,12 +33,13 @@ final class GameViewModel: ObservableObject {
     private let thinkNanos: UInt64
 
     init(config: GameConfig, seed: UInt64,
-         bots: [Int: any PokerAI]? = nil, thinkMilliseconds: Int = 700) {
+         bots: [Int: any PokerAI]? = nil, thinkMilliseconds: Int = 700,
+         ai: AIDifficulty = .baseline) {
         state = .start(config: config, seed: seed)
         let defaults: [Int: any PokerAI] = Dictionary(uniqueKeysWithValues:
             (0..<config.playerCount).filter { $0 != config.humanSeat }
                 .map { ($0, HeuristicAI(aggression: 0.5) as any PokerAI) })
-        self.bots = bots ?? defaults
+        self.bots = bots ?? ai.bots(humanSeat: config.humanSeat, playerCount: config.playerCount) ?? defaults
         thinkNanos = UInt64(max(1, thinkMilliseconds)) * 1_000_000
     }
 
