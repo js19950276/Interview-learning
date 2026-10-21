@@ -62,4 +62,13 @@ final class PIMCAITests: XCTestCase {
         XCTAssertEqual(PIMCAI.normal.worlds, 16); XCTAssertEqual(PIMCAI.normal.iterationsPerWorld, 64)
         XCTAssertEqual(PIMCAI.hard.worlds, 32); XCTAssertEqual(PIMCAI.hard.iterationsPerWorld, 125)
     }
+
+    /// 时间预算截断路径：极小预算下决策仍合法（修复轮改动的路径）。
+    func testTinyTimeBudgetStillLegal() {
+        let s = GameState.start(config: GameConfig(playerCount: 2, startingStack: 2000, format: .cash(sb: 10, bb: 20)),
+                                seed: 123, buttonSeat: 0)
+        let ai = PIMCAI(worlds: 16, iterationsPerWorld: 64, timeBudgetMs: 1)   // 必然截断
+        let decision = ai.decide(s, seat: s.actorSeat!)
+        XCTAssertTrue(isLegal(decision, in: legalActions(s)))
+    }
 }

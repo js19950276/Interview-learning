@@ -58,4 +58,27 @@ final class BattleTests: XCTestCase {
         XCTAssertEqual(outcomes.first?.seatDeltas.count, 6)
         for o in outcomes { XCTAssertEqual(o.seatDeltas.reduce(0, +), 0) }
     }
+
+    /// 六人桌按方聚合：a 用满 3 席、a/b 镜像互反（headsUp 退化为单席）。
+    func testSideMeanDeltasMirrorSixMax() {
+        // 构造 6 手已知结果：每手 a 方三席合计 +60、b 方三席合计 -60（均分到席）
+        let outcomes = (0..<6).map { i -> HandOutcome in
+            let rotate = i % 6
+            var deltas = [Int](repeating: 0, count: 6)
+            for s in 0..<6 {
+                let isA = ((s - rotate + 6) % 6) % 2 == 0
+                deltas[s] = isA ? 20 : -20
+            }
+            return HandOutcome(handIndex: i, seatDeltas: deltas)
+        }
+        let a = sideMeanDeltas(outcomes, forA: true)
+        let b = sideMeanDeltas(outcomes, forA: false)
+        XCTAssertEqual(a, [Double](repeating: 20, count: 6))
+        XCTAssertEqual(b, [Double](repeating: -20, count: 6))
+        // headsUp 退化：a 的锚位 = handIndex % n（hand0→seat0，hand1→seat1）
+        let hu = [HandOutcome(handIndex: 0, seatDeltas: [30, -30]),
+                  HandOutcome(handIndex: 1, seatDeltas: [-30, 30])]
+        XCTAssertEqual(sideMeanDeltas(hu, forA: true), [30, 30])    // hand0 a=seat0(+30)，hand1 a=seat1(+30)
+        XCTAssertEqual(sideMeanDeltas(hu, forA: false), [-30, -30])
+    }
 }

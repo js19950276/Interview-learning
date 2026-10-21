@@ -5,7 +5,9 @@ func makeAI(_ spec: String) -> (any PokerAI)? {
     let parts = spec.split(separator: ":")
     guard parts.count == 2 else { return nil }
     switch (String(parts[0]), String(parts[1])) {
-    case ("heuristic", let g): return HeuristicAI(aggression: Double(g) ?? 0.5)
+    case ("heuristic", let g):
+        guard let agg = Double(g) else { return nil }
+        return HeuristicAI(aggression: agg)
     case ("pimc", "easy"): return PIMCAI.easy
     case ("pimc", "normal"): return PIMCAI.normal
     case ("pimc", "hard"): return PIMCAI.hard
@@ -23,7 +25,7 @@ func flag(_ name: String, default def: String) -> String {
     return def
 }
 
-// 零参数调用必须默认进入 battle 分支（打印 usage），removeFirst() 对空数组会崩溃。
+// 零参数默认进入 battle（默认参数集）。
 let sub = args.first ?? "battle"
 if !args.isEmpty { args.removeFirst() }
 let aSpec = flag("--a", default: "pimc:normal")
@@ -50,9 +52,8 @@ case "battle":
     let outcomes = await runBattle(a: a, b: b, table: table, hands: hands,
                                    seedBase: seed, concurrency: concurrency)
     let elapsed = Date().timeIntervalSince(t0)
-    let n = table.playerCount
-    let aDeltas = outcomes.map { Double($0.seatDeltas[$0.handIndex % n]) / 20.0 }
-    let bDeltas = outcomes.map { Double($0.seatDeltas[($0.handIndex % n + 1) % n]) / 20.0 }
+    let aDeltas = sideMeanDeltas(outcomes, forA: true).map { $0 / 20.0 }
+    let bDeltas = sideMeanDeltas(outcomes, forA: false).map { $0 / 20.0 }
     let aBB = aDeltas.reduce(0, +) / Double(hands) * 100
     let bBB = bDeltas.reduce(0, +) / Double(hands) * 100
     print("hands=\(hands) table=\(table == .headsUp ? "hu" : "six") seed=\(seed) concurrency=\(concurrency) elapsed=\(String(format: "%.1f", elapsed))s")
@@ -61,10 +62,10 @@ case "battle":
 case "bench":
     // --ai 为 bench 的文档化入参（README/Task 7）；未提供时回落到 --a。
     guard let a = makeAI(flag("--ai", default: aSpec)) else { print("unknown ai"); exit(2) }
-    // PIMC 自对战会在数手内打光 10000 筹码 → 现金局会话结束（tournamentOver），
+    // PIMC 自对战会在数手内打光 20000 筹码 → 现金局会话结束（tournamentOver），
     // 后续手循环空转。基准测试需要持续样本：会话结束即重开一桌（种子 = seed+h）。
     func freshTable(_ h: Int) -> GameState {
-        GameState.start(config: GameConfig(playerCount: 2, startingStack: 10_000,
+        GameState.start(config: GameConfig(playerCount: 2, startingStack: 20_000,
                                            format: .cash(sb: 10, bb: 20)),
                         seed: seed &+ UInt64(h))
     }
