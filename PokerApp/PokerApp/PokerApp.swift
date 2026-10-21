@@ -25,12 +25,3 @@ struct GameSession: Identifiable {
     let seed: UInt64
 }
 
-/// Task 13 替换为完整牌桌。
-struct GameView: View {
-    let session: GameSession
-    let onExit: () -> Void
-
-    var body: some View {
-        Text("牌桌（Task 13）")
-    }
-}
