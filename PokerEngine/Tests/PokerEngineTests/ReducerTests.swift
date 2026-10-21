@@ -65,12 +65,11 @@ final class ReducerTests: XCTestCase {
         XCTAssertTrue(s.street == .handOver || s.street == .river)
     }
 
-    func testAllInRunoutDealsAllStreets() throws {
+    func testAllInRunoutDealsAllStreets() {
         var s = GameState.start(config: GameConfig(playerCount: 2, startingStack: 1000, format: .cash(sb: 5, bb: 10)), seed: 14, buttonSeat: 0)
         s.apply(.raiseTo(1000))     // 按钮/SB 全下
         s.apply(.call)              // BB 跟全下
-        // 双方 all-in → 直接发完（showdown 为 Task 7 空壳，Task 7 完成后此测试恢复）
-        try XCTSkipUnless(ProcessInfo.processInfo.environment["POKER_TASK7_DONE"] != nil, "Task 7 填充 showdown 后启用")
+        // 双方 all-in → runout 发完五张 → showdown 分配（T7 起直接断言）
         XCTAssertEqual(s.board.count, 5)
         XCTAssertEqual(s.street, .handOver)
         XCTAssertFalse(s.handResult!.awards.isEmpty)

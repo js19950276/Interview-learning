@@ -1,3 +1,18 @@
+/// 平分层的奇数筹码分配：按钮顺时针下一位方向的最近赢家拿大份。
+/// 距离从按钮下一位起算（-1）：按钮本人若在赢家中排最后（T7 裁决：brief 公式
+/// `(seat - button)` 会把按钮排第一，与其自身测试用例 b（按钮在 1 → 2 先拿大头）矛盾）。
+/// T7 裁决：brief 将其置于 `extension GameState` 内，但测试以裸函数调用，
+/// 编译强制改为模块级 internal 函数（@testable 可见，契约不变）。
+func splitOddChip(amount: Int, winners: [Int], buttonSeat: Int, playerCount: Int) -> [(seat: Int, amount: Int)] {
+    let n = winners.count
+    let per = amount / n
+    let odd = amount % n
+    let ordered = winners.sorted {
+        (($0 - buttonSeat - 1 + playerCount) % playerCount) < (($1 - buttonSeat - 1 + playerCount) % playerCount)
+    }
+    return ordered.enumerated().map { i, seat in (seat, per + (i == 0 && odd > 0 ? odd : 0)) }
+}
+
 extension GameState {
     /// 唯一的行动入口：作用于当前 actorSeat。
     public mutating func apply(_ action: PlayerAction) {
@@ -116,6 +131,42 @@ extension GameState {
         actorSeat = nil
     }
 
-    // Task 7 原地填充：摊牌与边池
-    mutating func showdown() {}
+    // MARK: - Task 7：摊牌与边池
+
+    mutating func showdown() {
+        let contenders = players.filter { $0.status != .folded && $0.status != .eliminated }
+        precondition(contenders.count >= 2)
+        let ranks: [Int: HandRank] = Dictionary(uniqueKeysWithValues:
+            contenders.map { ($0.seat, HandEvaluator.evaluate($0.holeCards + board)) })
+
+        // 分层：未弃牌玩家的投入上限升序
+        let caps = Array(Set(contenders.map(\.handContribution))).sorted()
+        var layers: [PotLayer] = []
+        var prev = 0
+        for cap in caps {
+            let amount = players.reduce(0) { sum, p in
+                sum + max(0, min(p.handContribution, cap) - prev)
+            }
+            let eligible = contenders.filter { $0.handContribution >= cap }.map(\.seat)
+            if amount > 0 { layers.append(PotLayer(amount: amount, eligibleSeats: eligible)) }
+            prev = cap
+        }
+        pots = layers
+
+        var awards: [PotAward] = []
+        for (i, layer) in layers.enumerated() {
+            let best = layer.eligibleSeats.map { ranks[$0]! }.max()!
+            let winners = layer.eligibleSeats.filter { ranks[$0]! == best }
+            let split = splitOddChip(amount: layer.amount, winners: winners,
+                                     buttonSeat: buttonSeat, playerCount: players.count)
+            for (seat, amount) in split { players[seat].stack += amount }
+            awards.append(PotAward(potIndex: i, amount: layer.amount, winners: winners,
+                                   perWinner: layer.amount / winners.count,
+                                   oddChipSeat: layer.amount % winners.count > 0 ? split[0].seat : nil,
+                                   ranks: ranks))
+        }
+        handResult = HandResult(awards: awards)
+        street = .handOver
+        actorSeat = nil
+    }
 }
