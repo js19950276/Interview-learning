@@ -9,5 +9,10 @@ let package = Package(
     targets: [
         .target(name: "PokerEngine"),
         .testTarget(name: "PokerEngineTests", dependencies: ["PokerEngine"]),
+        .executableTarget(
+            name: "AIConsole",
+            dependencies: ["PokerEngine"],
+            path: "Sources/AIConsole"
+        ),
     ]
 )

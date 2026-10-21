@@ -16,7 +16,7 @@ public struct BattleReport: Equatable, Sendable {
 
 public enum BattleTable: Sendable {
     case headsUp, sixMax
-    var playerCount: Int { self == .headsUp ? 2 : 6 }
+    public var playerCount: Int { self == .headsUp ? 2 : 6 }
 }
 
 /// 无头对战（spec §5）：每手独立重置（现金局 10000 筹码、盲注 10/20）。

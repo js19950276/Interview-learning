@@ -11,3 +11,10 @@ xcodebuild -project PokerApp.xcodeproj -scheme PokerApp -destination 'generic/pl
 ```
 
 或直接用 Xcode 打开 `PokerApp.xcodeproj`。
+
+## AIConsole（AI 评测）
+
+cd PokerEngine 后：
+
+    swift run AIConsole battle --a pimc:normal --b heuristic:0.5 --table hu --hands 20000 --concurrency 8
+    swift run AIConsole bench --ai pimc:hard --hands 100
