@@ -11,7 +11,7 @@ struct PokerApp: App {
                 GameView(session: session) { self.session = nil }
             } else {
                 MenuView { config, seed, difficulty in
-                    session = GameSession(config: config, seed: seed, difficulty: difficulty)
+                    self.session = GameSession(config: config, seed: seed, difficulty: difficulty)
                 }
             }
         }
