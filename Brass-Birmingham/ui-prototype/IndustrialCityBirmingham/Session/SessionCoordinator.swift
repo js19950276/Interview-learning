@@ -146,6 +146,8 @@ actor SessionCoordinator {
     private var processingTask: Task<Void, Never>?
     private var peerByPlayer: [GameCore.PlayerID: GameCore.PlayerID] = [:]
     private var tokens: [GameCore.PlayerID: GameCore.ReconnectToken] = [:]
+    /// AI 接管的座位(host 侧生成,无传输对端;单机模式)。
+    private(set) var aiSeatIDs: Set<GameCore.PlayerID> = []
     private var ready: Set<GameCore.PlayerID> = []
     private var replayCache = ReplayCache()
     private var invalidRecoveryReplayCache = InvalidRecoveryReplayCache()
@@ -455,6 +457,46 @@ actor SessionCoordinator {
     func pass(discardCardID: String) async throws {
         try await submit(.pass(.init(cardID: discardCardID)))
     }
+
+    /// 单机模式:房主 + N 个 AI 座位直接开局。不进大厅名册广播、不给 AI 发快照、
+    /// 不写 tokenStore(AI 不重连);座位进入 tokens/ready/颜色/名册后复用 startGame 主体。
+    func startSinglePlayerGame(aiDifficulties: [GameCore.AIDifficulty]) async throws {
+        guard isHost else { throw Error.hostOnly }
+        guard startPhase == .notStarted, engine == nil else { throw Error.gameAlreadyStarted }
+        guard let verifiedCatalog else { throw Error.dataUnavailable }
+        tokens[configuration.playerID] = configuration.reconnectToken
+        ready.insert(configuration.playerID)
+        playerColors[configuration.playerID] = playerColors[configuration.playerID] ?? lowestFreeColor()
+        for (index, difficulty) in aiDifficulties.enumerated() {
+            let seat = GameCore.PlayerID(rawValue: "ai-\(index + 1)")
+            tokens[seat] = GameCore.ReconnectToken(rawValue: UUID().uuidString)
+            ready.insert(seat)
+            aiSeatIDs.insert(seat)
+            playerNames[seat] = "AI·\(difficulty.displayName)"
+            playerColors[seat] = lowestFreeColor()
+        }
+        try await startGame()
+    }
+
+    /// 仅限 AI 座位:以该座位身份过宿主权威门(串行化/日志/事件落地全复用)。
+    func submitAs(seat: GameCore.PlayerID, _ payload: GameCore.PlayerIntent.Payload) async throws {
+        guard isHost, aiSeatIDs.contains(seat) else { throw Error.hostOnly }
+        guard let engine else { throw Error.gameNotStarted }
+        let intent = GameCore.PlayerIntent(
+            protocolVersion: configuration.protocolVersion,
+            rulesetVersion: configuration.rulesetVersion,
+            roomID: configuration.roomID,
+            senderID: seat,
+            reconnectToken: tokens[seat] ?? configuration.reconnectToken,
+            baseVersion: engine.gameState.authoritativeVersion,
+            payload: payload
+        )
+        try await resolve(intent)
+    }
+
+    /// AIPlayerDriver 只读支持面(宿主侧;AI 的手牌等隐藏信息只有宿主引擎可见)。
+    var authoritativeStateForAI: GameCore.GameState? { engine?.gameState }
+    var verifiedCatalogForAI: GameCore.VerifiedGameDataCatalog? { verifiedCatalog }
 
     func submit(_ payload: GameCore.PlayerIntent.Payload) async throws {
         if !isHost, pauseReason != nil { throw Error.sessionPaused }
@@ -1161,7 +1203,7 @@ actor SessionCoordinator {
             var projections: [GameCore.PlayerID: GameCore.ClientEvent] = [:]
             // 只为权威引擎已知的座位投影；容错防御任何未知座位混入 tokens 的路径。
             let enginePlayerIDs = Set(candidateEngine.gameState.players.map(\.id))
-            let recipients = playerIDs.filter { enginePlayerIDs.contains($0) }
+            let recipients = playerIDs.filter { enginePlayerIDs.contains($0) && aiSeatIDs.contains($0) == false }
             for player in recipients {
                 projections[player] = if let verifiedCatalog {
                     try candidateEngine.clientEvent(event, for: player, catalog: verifiedCatalog, playerNames: playerNames)
@@ -1254,7 +1296,8 @@ actor SessionCoordinator {
         snapshot = local
         publishState()
 
-        for player in playerIDs where player != configuration.playerID {
+        for player in playerIDs
+        where player != configuration.playerID && aiSeatIDs.contains(player) == false {
             guard Set(engine.gameState.players.map(\.id)).contains(player) else { continue }
             let value = if let verifiedCatalog {
                 try engine.snapshot(for: player, catalog: verifiedCatalog, playerNames: playerNames)
@@ -1390,7 +1433,8 @@ actor SessionCoordinator {
             colors: Dictionary(uniqueKeysWithValues: playerColors.map { ($0.key.rawValue, $0.value.rawValue) }),
             matchMode: matchMode
         )
-        for player in playerIDs where player != configuration.playerID {
+        for player in playerIDs
+        where player != configuration.playerID && aiSeatIDs.contains(player) == false {
             do {
                 try await send(.lobbyState(lobby), to: player)
                 // 大厅名册是幂等全量状态:投递成功即代表该座位已同步。
