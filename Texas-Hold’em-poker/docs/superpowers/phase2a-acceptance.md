@@ -1,135 +1,91 @@
-# 阶段 2a 验收证据 v2（根因修复后重验：bench 吞吐 / 500 手方向战 / 20k 手 bb/100 正式验收）
+# 阶段 2a 验收 v3 — 终稿（1000bb 正确口径，spec §1 全子句 PASS）
 
-- 文档版本：**v2**（根因修复后重跑，替换 v1 FAIL 版本；v1 原文留档见文末附录 A，git 历史 `dab78c0`）
+- 文档版本：**v3（终稿 / authoritative）**——1000bb 正确口径下重跑 HU + 6-max 双表 20k 手，spec §1 两个子句全 PASS；v1/v2 原文留档见附录。
 - 运行日期：2026-10-22（CST）
-- 执行者：Task 7 v2（验收重跑）
+- 执行者：Task 7 v3（终审口径修正后重验）
 - 机器：Apple M1（arm64），`hw.ncpu` = 8（物理核 8 / 逻辑核 8），8 GB RAM，macOS 26.6.2（25G83）
-- 构建/运行一律：`--scratch-path /tmp/poker-build`，debug 构建（swift run 默认）；commit 基线：**`2734c08`**（根因修复，父提交 `dab78c0` = v1 验收证据）
+- 构建/运行一律：`--scratch-path /tmp/poker-build`，debug 构建（swift run 默认）；commit 基线：**`86c2373`**（终审修复：battle 1000bb 口径 + 六人桌按方聚合/镜像测试）
+- 回归基线：`swift test`（PokerEngine）**66 tests, 0 failures**。
 
-## 结论（先行）
+**版本沿革**：v1（`dab78c0`）20k 手验收 FAIL（−715.23 ± 171.39，结论性负值），诊断为 rollout 伪重复，根因修复 `2734c08`（PIMC 每迭代重采样新世界）；v2（`0873499`）重跑转为 PASS（+396.52 ± 111.01），但终审发现 battle 桌面口径错误——起始码 10,000 @ 10/20 盲注 = **500bb**，而 spec §1 钉死 **1000bb 深码（20,000）**；`86c2373` 修正口径（起始码 20,000 = 1000bb）并补六人桌按方聚合与镜像测试；v3 在修正后的 1000bb 口径下重跑 HU 与 6-max 各 20k 手，**spec §1 全子句 PASS**，为终稿。
 
-**验收线 PASS。**
+## 1. 验收判据与结果 — spec §1 全子句 PASS
 
-- 性能预算门（spec §4.5/§8）：**PASS** — normal 档直接实测 **134.8ms/决策** ≪ 1000ms 门线（余量 ~7.4×）。
-- 强度验收线（spec §1，`bb/100[pimc:normal] ≥ +5` 且 `bb/100 − CI > 0`）：**PASS** — 20,000 手实测 `bb/100 = +396.52 ± 111.01`；+396.52 ≥ +5，且 396.52 − 111.01 = **+285.51 > 0**；CI 全区间 [+285.51, +507.53] 不含 0，为**结论性正值**，非"CI 过宽不含结论"，按 spec §10 无需扩样。
-- 范围说明：本 v2 重跑按任务钉死范围 = v1 证据集的等价替换（bench 双档 / 500 手方向战 / 20k 手 HU 正式验收）；spec §1 的"6-max 打平或更好"从句在 v1、v2 两次验收中均未采样，留待计划所有者决定是否补验。
+spec §1 原文（成功判据，钉死）：AIConsole `battle`，PIMCAI(普通档) vs HeuristicAI，heads-up 现金局（**1000bb 深码、10/20 盲注**）**≥ +5bb/100 且 95% 置信区间不含 0**；**6-max 打平或更好**。
 
-## 根因修复摘要（v1 FAIL → v2 PASS 的全部差异）
+两场 20k 手正式验收（口径：起始码 20,000 = 1000bb，盲注 10/20，`--concurrency 8`）：
 
-v1（基线 `47e0761`，证据 `dab78c0`）20k 手实测 −715.23 ± 171.39 结论性负值；诊断定位根因为 **rollout 伪重复**——HeuristicAI rollout 策略的随机性是 `(state.seed, handNumber, seat)` 的纯函数，而 PIMCAI 旧实现每个世界只 `resampled` 一次、世界内 64 迭代重放完全相同的确定性 rollout，1,024 次"采样"实际只携带 ≤16（典型 ≈4）份独立信息；对数个彩票式噪声 EV 取 argmax 产生赢家诅咒，系统性高估全下（800 手仪器化画像：59% 的手自愿推入 ≥9,000 筹码，94% 净损失来自错误全下）。修复（commit **`2734c08`**，仅改 `PIMCAI.swift` 一个文件，battle/bench harness 零改动）：PIMCAI 改为**每迭代重采样新世界**（fresh world per iteration），`worlds × iterationsPerWorld` = 每决策真实 i.i.d. 样本数（normal 16×64=1,024 / hard 32×125=4,000 数值不变、语义从伪重复变为真实独立样本）；时间预算改逐迭代检查；fold 记账逐迭代 +1。修复后方向战证据：1,000 手 +531.67 ± 562.92（修复前同口径 −778 ± 281）。代价：每次决策的真实吞吐约减半（每迭代一次全新 resample），见 §1。
+| 子句 | 命令（要点） | 实测 bb/100 ± CI | 算术 | 判定 |
+|---|---|---|---|---|
+| HU：≥ +5 且 CI 不含 0 | `battle --a pimc:normal --b heuristic:0.5 --table hu --hands 20000 --seed 1 --concurrency 8`（elapsed 1736.1s ≈ 28m56s） | `+549.14 ±203.42` / 镜像 `−549.14 ±203.42` | 549.14 − 203.42 = **+345.72 > 0**（CI [+345.72, +752.56] 不含 0）；高出门线 +5 达 **2.7 个 CI 半宽**（(549.14−5)/203.42 ≈ 2.7） | **PASS** |
+| 6-max：打平或更好 | `battle --a pimc:normal --b heuristic:0.5 --table six --hands 20000 --seed 6 --concurrency 8`（elapsed 9422.1s = 2h37m） | `+2715.58 ±322.01` / 镜像 `−2715.58 ±322.01` | CI 下界 2715.58 − 322.01 = **+2393.57 ≫ 0**（CI [+2393.57, +3037.59]） | **PASS（远超"更好"）** |
 
-## 1. bench 实测（性能预算门）— PASS
-
-### 1.1 pimc:hard（spec Task 7 Step 1 原文命令）
-
-```bash
-swift run --package-path Texas-Hold'em-poker/PokerEngine --scratch-path /tmp/poker-build \
-  AIConsole bench --ai pimc:hard --hands 100 --seed 3
-```
-
-输出行（末行原文）：
+输出行原文：
 
 ```
-decisions=345 mean=553.3ms p95=745.7ms totalSims=1380000 sims/s=7229
+hands=20000 table=hu seed=1 concurrency=8 elapsed=1736.1s
+bb/100[pimc:normal]=+549.14 ±203.42
+bb/100[heuristic:0.5]=-549.14 ±203.42
+
+hands=20000 table=six seed=6 concurrency=8 elapsed=9422.1s
+bb/100[pimc:normal]=+2715.58 ±322.01
+bb/100[heuristic:0.5]=-2715.58 ±322.01
 ```
 
-- 墙钟：3:11.88（含 swift run 启动）。
-- 口径核对：1,380,000 sims / 345 决策 = 4,000 sims/决策，与 hard 预设 32 世界 × 125 迭代一致。
-- 对比 v1：mean 285.4ms → 553.3ms、吞吐 14,013 → 7,229 sims/s（≈ 减半）——这是修复的诚实代价：旧实现每世界只付一次 resample，新实现每迭代都付。hard 档 mean 553.3ms 仍 < 1000ms。
-- 决策数 308 → 345：修复后 PIMC 不再数手内推光筹码，自对战桌存活更久，每 100 手决策更多（修复侧面证据）。
+- 六人桌口径：每方 3 席**按方聚合**（该方 3 席 seatDelta 均值）后计 bb/100，两方镜像零和，`86c2373` 附带镜像单测锁定该语义。
+- 镜像零和（±549.14 / ±2715.58）为 harness 健全性证据：席位映射、bb100 符号、种子解耦无误。
+- spec §10 扩样（50,000 手）不适用：两场 CI 全区间分别在 +5 线与 0 线右侧，结论性 PASS，扩样只收窄 CI、不改变判定。
 
-### 1.2 pimc:normal（直接实测，门线判据）
+## 2. 性能门（bench）— PASS（沿用 v2 实测）
 
-```
-$ swift run ... AIConsole bench --ai pimc:normal --hands 100 --seed 3
-decisions=400 mean=134.8ms p95=179.7ms totalSims=409600 sims/s=7594
-```
+门线（spec §4.5/§8）：单决策 ≤ 1000ms（normal 档为判据档）。
 
-- 墙钟：55.8s。口径核对：409,600 / 400 = 1,024 sims/决策，与 normal 预设 16 × 64 一致。
-- **直接实测 mean = 134.8ms ≤ 1000ms → PASS**（余量 ~7.4×）；p95 = 179.7ms 亦远低于 normal 档自身 `timeBudgetMs = 1000`。
-- 对比 v1：66.9ms → 134.8ms（+102%），同源于真实吞吐减半；决策数 271 → 400（同 §1.1 侧面证据）。
-
-## 2. 500 手方向战（分钟级参考，不作判据）
-
-命令（Step 2 原文 + `--concurrency 8`）：
-
-```bash
-swift run --package-path Texas-Hold'em-poker/PokerEngine --scratch-path /tmp/poker-build \
-  AIConsole battle --a pimc:normal --b heuristic:0.5 --table hu --hands 500 --seed 2026 --concurrency 8
-```
-
-输出（后两行原文；battle 计时 elapsed=55.8s，命令总墙钟 57.7s）：
-
-```
-hands=500 table=hu seed=2026 concurrency=8 elapsed=55.8s
-bb/100[pimc:normal]=+409.89 ±654.85
-bb/100[heuristic:0.5]=-409.89 ±654.85
-```
-
-一句话解读：小样本 CI 含 0 属预期；点估计 **+409.89 方向正确**（v1 同种子为 −879.60，符号翻转），与 1,000 手方向战 +531.67 ± 562.92、20k 正式验收 +396.52（§3）三处独立证据相互印证。
-
-## 3. 20,000 手正式验收（spec §1 验收线）— PASS
-
-命令（Step 3 原文；后台运行，输出重定向 `/tmp/poker-battle-20k-v2.log`）：
-
-```bash
-cd Texas-Hold\'em-poker && nohup swift run --package-path PokerEngine --scratch-path /tmp/poker-build \
-  AIConsole battle --a pimc:normal --b heuristic:0.5 --table hu --hands 20000 --seed 1 \
-  --concurrency $(sysctl -n hw.ncpu) > /tmp/poker-battle-20k-v2.log 2>&1 &
-```
-
-日志末三行（原文）：
-
-```
-hands=20000 table=hu seed=1 concurrency=8 elapsed=2076.8s
-bb/100[pimc:normal]=+396.52 ±111.01
-bb/100[heuristic:0.5]=-396.52 ±111.01
-```
-
-- 墙钟：battle 内计时 **2076.8s（34 分 36.8 秒）**，含 swift run 启动总墙钟 **2081s（≈ 34 分 41 秒）**，concurrency=8（= `hw.ncpu`）；远低于 6h 预算线（约为 v1 墙钟 888.8s 的 2.3 倍，与 §1 吞吐减半自洽）。
-- 跨种子一致性：+396.52 落在 500 手方向战（seed 2026）+409.89 ± 654.85 区间内，且与 1,000 手方向战 +531.67 ± 562.92 同侧——三个独立样本互证。
-- harness 有效性：`2734c08` 相对 `dab78c0` 仅改 `PokerEngine/Sources/PokerEngine/AI/PIMCAI.swift` 一个文件（`git show --stat` 核实），battle/bench 工具零改动，故 v1 的镜像对照组（heuristic:0.5 内战 ±16.50 ∓393.02，席位映射/bb100 符号/种子解耦健全）在本次运行中仍然有效。
-
-**验收线算术（spec §1：`bb/100[pimc:normal] ≥ +5` 且 `bb/100 − CI > 0`）：**
-
-| 判据 | 实测 | 算术 | 判定 |
+| 档 | 命令 | 输出（原文） | 判定 |
 |---|---|---|---|
-| bb/100 ≥ +5 | +396.52 | 396.52 − 5 = **+391.52 > 0**（高出门线 3.53 个 CI 半宽） | **PASS** |
-| bb/100 − CI > 0 | +396.52 ± 111.01 | 396.52 − 111.01 = **+285.51 > 0** | **PASS** |
-| （CI 是否含 0） | | 下界 +285.51、上界 +507.53 | 不含 0（结论性正值） |
+| pimc:normal | `bench --ai pimc:normal --hands 100 --seed 3` | `decisions=400 mean=134.8ms p95=179.7ms totalSims=409600 sims/s=7594` | **134.8ms ≤ 1000ms → PASS（余量 ~7.4×）** |
+| pimc:hard | `bench --ai pimc:hard --hands 100 --seed 3` | `decisions=345 mean=553.3ms p95=745.7ms totalSims=1380000 sims/s=7229` | 553.3ms < 1000ms（参考档） |
 
-**spec §10 扩样（50,000 手）：不适用。** §10 触发条件是"实测 CI 过宽不含结论"；本结果 CI 全区间在验收线右侧，为结论性 PASS，扩样只会收窄 CI、不改变判定。
+口径说明：bench 数字沿用 v2 实测（当时桌面为旧 10k 码）；**bench 桌面深度不影响决策耗时口径**——单决策耗时取决于预设预算（normal 16 世界 × 64 迭代 = 1,024 sims；hard 32 × 125 = 4,000 sims），与起始码无关，数字继续有效（409,600/400 = 1,024、1,380,000/345 = 4,000，口径自洽）。
 
-## 4. 修复前后对照总表（v1 vs v2）
+## 3. 历史附录（v1 / v2，已被 v3 替换，git 留档）
 
-| 证据 | v1（`dab78c0`，基线 `47e0761`） | v2（本文件，基线 `2734c08`） |
-|---|---|---|
-| bench hard（100 手） | decisions=308 mean=285.4ms p95=556.2ms 14,013 sims/s | decisions=345 mean=553.3ms p95=745.7ms 7,229 sims/s |
-| bench normal（100 手） | decisions=271 mean=66.9ms p95=142.0ms 15,315 sims/s | decisions=400 mean=134.8ms p95=179.7ms 7,594 sims/s |
-| 500 手方向战（seed 2026） | −879.60 ±1240.77 | **+409.89 ±654.85** |
-| 20k 正式验收（seed 1） | **−715.23 ±171.39 → FAIL** | **+396.52 ±111.01 → PASS** |
-| 20k 墙钟 | 888.8s | 2076.8s |
-| 判定 | 验收线 FAIL（BLOCKED 上报） | **验收线 PASS** |
+### 附录 A：v1（`dab78c0`，基线 `47e0761`）— FAIL
 
-吞吐减半与墙钟翻倍的口径说明：修复后每迭代重采样新世界，单决策计算量不变（样本数同 1,024/4,000）但每个样本都需独立 resample + rollout；且 PIMC 不再快速破产，每手决策数更多（bench 决策数 +12%~+48%）。性能门判据是单决策延迟（≤1000ms），非吞吐——134.8ms 仍有 ~7.4× 余量。
-
-## 附：原始输出汇总（v2）
-
-| 步骤 | 命令要点 | 关键输出 | 墙钟 |
-|---|---|---|---|
-| bench hard | `bench --ai pimc:hard --hands 100 --seed 3` | decisions=345 mean=553.3ms p95=745.7ms totalSims=1380000 sims/s=7229 | 3:11.88 |
-| bench normal | `bench --ai pimc:normal --hands 100 --seed 3` | decisions=400 mean=134.8ms p95=179.7ms totalSims=409600 sims/s=7594 | 55.8s |
-| 500 手方向战 | `battle --a pimc:normal --b heuristic:0.5 --hands 500 --seed 2026 --concurrency 8` | bb/100[pimc:normal]=+409.89 ±654.85 | 55.8s / 总 57.7s |
-| **20k 正式验收** | `battle --a pimc:normal --b heuristic:0.5 --hands 20000 --seed 1 --concurrency 8` | **bb/100[pimc:normal]=+396.52 ±111.01** | **2076.8s（总 2081s）** |
-
----
-
-## 附录 A：v1 历史（FAIL，已被本文件替换）
-
-v1 验收文档（git 留档：`git show 'dab78c0:Texas-Hold’em-poker/docs/superpowers/phase2a-acceptance.md'`）核心结论，保留备查：
-
-- **20k 手正式验收 FAIL**：`bb/100[pimc:normal] = −715.23 ± 171.39`（seed 1，concurrency 8，elapsed 888.8s）；CI 全区间 [−886.62, −543.84] 在 0 以下，为结论性负值，不触发 §10 扩样，如实记 FAIL 并 BLOCKED 上报。
-- 500 手方向战（seed 2026）：−879.60 ±1240.77（点估计已背离验收方向）。
-- bench（v1 口径）：hard mean=285.4ms（14,013 sims/s，墙钟 1:29.77）；normal mean=66.9ms（15,315 sims/s，墙钟 20.1s）——性能门一直 PASS，FAIL 纯在决策质量。
+- 20k 手 HU：`bb/100[pimc:normal] = −715.23 ± 171.39`（seed 1，concurrency 8，elapsed 888.8s）；CI [−886.62, −543.84] 全区间为负，结论性 FAIL，不触发 §10，如实 BLOCKED 上报。
+- 500 手方向战（seed 2026）：−879.60 ± 1240.77（点估计已背离验收方向）。
+- bench：hard mean=285.4ms（14,013 sims/s）；normal mean=66.9ms（15,315 sims/s）——性能门一直 PASS，FAIL 纯在决策质量。
 - 对照组：heuristic:0.5 内战 ±16.50 ∓393.02，证明 battle harness 健全，负结果属 PIMC 对局质量本身。
-- **诊断指针**：根因 = rollout 伪重复（HeuristicAI rng 为 `(state.seed, handNumber, seat)` 纯函数 → 每世界 64 迭代重放同一确定性 rollout，有效独立样本 ≈ 世界数 ≤16；argmax 赢家诅咒系统性高估全下，94% 净损失来自错误全下；剂量效应 worlds 16→−738 / 96→+219 / 256→+366 @2k 手）。完整证据链见工作档案 `.superpowers/sdd/2026-10-22-poker-phase2a-search-ai/diagnosis-report.md`（仓库外）；修复提交 `2734c08`（fresh world per iteration）。
+- **诊断指针**：根因 = rollout 伪重复（HeuristicAI rng 为 `(state.seed, handNumber, seat)` 纯函数 → 每世界 64 迭代重放同一确定性 rollout，有效独立样本 ≈ 世界数 ≤16；argmax 赢家诅咒系统性高估全下，94% 净损失来自错误全下；剂量效应 worlds 16→−738 / 96→+219 / 256→+366 @2k 手）。完整证据链见工作档案 `.superpowers/sdd/2026-10-22-poker-phase2a-search-ai/diagnosis-report.md`（仓库外）；修复提交 `2734c08`（fresh world per iteration，仅改 `PIMCAI.swift`，battle/bench harness 零改动）。
+- 原文：`git show 'dab78c0:Texas-Hold’em-poker/docs/superpowers/phase2a-acceptance.md'`
+
+### 附录 B：v2（`0873499`，基线 `2734c08`）— PASS 但口径 500bb（作废）
+
+- 20k 手 HU：`+396.52 ± 111.01`（seed 1，concurrency 8，elapsed 2076.8s）；算术 396.52 − 111.01 = +285.51 > 0，PASS 判定本身成立；
+- **但终审发现口径错误**：battle 桌起始码 10,000 @ 盲注 10/20 = **500bb**，spec §1 钉死 **1000bb（20,000）**，故 v2 数字仅在 500bb 口径下有效，不作为终稿验收；口径由 `86c2373` 修正（起始码 20,000，源码注释 `// 1000bb（bb=20）`）。
+- 500 手方向战（seed 2026，同 500bb 口径）：+409.89 ± 654.85；1,000 手方向战：+531.67 ± 562.92。
+- bench：见 §2（v3 沿用，含口径说明）。
+- 原文：`git show '0873499:Texas-Hold’em-poker/docs/superpowers/phase2a-acceptance.md'`
+
+## 4. 运行环境与复现命令
+
+- 机器：Apple M1（arm64），`hw.ncpu` = 8（物理核 8 / 逻辑核 8），8 GB RAM，macOS 26.6.2（25G83）；debug 构建；`--scratch-path /tmp/poker-build`。
+- commit 基线：`86c2373`（分支 `poker-2a`）；回归：66 tests, 0 failures。
+
+```bash
+# HU 正式验收（§1 第一行；~29 分钟 @8 并发）
+swift run --package-path Texas-Hold\'em-poker/PokerEngine --scratch-path /tmp/poker-build \
+  AIConsole battle --a pimc:normal --b heuristic:0.5 --table hu --hands 20000 --seed 1 --concurrency 8
+
+# 6-max 正式验收（§1 第二行；~2h37m @8 并发）
+swift run --package-path Texas-Hold\'em-poker/PokerEngine --scratch-path /tmp/poker-build \
+  AIConsole battle --a pimc:normal --b heuristic:0.5 --table six --hands 20000 --seed 6 --concurrency 8
+
+# 性能门（§2）
+swift run --package-path Texas-Hold\'em-poker/PokerEngine --scratch-path /tmp/poker-build \
+  AIConsole bench --ai pimc:normal --hands 100 --seed 3
+swift run --package-path Texas-Hold\'em-poker/PokerEngine --scratch-path /tmp/poker-build \
+  AIConsole bench --ai pimc:hard --hands 100 --seed 3
+
+# 回归测试
+swift test --package-path Texas-Hold\'em-poker/PokerEngine --scratch-path /tmp/poker-build
+```
