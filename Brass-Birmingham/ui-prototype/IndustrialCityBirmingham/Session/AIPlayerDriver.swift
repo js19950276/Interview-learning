@@ -121,8 +121,12 @@ final class AIPlayerDriver {
                 do {
                     try await self.coordinator.submitAs(seat: active, decision.payload)
                     return
+                } catch let rejection as SessionCoordinator.AIIntentRejected {
+                    print("INDUSTRIALCITY_AI rejected seat=\(active.rawValue) reason=\(rejection.reason?.reasonCode.rawValue ?? "unknown")")
+                    continue // 版本过期等:取最新状态重试
                 } catch {
-                    continue // staleVersion 等:取最新状态重试
+                    print("INDUSTRIALCITY_AI submit-failed seat=\(active.rawValue) error=\(error)")
+                    continue
                 }
             }
         }

@@ -108,6 +108,94 @@ struct MonteCarloTreeSearchTests {
         #expect(decision.elapsedMs < 5_000)
     }
 
+    /// 终审 Important-1:限时极小(timeLimitMs: 0)也必须返回合法动作——
+    /// 枚举器零动作不截断 + MCTS 空根无截止重枚举,双保险防座位死锁。
+    @Test func zeroTimeLimitStillReturnsLegalAction() throws {
+        let catalog = try verifiedCatalog()
+        let state = try freshFourPlayerState(catalog: catalog)
+        let actor = try #require(state.activePlayerID)
+        let decision = try GameCore.MonteCarloTreeSearch.chooseAction(
+            state: state, actorID: actor, catalog: catalog,
+            configuration: .init(simulations: 8, explorationConstant: 1.25, timeLimitMs: 0, seed: 5)
+        )
+        var host = try state.makeHostEngine(
+            roomID: .init(rawValue: "mcts-zero-room"),
+            reconnectTokens: tokens(for: state), protocolVersion: 2
+        )
+        let result = host.submit(.init(
+            protocolVersion: 2, rulesetVersion: state.rulesetVersion, roomID: .init(rawValue: "mcts-zero-room"),
+            senderID: actor, reconnectToken: try #require(tokens(for: state)[actor]),
+            baseVersion: state.authoritativeVersion, payload: decision.payload
+        ), catalog: catalog)
+        guard case .accepted = result else {
+            Issue.record("零限时决策被拒: \(decision.payload) -> \(result)"); return
+        }
+    }
+
+    /// 终审 Important-3:树内合成确认动作——待确认阶段直接问 MCTS,
+    /// 必须返回可被宿主接受的 confirmTurnEnd(树跨回合边界的机制入口)。
+    @Test func chooseActionOnAwaitingTurnEndReturnsConfirm() throws {
+        let catalog = try verifiedCatalog()
+        let state = try freshFourPlayerState(catalog: catalog)
+        let roomID = GameCore.RoomID(rawValue: "mcts-confirm-room")
+        let tokens = tokens(for: state)
+        var host = try state.makeHostEngine(roomID: roomID, reconnectTokens: tokens, protocolVersion: 2)
+        // 打满本回合行动(loan 总是合法)。
+        for _ in 0..<3 {
+            guard host.gameState.turnPhase == .active else { break }
+            let s = host.gameState
+            let actor = try #require(s.activePlayerID)
+            let player = try #require(s.players.first { $0.id == actor })
+            let card = try #require(player.hand.first)
+            _ = host.submit(.init(
+                protocolVersion: 2, rulesetVersion: s.rulesetVersion, roomID: roomID,
+                senderID: actor, reconnectToken: try #require(tokens[actor]),
+                baseVersion: s.authoritativeVersion, payload: .loan(.init(cardID: card.id))
+            ), catalog: catalog)
+        }
+        guard case .awaitingTurnEndConfirmation = host.gameState.turnPhase else {
+            Issue.record("应进入待确认阶段"); return
+        }
+        let actor = try #require(host.gameState.activePlayerID)
+        let decision = try GameCore.MonteCarloTreeSearch.chooseAction(
+            state: host.gameState, actorID: actor, catalog: catalog,
+            configuration: .init(simulations: 4, explorationConstant: 1.25, timeLimitMs: nil, seed: 9)
+        )
+        guard case .confirmTurnEnd = decision.payload else {
+            Issue.record("待确认阶段应返回 confirmTurnEnd,却是 \(decision.payload)"); return
+        }
+        let result = host.submit(.init(
+            protocolVersion: 2, rulesetVersion: host.gameState.rulesetVersion, roomID: roomID,
+            senderID: actor, reconnectToken: try #require(tokens[actor]),
+            baseVersion: host.gameState.authoritativeVersion, payload: decision.payload
+        ), catalog: catalog)
+        guard case .accepted = result else {
+            Issue.record("confirmTurnEnd 决策被拒: \(result)"); return
+        }
+    }
+
+    /// 终审 Important-4(Review Focus 1):selectPUCT 的 MaxN 视角——
+    /// 同一棵树,行动者不同必须选中对不同子女有利的分支。
+    @Test func selectPUCTFollowsActingPlayersPerspective() {
+        let playerA = GameCore.PlayerID(rawValue: "maxn-a")
+        let playerB = GameCore.PlayerID(rawValue: "maxn-b")
+        let root = GameCore.MonteCarloTreeSearch.Node()
+        // 构造:每个子女各被访问 10 次;c1 对 A 有利(均值 0.8)、c2 对 B 有利(均值 0.8)。
+        let c1 = GameCore.MonteCarloTreeSearch.Node(payload: .pass(.init(cardID: "c1")))
+        c1.visits = 10
+        c1.valueSum = [playerA: 8.0, playerB: 2.0]
+        let c2 = GameCore.MonteCarloTreeSearch.Node(payload: .pass(.init(cardID: "c2")))
+        c2.visits = 10
+        c2.valueSum = [playerA: 2.0, playerB: 8.0]
+        root.children = [c1, c2]
+        root.visits = 20
+
+        let choiceA = GameCore.MonteCarloTreeSearch.selectPUCT(root, actor: playerA, c: 1.25)
+        let choiceB = GameCore.MonteCarloTreeSearch.selectPUCT(root, actor: playerB, c: 1.25)
+        #expect(choiceA === c1, "A 行动时应选对 A 有利的子女")
+        #expect(choiceB === c2, "B 行动时应选对 B 有利的子女")
+    }
+
     @Test func forcedSalePhaseChoosesLegalForcedSale() throws {
         let catalog = try verifiedCatalog()
         // 强卖状态构造:与 FastActionEnumeratorTests 同一技法(seed 10_099)。

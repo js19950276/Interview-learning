@@ -92,16 +92,28 @@ struct AIPlayerDriverTests {
         driver.onSubmission = { seat, payload in box.append(seat, payload) }
         driver.start()
 
-        // 宿主行动把回合推进到 AI(若开局就是 AI 行动则直接等)。
-        for _ in 0..<10 {
-            let state = try #require(await coordinator.authoritativeStateForAI)
-            if let active = state.activePlayerID, aiSeats.contains(active) { break }
-            guard state.activePlayerID == hostID else { break }
-            let hand = state.players.first { $0.id == hostID }?.hand ?? []
-            guard let card = hand.first else { break }
-            try await coordinator.submit(.pass(.init(cardID: card.id)))
-            if case .awaitingTurnEndConfirmation = state.turnPhase {
+        // Review Focus 2(人类侧):宿主回合期间驱动器必须静默。
+        if let first = try #require(await coordinator.authoritativeStateForAI).activePlayerID,
+           first == hostID {
+            let baseline = box.count
+            try await Task.sleep(for: .milliseconds(500))
+            #expect(box.count == baseline, "人类回合期间驱动器不得提交")
+        }
+
+        // 宿主行动把回合推进到 AI:每次提交后重取状态再判阶段(终审 Important-5 重写)。
+        for _ in 0..<12 {
+            let current = try #require(await coordinator.authoritativeStateForAI)
+            if let active = current.activePlayerID, aiSeats.contains(active) { break }
+            guard current.activePlayerID == hostID else { break }
+            switch current.turnPhase {
+            case .active:
+                let hand = current.players.first { $0.id == hostID }?.hand ?? []
+                guard let card = hand.first else { return }
+                try await coordinator.submit(.pass(.init(cardID: card.id)))
+            case .awaitingTurnEndConfirmation:
                 try await coordinator.submit(.confirmTurnEnd)
+            default:
+                return
             }
         }
 

@@ -55,16 +55,19 @@ extension GameCore {
         /// 树内节点(单线程使用,不跨并发域)。
         final class Node {
             let payload: PlayerIntent.Payload?
+            /// 合成确认动作的指定行动者(普通动作在 apply 时取当前 activePlayerID)。
+            let actor: PlayerID?
             var children: [Node] = []
             /// nil=未枚举;空=已枚举但无动作(死叶/终局)。
-            var pending: [(payload: PlayerIntent.Payload, prior: Double)]? = nil
+            var pending: [(payload: PlayerIntent.Payload, prior: Double, actor: PlayerID?)]? = nil
             var visits = 0
             var valueSum: [PlayerID: Double] = [:]
             var prior: Double = 1.0
 
-            init(payload: PlayerIntent.Payload? = nil, prior: Double = 1.0) {
+            init(payload: PlayerIntent.Payload? = nil, prior: Double = 1.0, actor: PlayerID? = nil) {
                 self.payload = payload
                 self.prior = prior
+                self.actor = actor
             }
         }
 
@@ -87,6 +90,11 @@ extension GameCore {
 
             let root = Node()
             enumeratePending(node: root, state: state, actorID: actorID, catalog: catalog, deadlineNs: deadlineNs)
+            if root.pending?.isEmpty != false {
+                // 死区兜底:根枚举被截止阀门截空或确实无动作时,无截止重枚举一次——
+                // 活性优先于预算(宁可单步超时,不可座位死锁)。
+                enumeratePending(node: root, state: state, actorID: actorID, catalog: catalog, deadlineNs: nil)
+            }
             guard let rootPending = root.pending, rootPending.isEmpty == false else {
                 throw MCTSError.noActionsAvailable
             }
@@ -112,12 +120,13 @@ extension GameCore {
                         )
                     }
                     if var pending = node.pending, pending.isEmpty == false {
-                        // 展开一个未展开动作为新叶。
+                        // 展开一个未展开动作为新叶(合成确认动作用其指定行动者)。
                         let entry = pending.removeLast()
                         node.pending = pending
-                        let child = Node(payload: entry.payload, prior: entry.prior)
+                        let child = Node(payload: entry.payload, prior: entry.prior, actor: entry.actor)
                         node.children.append(child)
-                        guard let actor = work.activePlayerID else { break descent }
+                        let actor = entry.actor ?? work.activePlayerID
+                        guard let actor else { break descent }
                         do {
                             try SimulationRunner.apply(
                                 entry.payload, actorID: actor, roomID: roomID, to: &work, catalog: catalog
@@ -132,10 +141,12 @@ extension GameCore {
                     }
                     if work.turnPhase == .ended { break descent } // 终局叶
                     if node.children.isEmpty { break descent } // 无动作死叶,直接评估
-                    guard let actor = work.activePlayerID,
-                          let next = selectPUCT(node, actor: actor, c: configuration.explorationConstant)
+                    guard let selectingActor = work.activePlayerID,
+                          let next = selectPUCT(node, actor: selectingActor, c: configuration.explorationConstant),
+                          let payload = next.payload
                     else { break descent }
-                    guard let payload = next.payload else { break descent }
+                    let actor = next.actor ?? work.activePlayerID
+                    guard let actor else { break descent }
                     do {
                         try SimulationRunner.apply(
                             payload, actorID: actor, roomID: roomID, to: &work, catalog: catalog
@@ -192,7 +203,9 @@ extension GameCore {
             )
         }
 
-        /// 节点首访时完备枚举该状态全部动作(仅 active/forcedSale 有产出)。
+        /// 节点首访时枚举该状态全部动作:active/forcedSale 走完备枚举器;
+        /// 确认阶段合成唯一动作,让树能跨回合/时代边界继续深入(否则路径永远
+        /// 止于当前行动者,MaxN 多人备份结构性不可达——终审 Important-3)。
         private static func enumeratePending(
             node: Node,
             state: GameState,
@@ -200,6 +213,25 @@ extension GameCore {
             catalog: VerifiedGameDataCatalog,
             deadlineNs: UInt64?
         ) {
+            switch state.turnPhase {
+            case .awaitingTurnEndConfirmation:
+                if let active = state.activePlayerID {
+                    node.pending = [(.confirmTurnEnd, 1.0, active)]
+                } else {
+                    node.pending = []
+                }
+                return
+            case .eraIntermission(let intermission):
+                if let confirmer = state.players.map(\.id)
+                    .first(where: { intermission.confirmedPlayerIDs.contains($0) == false }) {
+                    node.pending = [(.confirmEraIntermission, 1.0, confirmer)]
+                } else {
+                    node.pending = []
+                }
+                return
+            case .active, .forcedSale, .ended:
+                break
+            }
             guard let actorID else {
                 node.pending = []
                 return
@@ -207,7 +239,7 @@ extension GameCore {
             let payloads = (try? FastActionEnumerator.enumerate(
                 state: state, actorID: actorID, catalog: catalog, deadlineNs: deadlineNs
             ))?.payloads ?? []
-            node.pending = payloads.map { ($0, 1.0) }
+            node.pending = payloads.map { ($0, 1.0, nil) }
         }
 
         /// PUCT:a* = argmax Q(s,a) + c·P(s,a)·√N/(1+N(a));

@@ -61,7 +61,10 @@ extension GameCore {
                 if deadlineNs != nil {
                     deadlineCheckCounter += 1
                     if deadlineCheckCounter & 127 == 0,
-                       DispatchTime.now().uptimeNanoseconds > deadlineNs! {
+                       DispatchTime.now().uptimeNanoseconds > deadlineNs!,
+                       complete.isEmpty == false {
+                        // 零动作不截断:deadline 只在已找到 ≥1 完整动作时生效,
+                        // 否则调用方(MCTS)会拿到空集抛 noActionsAvailable,座位死锁。
                         return .init(payloads: complete, truncated: true)
                     }
                 }
