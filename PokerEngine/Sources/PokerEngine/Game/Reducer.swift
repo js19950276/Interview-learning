@@ -1,8 +1,8 @@
 /// 平分层的奇数筹码分配：按钮顺时针下一位方向的最近赢家拿大份。
-/// 距离从按钮下一位起算（-1）：按钮本人若在赢家中排最后（T7 裁决：brief 公式
-/// `(seat - button)` 会把按钮排第一，与其自身测试用例 b（按钮在 1 → 2 先拿大头）矛盾）。
-/// T7 裁决：brief 将其置于 `extension GameState` 内，但测试以裸函数调用，
-/// 编译强制改为模块级 internal 函数（@testable 可见，契约不变）。
+/// 距离从按钮下一位起算（-1）：按钮本人在"按钮之后顺时针"次序中排最后；
+/// 若从按钮本人起算（+0），按钮会排第一并优先拿走奇数筹码，与该规则相悖。
+/// 模块级 internal 自由函数而非 GameState 方法：不依赖任何对局状态，
+/// 可脱离实例直接单测（@testable 可见），摊牌逻辑调用它时同样无需状态。
 func splitOddChip(amount: Int, winners: [Int], buttonSeat: Int, playerCount: Int) -> [(seat: Int, amount: Int)] {
     let n = winners.count
     let per = amount / n
@@ -150,6 +150,10 @@ extension GameState {
             let eligible = contenders.filter { $0.handContribution >= cap }.map(\.seat)
             if amount > 0 { layers.append(PotLayer(amount: amount, eligibleSeats: eligible)) }
             prev = cap
+        }
+        // 顶层兜底：任何玩家投入超过最高摊牌线（未跟注超额/弃牌死钱）的部分并入顶层，保证筹码守恒
+        if let topCap = caps.last, !layers.isEmpty {
+            layers[layers.count - 1].amount += players.reduce(0) { $0 + max(0, $1.handContribution - topCap) }
         }
         pots = layers
 

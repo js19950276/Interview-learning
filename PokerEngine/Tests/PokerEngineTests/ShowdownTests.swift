@@ -25,12 +25,12 @@ final class ShowdownTests: XCTestCase {
         XCTAssertEqual(s.players.reduce(0) { $0 + $1.stack }, 1700)   // 筹码守恒
     }
 
-    /// 未被跟注的超额（Review Focus #3）：座位 2 翻牌全下 300，座位 0 加注到 800。
+    /// 未被跟注的超额：座位 2 翻牌全下 300，座位 0 加注到 800。
     /// 分层必为 [650 eligible 0/2] + [500 仅 0]（退回）；SB 弃牌死钱 10 进主池。
     func testUncalledExcessFormsSoloTopLayer() {
         let cfg = GameConfig(playerCount: 3, startingStack: 1000, format: .cash(sb: 10, bb: 20))
-        // T7 裁决：brief 原文 stacks [1000,1000,300] 与其自身断言矛盾——座位 2 需投入 320
-        //（BB 20 + 翻牌 300）但只有 300；改为 320 使"翻牌全下 300"成立，守恒 2320。
+        // 座位 2 起始 320 = BB 20 + 翻牌圈全下 300：本局要求它共投入 320，
+        // 起始 300 不够；守恒断言相应为 1000 + 1000 + 320 = 2320。
         var s = GameState.start(config: cfg, seed: 22, stacks: [1000, 1000, 320], buttonSeat: 0)
         s.apply(.call)     // 座位 0 跟 20
         s.apply(.fold)     // 座位 1 (SB) 弃，死钱 10
@@ -49,7 +49,7 @@ final class ShowdownTests: XCTestCase {
         XCTAssertEqual(s.players.reduce(0) { $0 + $1.stack }, 2320)   // 守恒（1000+1000+320）
     }
 
-    /// 平分池奇数筹码给按钮顺时针下一位最近的赢家（Review Focus 之外的基础规则钉）。
+    /// 平分池奇数筹码给按钮顺时针下一位最近的赢家（基础规则钉）。
     func testSplitOddChipGoesClockwiseAfterButton() {
         let a = splitOddChip(amount: 101, winners: [1, 2], buttonSeat: 0, playerCount: 3)
         XCTAssertEqual(a[0].seat, 1); XCTAssertEqual(a[0].amount, 51)
