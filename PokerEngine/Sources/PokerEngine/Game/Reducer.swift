@@ -173,4 +173,51 @@ extension GameState {
         street = .handOver
         actorSeat = nil
     }
+
+    // MARK: - Task 8：局间逻辑
+
+    /// 结束当前手之后开下一手；或结束锦标赛。
+    public mutating func nextHand() {
+        guard street == .handOver, !tournamentOver else { return }
+
+        // 1) 淘汰结算：从最差名次起分配；手初筹码低者名次差，同筹码时座位大者名次差
+        var remaining = players.filter { $0.status != .eliminated }.count
+        let busted = players
+            .filter { $0.status != .eliminated && $0.stack == 0 }
+            .sorted {
+                if $0.stackAtHandStart != $1.stackAtHandStart { return $0.stackAtHandStart < $1.stackAtHandStart }
+                return $0.seat > $1.seat
+            }
+        for p in busted {
+            players[p.seat].status = .eliminated
+            players[p.seat].finishPlace = remaining
+            remaining -= 1
+        }
+
+        // 2) 只剩一人 → 终局 + 奖金（SNG）；现金局会话结束无奖金
+        if remaining <= 1 {
+            let champ = players.first { $0.status != .eliminated }!
+            players[champ.seat].finishPlace = 1
+            tournamentOver = true
+            if case .sng(let cfg) = config.format {
+                let pool = cfg.buyIn * config.playerCount
+                let floorTotal = cfg.payouts.reduce(0) { $0 + Int(Double(pool) * $1) }
+                var entries: [TournamentPayout] = []
+                for (i, rate) in cfg.payouts.enumerated() {
+                    let place = i + 1
+                    let seat = players.first { $0.finishPlace == place }?.seat ?? -1
+                    var amount = Int(Double(pool) * rate)
+                    if i == 0 { amount += pool - floorTotal }   // 余数归第 1 名
+                    entries.append(TournamentPayout(seat: seat, place: place, amount: amount))
+                }
+                tournamentPayouts = entries
+            }
+            return
+        }
+
+        // 3) 下一手
+        handNumber += 1
+        buttonSeat = nextSeat(after: buttonSeat)
+        dealNewHand()
+    }
 }

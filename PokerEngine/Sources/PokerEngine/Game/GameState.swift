@@ -65,9 +65,10 @@ public struct GameState: Equatable, Sendable {
     public private(set) var rng: SeededGenerator
     // T6 编译强制：Reducer.swift（跨文件 extension）需写这些存储属性，private(set) 仅限本文件，
     // 故改为 internal(set)——模块外（App）仍只读，引擎内唯一推进入口仍为 apply/nextHand。
+    // T8 同理：nextHand()（亦在 Reducer.swift）需写 handNumber/buttonSeat/tournamentOver/tournamentPayouts。
     public internal(set) var deck: Deck
-    public private(set) var handNumber: Int
-    public private(set) var buttonSeat: Int
+    public internal(set) var handNumber: Int
+    public internal(set) var buttonSeat: Int
     public internal(set) var street: Street
     public internal(set) var board: [Card]
     public internal(set) var players: [PlayerState]    // 下标即 seat
@@ -77,8 +78,8 @@ public struct GameState: Equatable, Sendable {
     public internal(set) var actorSeat: Int?
     public internal(set) var actions: [SeatAction]
     public internal(set) var handResult: HandResult?
-    public private(set) var tournamentOver: Bool
-    public private(set) var tournamentPayouts: [TournamentPayout]
+    public internal(set) var tournamentOver: Bool
+    public internal(set) var tournamentPayouts: [TournamentPayout]
     /// 最近一次激进动作（bet/raise）是否足额（决定是否重开加注轮）。
     public internal(set) var lastAggressionFullRaise: Bool
 
