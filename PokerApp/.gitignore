@@ -1,0 +1,8 @@
+# Xcode user state (never commit)
+xcuserdata/
+*.xcuserstate
+*.xcuserdata/
+
+# Build artifacts / DerivedData (never commit)
+DerivedData/
+build/
