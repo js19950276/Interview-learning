@@ -23,7 +23,9 @@ func flag(_ name: String, default def: String) -> String {
     return def
 }
 
-let sub = args.first ?? "battle"; args.removeFirst()
+// 零参数调用必须默认进入 battle 分支（打印 usage），removeFirst() 对空数组会崩溃。
+let sub = args.first ?? "battle"
+if !args.isEmpty { args.removeFirst() }
 let aSpec = flag("--a", default: "pimc:normal")
 let bSpec = flag("--b", default: "heuristic:0.5")
 let table = flag("--table", default: "hu") == "hu" ? BattleTable.headsUp : .sixMax
@@ -86,5 +88,5 @@ case "bench":
     let totalMs = times.reduce(0, +)
     print("decisions=\(times.count) mean=\(String(format: "%.1f", mean))ms p95=\(String(format: "%.1f", p95))ms totalSims=\(sims) sims/s=\(totalMs > 0 ? Int(Double(sims) / (totalMs / 1000)) : 0)")
 default:
-    print("usage: AIConsole battle|bench --a pimc:normal --b heuristic:0.5 --table hu|six --hands N --seed S --concurrency C")
+    print("usage: AIConsole battle|bench --a pimc:normal --b heuristic:0.5 --table hu|six --hands N --seed S --concurrency C (bench: --ai pimc:hard)")
 }
