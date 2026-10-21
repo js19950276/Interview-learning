@@ -86,4 +86,50 @@ final class NextHandTests: XCTestCase {
             XCTAssertTrue(s.tournamentPayouts.isEmpty)
         }
     }
+
+    /// 终审回归（Critical）：2 人 SNG 即便奖金表误配 3 档 [0.5,0.3,0.2]，
+    /// 第 3 名无人认领 → 该档必须被跳过（不得发出 seat=-1 幽灵条目，App 会拿它越界索引）；
+    /// 奖金只在实际发出的名次间分完：冠军 = pool - 其余档 floor 之和，总额恰等于 pool。
+    func testTwoPlayerSNGSkipsUnclaimedPayoutPlaces() {
+        let sng = SNGConfig(buyIn: 100, startingStack: 1000,
+                            levels: [BlindLevel(sb: 10, bb: 20, hands: 50)], payouts: [0.5, 0.3, 0.2])
+        let cfg = GameConfig(playerCount: 2, startingStack: 1000, format: .sng(sng))
+        for seed in UInt64(1)...50 {
+            var s = GameState.start(config: cfg, seed: seed, stacks: [1000, 100], buttonSeat: 0)
+            s.apply(.raiseTo(1000))   // 座位 0（按钮/SB）全下
+            s.apply(.call)            // 座位 1 (BB) 100 全下 → runout
+            XCTAssertEqual(s.street, .handOver)
+            s.nextHand()
+            guard s.tournamentOver else { continue }   // 平分池等罕见结果未分胜负，换种子
+            XCTAssertEqual(s.tournamentPayouts.count, 2)
+            XCTAssertFalse(s.tournamentPayouts.contains { $0.seat == -1 })
+            XCTAssertEqual(s.tournamentPayouts.map(\.place), [1, 2])
+            let pool = sng.buyIn * 2                       // 200
+            let secondFloor = Int(Double(pool) * 0.3)      // 60（发出条目中非冠军档的 floor）
+            XCTAssertEqual(s.tournamentPayouts.first?.amount, pool - secondFloor)
+            XCTAssertEqual(s.tournamentPayouts.last?.amount, secondFloor)
+            XCTAssertEqual(s.tournamentPayouts.reduce(0) { $0 + $1.amount }, pool)
+            return
+        }
+        XCTFail("50 个种子均未分出胜负（未触发终局），扩大种子范围后重试")
+    }
+
+    /// 终审回归（Important）：单挑规则按「存活人数」而非桌位总数判定——
+    /// 3 人桌淘汰 1 人后的下一手，按钮必须挂小盲且翻前先行动。
+    func testHeadsUpEngagesByLiveCountAfterElimination() {
+        let cfg = GameConfig(playerCount: 3, startingStack: 1000, format: .cash(sb: 10, bb: 20))
+        for seed in UInt64(1)...40 {
+            var s = GameState.start(config: cfg, seed: seed, stacks: [1000, 1000, 15], buttonSeat: 0)
+            s.apply(.fold)          // 座位 0（按钮）；座位 2 (BB) 15 < 20 盲注即全下
+            s.apply(.raiseTo(60))   // 座位 1 (SB)；与 2 的全下自动 runout 摊牌
+            XCTAssertEqual(s.street, .handOver)
+            s.nextHand()
+            guard s.players[2].status == .eliminated, !s.tournamentOver else { continue }
+            XCTAssertEqual(s.players.filter { $0.status != .eliminated }.count, 2)
+            XCTAssertEqual(s.players[s.buttonSeat].streetContribution, 10)   // 按钮挂小盲
+            XCTAssertEqual(s.actorSeat, s.buttonSeat)                        // 翻前按钮先行动
+            return
+        }
+        XCTFail("40 个种子均未淘汰座位 2，扩大种子范围后重试")
+    }
 }

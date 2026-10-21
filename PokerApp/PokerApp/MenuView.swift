@@ -9,6 +9,12 @@ struct MenuView: View {
     @State private var cashStack = 2000
     @State private var buyIn = 1000
 
+    /// SNG 奖金表随人数收敛：2 人只发前 2 名（70/30），3 人及以上发前 3 名（50/30/20）。
+    /// 奖金档数不得超过参赛人数，否则引擎终局结算时第 3 名无人认领（引擎会跳过该档，但配置本身就该正确）。
+    private var sngPayouts: [Double] {
+        playerCount == 2 ? [0.7, 0.3] : [0.5, 0.3, 0.2]
+    }
+
     private var config: GameConfig {
         let format: GameFormat = isSNG
             ? .sng(SNGConfig(buyIn: buyIn, startingStack: 1500,
@@ -16,7 +22,7 @@ struct MenuView: View {
                                       BlindLevel(sb: 25, bb: 50, hands: 12),
                                       BlindLevel(sb: 50, bb: 100, hands: 12),
                                       BlindLevel(sb: 100, bb: 200, hands: 12)],
-                             payouts: [0.5, 0.3, 0.2]))
+                             payouts: sngPayouts))
             : .cash(sb: cashSB, bb: cashSB * 2)
         return GameConfig(playerCount: playerCount,
                           startingStack: isSNG ? 1500 : cashStack,

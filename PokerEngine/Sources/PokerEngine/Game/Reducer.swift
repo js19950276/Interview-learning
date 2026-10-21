@@ -201,16 +201,21 @@ extension GameState {
             tournamentOver = true
             if case .sng(let cfg) = config.format {
                 let pool = cfg.buyIn * config.playerCount
-                let floorTotal = cfg.payouts.reduce(0) { $0 + Int(Double(pool) * $1) }
-                var entries: [TournamentPayout] = []
+                // 只发有名次得主（仍在场上）的奖金档：2 人 SNG 误配 3 档时第 3 名无人认领 → 跳过，
+                // 绝不产出 seat=-1 的幽灵条目（App 层拿它索引 players 会越界崩溃）。
+                var emitted: [(place: Int, seat: Int, floor: Int)] = []
                 for (i, rate) in cfg.payouts.enumerated() {
                     let place = i + 1
-                    let seat = players.first { $0.finishPlace == place }?.seat ?? -1
-                    var amount = Int(Double(pool) * rate)
-                    if i == 0 { amount += pool - floorTotal }   // 余数归第 1 名
-                    entries.append(TournamentPayout(seat: seat, place: place, amount: amount))
+                    guard let seat = players.first(where: { $0.finishPlace == place })?.seat else { continue }
+                    emitted.append((place, seat, Int(Double(pool) * rate)))
                 }
-                tournamentPayouts = entries
+                // 冠军（emitted[0]，第 1 名必有得主）吃掉全部余数：pool - 其余已发档 floor 之和，
+                // 保证奖金只在「实际发出」的条目间恰好分完。
+                let floorsAfterChampion = emitted.dropFirst().reduce(0) { $0 + $1.floor }
+                tournamentPayouts = emitted.enumerated().map { i, e in
+                    TournamentPayout(seat: e.seat, place: e.place,
+                                     amount: i == 0 ? pool - floorsAfterChampion : e.floor)
+                }
             }
             return
         }

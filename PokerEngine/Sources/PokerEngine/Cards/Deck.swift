@@ -12,7 +12,10 @@ public struct Deck: Equatable, Sendable {
         }
     }
 
-    public mutating func draw() -> Card { cards.removeLast() }
+    public mutating func draw() -> Card {
+        precondition(!cards.isEmpty, "deck is empty")
+        return cards.removeLast()
+    }
 
     /// 仅供测试偷看顶牌。
     public func peekTop() -> Card? { cards.last }

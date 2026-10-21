@@ -141,14 +141,15 @@ public struct GameState: Equatable, Sendable {
                 players[seat].holeCards.append(deck.draw())
             }
         }
-        // 盲注：单挑按钮=SB；否则按钮+1=SB
-        let n = players.count
-        let sbSeat = n == 2 ? buttonSeat : nextSeat(after: buttonSeat)
+        // 盲注：单挑按钮=SB；否则按钮+1=SB。按「存活人数」而非桌位总数判定——
+        // 3 人桌中途淘汰 1 人后即进入单挑规则（按钮挂小盲、翻前先行动）。
+        let liveCount = players.filter { $0.status != .eliminated }.count
+        let sbSeat = liveCount == 2 ? buttonSeat : nextSeat(after: buttonSeat)
         let bbSeat = nextSeat(after: sbSeat)
         postBlind(amount: sb, seat: sbSeat)
         postBlind(amount: bb, seat: bbSeat)
         street = .preflop
-        actorSeat = n == 2 ? buttonSeat : nextSeat(after: bbSeat)
+        actorSeat = liveCount == 2 ? buttonSeat : nextSeat(after: bbSeat)
     }
 
     private mutating func postBlind(amount: Int, seat: Int) {

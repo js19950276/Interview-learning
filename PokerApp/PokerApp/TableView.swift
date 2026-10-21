@@ -40,7 +40,8 @@ struct GameView: View {
                     Text("第 \(vm.state.handNumber + 1) 手").font(.footnote)
                 }
                 if let last = vm.lastResult, let w = last.awards.last?.winners.first {
-                    Text("上一手：\(vm.state.players[w].name) 赢 \(last.awards.reduce(0) { $0 + $1.amount })")
+                    // 只计该赢家实际分得的池（多方摊牌/边池时其余池与其无关，不能记到它头上）
+                    Text("上一手：\(vm.state.players[w].name) 赢 \(last.awards.filter { $0.winners.contains(w) }.reduce(0) { $0 + $1.amount })")
                         .font(.caption2).foregroundStyle(.secondary)
                 }
             }
@@ -123,8 +124,9 @@ private struct SeatView: View {
             }
             HStack(spacing: 3) {
                 if player.holeCards.count == 2 {
-                    CardView(card: player.holeCards[0], hidden: !isHuman && street != .handOver)
-                    CardView(card: player.holeCards[1], hidden: !isHuman && street != .handOver)
+                    // 弃牌者到手牌不再于 handOver 亮出（muck 不展示）
+                    CardView(card: player.holeCards[0], hidden: (!isHuman && street != .handOver) || player.status == .folded)
+                    CardView(card: player.holeCards[1], hidden: (!isHuman && street != .handOver) || player.status == .folded)
                 } else {
                     CardView(card: nil).opacity(0.3)
                     CardView(card: nil).opacity(0.3)
@@ -136,11 +138,13 @@ private struct SeatView: View {
             }
             if player.status == .folded { Text("弃牌").font(.caption2).foregroundStyle(.red) }
             if player.status == .allIn { Text("全下").font(.caption2).foregroundStyle(.orange) }
+            if player.status == .eliminated { Text("淘汰").font(.caption2).foregroundStyle(.gray) }
         }
         .padding(8)
         .background(isActor ? Color.yellow.opacity(0.25) : .clear,
                     in: RoundedRectangle(cornerRadius: 10))
         .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(isActor ? .yellow : .clear))
+        .opacity(player.status == .eliminated ? 0.45 : 1)   // 淘汰座位整体压暗
     }
 }
 
@@ -208,4 +212,4 @@ private struct ActionBar: View {
     }
 }
 
-extension PlayerState: Identifiable { public var id: Int { seat } }
+extension PlayerState: @retroactive Identifiable { public var id: Int { seat } }
