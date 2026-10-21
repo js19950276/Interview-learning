@@ -1,8 +1,11 @@
 import Foundation
 
 /// PIMC 搜索型决策器（spec 阶段 2a §4.2/§4.3）：
-/// 采样平行世界 × 每世界根带 UCB1 × rollout 至终局 × 跨世界平均 EV；
-/// fold 的 EV 结构性为 0（筹码冻结）不发 rollout；时间预算到点完成当前世界即截断。
+/// 每迭代独立采样平行世界 × 根带 UCB1 × rollout 至终局 × 跨动作平均 EV。
+/// 每次迭代都重新 `resampled` 一个全新世界，因此同一动作跨迭代的重复评估是
+/// 真实 i.i.d. 样本；预算语义：worlds × iterationsPerWorld = 每次决策的
+/// 独立世界样本总数（rollout 策略确定性导致的伪重复不复存在）。
+/// fold 的 EV 结构性为 0（筹码冻结）不发 rollout；时间预算到点完成当前迭代即截断。
 public struct PIMCAI: PokerAI {
     public var worlds: Int
     public var iterationsPerWorld: Int
@@ -41,21 +44,22 @@ public struct PIMCAI: PokerAI {
         for _ in 0..<worlds {
             if let budgetMs = timeBudgetMs,
                Date().timeIntervalSince(start) * 1000 > Double(budgetMs) { break }
-            let world = state.resampled(from: seat, using: &rng)
-            if let fi = ladder.firstIndex(of: .fold) {
-                counts[fi] += iterationsPerWorld   // fold EV 恒 0，仅记账不发 rollout
-            }
             for _ in 0..<iterationsPerWorld {
+                if let budgetMs = timeBudgetMs,
+                   Date().timeIntervalSince(start) * 1000 > Double(budgetMs) { break }
+                var world = state.resampled(from: seat, using: &rng)
+                if let fi = ladder.firstIndex(of: .fold) {
+                    counts[fi] += 1   // fold EV 恒 0，仅记账不发 rollout
+                }
                 guard let idx = selectRootAction(ladder: ladder, sums: sums, counts: counts,
                                                  total: counts.reduce(0, +)) else { break }
-                var w = world
-                w.apply(ladder[idx])
+                world.apply(ladder[idx])
                 var counter = 0
-                while w.street != .handOver, let actor = w.actorSeat, counter < 200 {
-                    w.apply(rollout.decide(w, seat: actor))
+                while world.street != .handOver, let actor = world.actorSeat, counter < 200 {
+                    world.apply(rollout.decide(world, seat: actor))
                     counter += 1
                 }
-                sums[idx] += Double(w.players[seat].stack - myStack)
+                sums[idx] += Double(world.players[seat].stack - myStack)
                 counts[idx] += 1
             }
         }
