@@ -86,24 +86,30 @@ extension GameCore {
             var rng = SplitMix64Seed(seed: seed)
 
             let root = Node()
-            enumeratePending(node: root, state: state, actorID: actorID, catalog: catalog)
+            enumeratePending(node: root, state: state, actorID: actorID, catalog: catalog, deadlineNs: deadlineNs)
             guard let rootPending = root.pending, rootPending.isEmpty == false else {
                 throw MCTSError.noActionsAvailable
             }
             applyRootNoise(root, using: &rng)
 
             var expandedNodes = 0
-            simulationLoop: for _ in 0..<max(configuration.simulations, 1) {
-                if let deadlineNs, DispatchTime.now().uptimeNanoseconds > deadlineNs { break }
+            simulationLoop: for simulationIndex in 0..<max(configuration.simulations, 1) {
+                // 首模拟不受限时约束:根枚举本身可能接近预算(重状态/争抢),
+                // 必须保证至少一次展开,否则无决策可返回(预算死区 bug,CLI 实测捕获)。
+                if simulationIndex > 0, let deadlineNs,
+                   DispatchTime.now().uptimeNanoseconds > deadlineNs { break }
 
                 var work = state
                 var node = root
                 var path: [Node] = [root]
 
                 descent: while true {
-                    // 首访非根节点:在此节点的状态上完备枚举一次。
+                    // 首访非根节点:在此节点的状态上完备枚举一次(受同一搜索截止时间约束)。
                     if node !== root, node.pending == nil {
-                        enumeratePending(node: node, state: work, actorID: work.activePlayerID, catalog: catalog)
+                        enumeratePending(
+                            node: node, state: work, actorID: work.activePlayerID,
+                            catalog: catalog, deadlineNs: deadlineNs
+                        )
                     }
                     if var pending = node.pending, pending.isEmpty == false {
                         // 展开一个未展开动作为新叶。
@@ -161,15 +167,22 @@ extension GameCore {
                 if lq != rq { return lq > rq }
                 return lhs.offset < rhs.offset
             }
+            let elapsedMs = Double(DispatchTime.now().uptimeNanoseconds - start.uptimeNanoseconds) / 1_000_000
             guard let best = ranked.first, let bestPayload = best.element.payload else {
-                throw MCTSError.noActionsAvailable
+                // 兜底:极端情况(零模拟完成)下取枚举出的任一动作,绝不抛无动作。
+                guard let fallback = root.pending?.last?.payload else {
+                    throw MCTSError.noActionsAvailable
+                }
+                return Decision(
+                    payload: fallback, totalVisits: root.visits, elapsedMs: elapsedMs,
+                    expandedNodes: expandedNodes, topCandidates: []
+                )
             }
             let top = ranked.prefix(5).map { entry in
                 let child = entry.element
                 let utility = child.valueSum[actorID].map { $0 / Double(max(child.visits, 1)) } ?? 0
                 return "\(describeKind(child.payload)) visits=\(child.visits) util=\(String(format: "%.2f", utility))"
             }
-            let elapsedMs = Double(DispatchTime.now().uptimeNanoseconds - start.uptimeNanoseconds) / 1_000_000
             return Decision(
                 payload: bestPayload,
                 totalVisits: root.visits,
@@ -184,14 +197,15 @@ extension GameCore {
             node: Node,
             state: GameState,
             actorID: PlayerID?,
-            catalog: VerifiedGameDataCatalog
+            catalog: VerifiedGameDataCatalog,
+            deadlineNs: UInt64?
         ) {
             guard let actorID else {
                 node.pending = []
                 return
             }
             let payloads = (try? FastActionEnumerator.enumerate(
-                state: state, actorID: actorID, catalog: catalog
+                state: state, actorID: actorID, catalog: catalog, deadlineNs: deadlineNs
             ))?.payloads ?? []
             node.pending = payloads.map { ($0, 1.0) }
         }
