@@ -34,6 +34,9 @@ targets:
     sources: [PokerAppTests]
     dependencies:
       - target: PokerApp_iOS
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
 schemes:
   PokerApp:
     build:
