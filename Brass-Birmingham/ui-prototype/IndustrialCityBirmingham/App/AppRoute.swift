@@ -4,6 +4,7 @@ enum AppRoute: Hashable {
     case home
     case online
     case nearby
+    case singlePlayer
     case lobby(ConnectionMode)
     case rules
     case settings
