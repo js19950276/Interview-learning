@@ -12,6 +12,11 @@ public struct Deck: Equatable, Sendable {
         }
     }
 
+    /// 直接持有给定牌（顶部 = 末尾）。供视角重采样重建牌堆，不走洗牌路径。
+    init(cards: [Card]) {
+        self.cards = cards
+    }
+
     public mutating func draw() -> Card {
         precondition(!cards.isEmpty, "deck is empty")
         return cards.removeLast()
