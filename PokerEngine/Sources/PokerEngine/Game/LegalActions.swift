@@ -24,13 +24,10 @@ public func legalActions(_ state: GameState) -> LegalActions {
 
     var range: ClosedRange<Int>? = nil
     if mayAggress && allInTotal > state.currentBet {
-        if toCall > 0 {
-            let fullRaiseTo = state.currentBet + state.minRaiseIncrement
-            range = min(fullRaiseTo, allInTotal)...allInTotal
-        } else {
-            let (_, bb) = currentBlinds(for: state.config.format, handNumber: state.handNumber)
-            range = allInTotal <= bb ? allInTotal...allInTotal : bb...allInTotal
-        }
+        // T5 评审裁决：下界统一为 currentBet + minRaiseIncrement（无人下注时 currentBet=0，自然 = 最小下注大盲；
+        // 大盲 option 时 currentBet=盲注额，正确给出 2×盲注起）
+        let fullRaiseTo = state.currentBet + state.minRaiseIncrement
+        range = min(fullRaiseTo, allInTotal)...allInTotal
     }
     return LegalActions(seat: seat,
                         canCheck: toCall == 0,

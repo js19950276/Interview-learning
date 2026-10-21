@@ -63,22 +63,24 @@ public struct GameState: Equatable, Sendable {
     public var config: GameConfig
     public let seed: UInt64
     public private(set) var rng: SeededGenerator
-    public private(set) var deck: Deck
+    // T6 编译强制：Reducer.swift（跨文件 extension）需写这些存储属性，private(set) 仅限本文件，
+    // 故改为 internal(set)——模块外（App）仍只读，引擎内唯一推进入口仍为 apply/nextHand。
+    public internal(set) var deck: Deck
     public private(set) var handNumber: Int
     public private(set) var buttonSeat: Int
-    public private(set) var street: Street
-    public private(set) var board: [Card]
-    public private(set) var players: [PlayerState]    // 下标即 seat
-    public private(set) var pots: [PotLayer]
-    public private(set) var currentBet: Int
-    public private(set) var minRaiseIncrement: Int
-    public private(set) var actorSeat: Int?
-    public private(set) var actions: [SeatAction]
-    public private(set) var handResult: HandResult?
+    public internal(set) var street: Street
+    public internal(set) var board: [Card]
+    public internal(set) var players: [PlayerState]    // 下标即 seat
+    public internal(set) var pots: [PotLayer]
+    public internal(set) var currentBet: Int
+    public internal(set) var minRaiseIncrement: Int
+    public internal(set) var actorSeat: Int?
+    public internal(set) var actions: [SeatAction]
+    public internal(set) var handResult: HandResult?
     public private(set) var tournamentOver: Bool
     public private(set) var tournamentPayouts: [TournamentPayout]
     /// 最近一次激进动作（bet/raise）是否足额（决定是否重开加注轮）。
-    public private(set) var lastAggressionFullRaise: Bool
+    public internal(set) var lastAggressionFullRaise: Bool
 
     public var potTotal: Int { players.reduce(0) { $0 + $1.handContribution } }
 

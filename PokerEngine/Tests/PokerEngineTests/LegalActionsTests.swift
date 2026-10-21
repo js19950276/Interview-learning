@@ -17,9 +17,31 @@ final class LegalActionsTests: XCTestCase {
         XCTAssertTrue(legal.isRaiseContext)
     }
 
-    // TASK6-DEFERRED（依赖 apply，Task 6 Step 4 恢复）:
-    // testBigBlindOptionIsCheckOrRaise
-    // testPostflopBetRangeAndCheck
+    func testBigBlindOptionIsCheckOrRaise() {
+        var s = GameState.start(config: cash3, seed: 3, buttonSeat: 0)
+        s.apply(.call)   // 座位 0 跟 20
+        s.apply(.call)   // 座位 1（SB）补 10 跟平
+        let legal = legalActions(s)   // BB（座位 2）的 option：toCall == 0
+        XCTAssertTrue(isLegal(.check, in: legal))
+        XCTAssertFalse(isLegal(.call, in: legal))        // toCall=0 → call 不可用
+        XCTAssertEqual(legal.callAmount, 0)
+        XCTAssertEqual(legal.betRange?.lowerBound, 40)   // BB 可加注
+        XCTAssertFalse(legal.isRaiseContext)
+    }
+
+    func testPostflopBetRangeAndCheck() {
+        var s = GameState.start(config: cash3, seed: 3, buttonSeat: 0)
+        s.apply(.call)    // 0
+        s.apply(.call)    // 1
+        s.apply(.check)   // 2（BB option，用 check 而不是 call！）
+        XCTAssertEqual(s.street, .flop)
+        let legal = legalActions(s)
+        XCTAssertTrue(isLegal(.check, in: legal))
+        XCTAssertFalse(isLegal(.call, in: legal))
+        XCTAssertEqual(legal.betRange?.lowerBound, 20)   // 最小下注 = BB
+        XCTAssertEqual(legal.betRange?.upperBound, 980)
+        XCTAssertFalse(legal.isRaiseContext)
+    }
 
     func testShortStackCanOnlyShove() {
         // 按钮位（也是 UTG）只剩 25：翻前加注只有 all-in 一个档
