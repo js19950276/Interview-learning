@@ -10,18 +10,19 @@ struct PokerApp: App {
             if let session {
                 GameView(session: session) { self.session = nil }
             } else {
-                MenuView { config, seed in
-                    session = GameSession(config: config, seed: seed)
+                MenuView { config, seed, difficulty in
+                    self.session = GameSession(config: config, seed: seed, difficulty: difficulty)
                 }
             }
         }
     }
 }
 
-/// 一场会话（配置 + 种子）。
+/// 一场会话（配置 + 种子 + AI 难度档）。
 struct GameSession: Identifiable {
     let id = UUID()
     let config: GameConfig
     let seed: UInt64
+    var difficulty: AIDifficulty = .baseline
 }
 

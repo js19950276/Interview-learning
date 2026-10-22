@@ -1,6 +1,11 @@
 public enum HandEvaluator {
-    /// 评估 5–7 张牌的最优 5 张牌型。
+    /// 公开入口：路由到 FastEval（与 evaluateLegacy 全等，FastEvalTests 钉死）。
     public static func evaluate(_ cards: [Card]) -> HandRank {
+        FastEval.evaluate(cards)
+    }
+
+    /// 评估 5–7 张牌的最优 5 张牌型。
+    static func evaluateLegacy(_ cards: [Card]) -> HandRank {
         precondition((5...7).contains(cards.count))
         let ranks = cards.map { $0.rank.rawValue }          // 2...14
         let rankCounts = Dictionary(ranks.map { ($0, 1) }, uniquingKeysWith: +)

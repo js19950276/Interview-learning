@@ -2,12 +2,13 @@ import SwiftUI
 import PokerEngine
 
 struct MenuView: View {
-    let onStart: (GameConfig, UInt64) -> Void
+    let onStart: (GameConfig, UInt64, AIDifficulty) -> Void
     @State private var isSNG = false
     @State private var playerCount = 6
     @State private var cashSB = 10
     @State private var cashStack = 2000
     @State private var buyIn = 1000
+    @State private var difficulty: AIDifficulty = .baseline
 
     /// SNG 奖金表随人数收敛：2 人只发前 2 名（70/30），3 人及以上发前 3 名（50/30/20）。
     /// 奖金档数不得超过参赛人数，否则引擎终局结算时第 3 名无人认领（引擎会跳过该档，但配置本身就该正确）。
@@ -36,6 +37,9 @@ struct MenuView: View {
                     Text("现金局").tag(false)
                     Text("单桌锦标赛 SNG").tag(true)
                 }
+                Picker("AI 难度", selection: $difficulty) {
+                    ForEach(AIDifficulty.allCases) { Text($0.rawValue).tag($0) }
+                }
                 Stepper("玩家人数：\(playerCount)", value: $playerCount, in: 2...9)
                 if isSNG {
                     Stepper("买入：\(buyIn)", value: $buyIn, in: 100...10000, step: 100)
@@ -44,7 +48,7 @@ struct MenuView: View {
                     Stepper("初始筹码：\(cashStack)", value: $cashStack, in: 500...100000, step: 500)
                 }
                 Button("开始游戏") {
-                    onStart(config, UInt64(Date().timeIntervalSince1970 * 1000))
+                    onStart(config, UInt64(Date().timeIntervalSince1970 * 1000), difficulty)
                 }
                 .frame(maxWidth: .infinity)
             }
