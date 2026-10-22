@@ -6,7 +6,8 @@ public enum BlueprintError: Error, Equatable {
 }
 
 /// MCCFR 蓝图策略表：信息键 → 7 槽位的遗憾与平均策略累计。
-public struct Blueprint: Codable, Sendable {
+/// Equatable（T3 编译强制）：Trainer 确定性测试需 XCTAssertEqual 逐字节比对两表。
+public struct Blueprint: Codable, Sendable, Equatable {
     public let ladderVersion: Int
     public private(set) var iterations: UInt64
     public private(set) var entries: [UInt64: Entry]
@@ -70,7 +71,7 @@ public struct Blueprint: Codable, Sendable {
     }
 }
 
-public struct Entry: Codable, Sendable {
+public struct Entry: Codable, Sendable, Equatable {
     public var regret: [Double]
     public var strategySum: [Double]
     init() {
