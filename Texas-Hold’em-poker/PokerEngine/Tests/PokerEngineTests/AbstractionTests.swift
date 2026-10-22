@@ -50,10 +50,38 @@ final class AbstractionTests: XCTestCase {
     func testSequenceBucketDerivableAndBounded() {
         var s = GameState.start(config: GameConfig(playerCount: 2, startingStack: 2000, format: .cash(sb: 10, bb: 20)),
                                 seed: 5, buttonSeat: 0)
-        XCTAssertTrue((0..<48).contains(Abstraction.sequenceBucket(s, seat: 0)))
-        s.apply(.raiseTo(60))   // 按钮加注；BB 视角下注规模档应 ≥1（seq % 4 为 bet 档）
-        XCTAssertTrue((0..<48).contains(Abstraction.sequenceBucket(s, seat: 1)))
-        XCTAssertEqual(Abstraction.sequenceBucket(s, seat: 1) % 4 >= 1, true)
+        XCTAssertTrue((0..<63).contains(Abstraction.sequenceBucket(s, seat: 0)))
+        s.apply(.raiseTo(60))   // 按钮加注 3bb；BB 视角下注规模档应 ≥1（seq % 7 为 betRel 档）
+        XCTAssertTrue((0..<63).contains(Abstraction.sequenceBucket(s, seat: 1)))
+        XCTAssertEqual(Abstraction.sequenceBucket(s, seat: 1) % 7 >= 1, true)
+        // 单调性意图：同池形（同盲注、同为 BB 应答）下，面对更大的下注 betRel 档不得下降——
+        // 加注至 60（3×池前）vs 加注至 200（10×池前），两态有界且可分
+        var t = GameState.start(config: GameConfig(playerCount: 2, startingStack: 2000, format: .cash(sb: 10, bb: 20)),
+                                seed: 5, buttonSeat: 0)
+        t.apply(.raiseTo(200))
+        let seqSmall = Abstraction.sequenceBucket(s, seat: 1)
+        let seqBig = Abstraction.sequenceBucket(t, seat: 1)
+        XCTAssertGreaterThanOrEqual(seqBig % 7, seqSmall % 7)
+        XCTAssertNotEqual(seqBig, seqSmall)
+        XCTAssertTrue((0..<63).contains(seqBig))
+    }
+
+    /// 诊断回归（升级路径第 2 级）：同池形下 7bb 加注与 1000bb 全下不得同键。
+    /// seqprobe 证据：旧 bet 档 >6bb 无界——SB 加注至 140/1000/5000/20000 时 BB 应答键
+    /// 逐字节相同（8223, seq31），CFR 据此学出 jam-heavy 蓝图（−529bb/100）。
+    /// 新分档下 7bb 开池 = 7×池前（betRel=5）、1000bb 全下 = 1000×池前（betRel=6）→ 键分离。
+    func testSequenceBucketSeparatesSmallRaiseFromJam() {
+        let cfg = GameConfig(playerCount: 2, startingStack: 20000, format: .cash(sb: 10, bb: 20))
+        var a = GameState.start(config: cfg, seed: 5, buttonSeat: 0)
+        a.apply(.raiseTo(140))     // 按钮开池 7bb：potTotal=160, 池前=20, 140=7× → betRel=5
+        var b = GameState.start(config: cfg, seed: 5, buttonSeat: 0)
+        b.apply(.raiseTo(20000))   // 按钮全下 1000bb：potTotal=20020, 池前=20, 20000=1000× → betRel=6
+        let seqA = Abstraction.sequenceBucket(a, seat: 1)   // ((2·3+1)·7)+5 = 54
+        let seqB = Abstraction.sequenceBucket(b, seat: 1)   // ((2·3+1)·7)+6 = 55
+        XCTAssertEqual(seqA, 54)
+        XCTAssertEqual(seqB, 55)
+        XCTAssertNotEqual(seqA, seqB)
+        XCTAssertNotEqual(Abstraction.infoKey(a, seat: 1), Abstraction.infoKey(b, seat: 1))
     }
 
     func testInfoKeyRoundTrip() {

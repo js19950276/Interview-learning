@@ -53,25 +53,38 @@ public enum Abstraction {
         return (paired ? 1 : 0) | (flush3 ? 2 : 0) | (connected ? 4 : 0)
     }
 
-    // MARK: 序列桶 48（预裁决三元组：注池比 4 × 我方投入 3 × 下注规模 4）
+    // MARK: 序列桶 63（预裁决三元组：注池比 3 × 我方投入 3 × 池相对对数下注规模 7；< 64 保 6 位键域）
+    // 池相对对数分档（诊断升级路径第 2 级）：旧 bet 档为绝对筹码 {≤2bb, ≤6bb, 无界 else}，
+    // 翻后池盲（40 注入 2000 池与 40 池同档）、翻前 >6bb 无界——7bb 加注与 1000bb 全下同键
+    // （seqprobe：加注至 140/1000/5000/20000 应答键逐字节相同），CFR 据此收敛出 jam-heavy 蓝图。
+    // 新 betRel 以「下注前底池」(potTotal − currentBet，诊断公式 max(1,·)) 为基准的 ×2 对数梯：
+    // {0 无下注, <0.5×, <1×, <2×, <4×, <8×, ≥8×}——控制裁决边界 {0.5,1,2,4} 全保留，
+    // 顶端再补一档 8×（7bb 开池 = 7×池前落入 <8×，全下 ≥8×），使裁决自身的回归判据
+    // 「7bb 加注 ≠ 1000bb 全下键」可满足；翻前 2-3bb 开池(<4×)/4-8bb 大开池(4-8×)/巨型全下(≥8×)分层。
+    // 注：直接用 currentBet/potTotal 会使 <2×、<4×、≥4× 三档恒死（potTotal 含下注者已推入的
+    // currentBet，恒有 currentBet ≤ potTotal——与下方 ratio 死档同一条证明）。
     public static func sequenceBucket(_ state: GameState, seat: Int) -> Int {
         let p = state.players[seat]
-        let pot = max(1, state.potTotal)
+        // 池比 3 档（死档修复）：原 4 档的 ratio=3（currentBet > potTotal）不可达——
+        // potTotal 含下注者已推入的 currentBet，恒有 currentBet ≤ potTotal（引擎验证成立）。
         let ratio: Int
         if state.currentBet == 0 { ratio = 0 }
-        else if state.currentBet * 2 <= pot { ratio = 1 }
-        else if state.currentBet <= pot { ratio = 2 }
-        else { ratio = 3 }
+        else if state.currentBet * 2 <= state.potTotal { ratio = 1 }
+        else { ratio = 2 }
         let mine: Int
         if p.streetContribution == 0 { mine = 0 }
         else if p.streetContribution < state.currentBet { mine = 1 }
         else { mine = 2 }
-        let bet: Int
-        if state.currentBet == 0 { bet = 0 }
-        else if state.currentBet <= 40 { bet = 1 }        // ≤2bb
-        else if state.currentBet <= 120 { bet = 2 }       // ≤6bb
-        else { bet = 3 }
-        return ((ratio * 3) + mine) * 4 + bet
+        let potBefore = max(1, state.potTotal - state.currentBet)   // 下注前底池（响应者视角）
+        let betRel: Int
+        if state.currentBet == 0 { betRel = 0 }
+        else if state.currentBet * 2 < potBefore { betRel = 1 }     // <0.5×池
+        else if state.currentBet < potBefore { betRel = 2 }         // <1×池
+        else if state.currentBet < potBefore * 2 { betRel = 3 }     // <2×池
+        else if state.currentBet < potBefore * 4 { betRel = 4 }     // <4×池
+        else if state.currentBet < potBefore * 8 { betRel = 5 }     // <8×池
+        else { betRel = 6 }                                         // ≥8×池（巨型超额/全下域）
+        return ((ratio * 3) + mine) * 7 + betRel
     }
 
     // MARK: 信息键 street(2) | bucket(9) | seq(6)
