@@ -41,4 +41,36 @@ final class TrainerTests: XCTestCase {
         Trainer.train(&bp, iterations: 5, seed: 1, onProgress: { _, _ in calls += 1 })
         XCTAssertGreaterThanOrEqual(calls, 1)
     }
+
+    /// 暖种回归锚（吞吐修复）：首访种子被动 +1.0 / 加注 +0.25、重复 seed 不叠加，
+    /// 训练后表非空且已访问键产出合法策略，同种子两训仍逐字节相等。
+    /// 注：currentStrategy 返回非可选数组，故以「概率和 = 1」锚定合法策略而非 XCTAssertNotNil。
+    func testWarmSeedDeterministicAndPassiveLeaning() {
+        // 种子路径直接锚定：新表首访被动槽 +1.0、加注槽 +0.25、未到槽保持 0
+        var seeded = Blueprint()
+        let slots: [(action: PlayerAction, slot: AbstractSlot)] = [
+            (.check, .check), (.fold, .fold), (.raiseTo(40), .raiseMin)
+        ]
+        seeded.seedRegret(key: 1, slots: slots)
+        XCTAssertEqual(seeded.entries[1]?.regret[AbstractSlot.check.rawValue], 1.0)
+        XCTAssertEqual(seeded.entries[1]?.regret[AbstractSlot.fold.rawValue], 1.0)
+        XCTAssertEqual(seeded.entries[1]?.regret[AbstractSlot.raiseMin.rawValue], 0.25)
+        XCTAssertEqual(seeded.entries[1]?.regret[AbstractSlot.raisePot.rawValue], 0.0)
+        seeded.seedRegret(key: 1, slots: slots)   // 二次调用不重复种子（guard 首访）
+        XCTAssertEqual(seeded.entries[1]?.regret[AbstractSlot.check.rawValue], 1.0)
+
+        // 训练集成：表非空，任一已访问键暖种条目可产出合法策略（概率和为 1、非负）
+        var bp = Blueprint()
+        Trainer.train(&bp, iterations: 20, seed: 5)
+        XCTAssertFalse(bp.entries.isEmpty)
+        let entry = bp.entries.first!
+        let sigma = bp.currentStrategy(key: entry.key, slots: slots)
+        XCTAssertEqual(sigma.reduce(0, +), 1.0, accuracy: 1e-9)
+        XCTAssertTrue(sigma.allSatisfy { $0 >= 0 })
+
+        // 暖种不破坏确定性：同种子两训逐字节相等
+        var b2 = Blueprint()
+        Trainer.train(&b2, iterations: 20, seed: 5)
+        XCTAssertEqual(bp, b2)
+    }
 }

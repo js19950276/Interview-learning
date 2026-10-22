@@ -37,6 +37,7 @@ public enum Trainer {
         let ladder = ladderActions(legal, state: state)
         let slots = Abstraction.slots(for: ladder, legal: legal)
         let key = Abstraction.infoKey(state, seat: actor)
+        bp.seedRegret(key: key, slots: slots)
         let sigma = bp.currentStrategy(key: key, slots: slots)
 
         if actor == traverser {

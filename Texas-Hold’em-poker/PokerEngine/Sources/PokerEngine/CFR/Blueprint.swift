@@ -28,6 +28,20 @@ public struct Blueprint: Codable, Sendable, Equatable {
         entries[key] = e
     }
 
+    /// 首访暖种（训练吞吐修复）：被动槽 +1.0、加注槽 +0.25 的正遗憾种子。
+    /// CFR 后悔更新会主导后续收敛；仅由训练器在键首次出现时调用。
+    public mutating func seedRegret(key: UInt64, slots: [(action: PlayerAction, slot: AbstractSlot)]) {
+        guard entries[key] == nil else { return }
+        var e = Entry()
+        for s in slots {
+            switch s.slot {
+            case .fold, .check, .call: e.regret[s.slot.rawValue] = 1.0
+            case .raiseMin, .raiseHalf, .raisePot, .allIn: e.regret[s.slot.rawValue] = 0.25
+            }
+        }
+        entries[key] = e
+    }
+
     public mutating func addStrategy(key: UInt64, slots: [(action: PlayerAction, slot: AbstractSlot)],
                                      probs: [Double], weight: Double) {
         var e = entries[key] ?? Entry()
