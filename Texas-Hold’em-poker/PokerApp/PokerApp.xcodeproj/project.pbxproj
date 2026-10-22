@@ -17,9 +17,11 @@
 		93A3B833EFF68E2B44182230 /* TableView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74F99E8A5230CE8EE9668A55 /* TableView.swift */; };
 		A978002FBD54E8C5F00E4C97 /* CardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 202DA544DDDD1C0CD9A7E18F /* CardView.swift */; };
 		B381982E162187ACA609B370 /* PokerEngine in Frameworks */ = {isa = PBXBuildFile; productRef = 24BD1382DE49326CD01B3578 /* PokerEngine */; };
+		D4D274A5518E0BBA4C390E60 /* blueprint-hu.json in Resources */ = {isa = PBXBuildFile; fileRef = D9E19DF746771E9DC5381330 /* blueprint-hu.json */; };
 		D4FA750D3FF586E4586D5489 /* PlaceholderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6FAEE2F41BF4AD281822079 /* PlaceholderTests.swift */; };
 		DC1F9E1D09CB7ABC675A65D1 /* GameViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1A8F58514908FC0730B220A /* GameViewModel.swift */; };
 		E0EEDF225DC457AC8429ADBA /* GameViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1A8F58514908FC0730B220A /* GameViewModel.swift */; };
+		E7C3BDAE44E5CAE63D519EED /* blueprint-hu.json in Resources */ = {isa = PBXBuildFile; fileRef = D9E19DF746771E9DC5381330 /* blueprint-hu.json */; };
 		FDEDDB12CF2E15960871214A /* PokerApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A39DF02008A6EF3DB4531DEF /* PokerApp.swift */; };
 /* End PBXBuildFile section */
 
@@ -45,6 +47,7 @@
 		BD7575A5A8A84F559F93BEE6 /* PokerApp.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = PokerApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		D01CA6E01F5794C52FE08BA6 /* PokerApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PokerApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		D5BEDB4717D1A5B16D82FD19 /* GameViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameViewModelTests.swift; sourceTree = "<group>"; };
+		D9E19DF746771E9DC5381330 /* blueprint-hu.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "blueprint-hu.json"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -75,6 +78,7 @@
 				2A326930D365C2B1129CE966 /* MenuView.swift */,
 				A39DF02008A6EF3DB4531DEF /* PokerApp.swift */,
 				74F99E8A5230CE8EE9668A55 /* TableView.swift */,
+				A4657BB7B0472E12B90C3BFB /* Resources */,
 			);
 			path = PokerApp;
 			sourceTree = "<group>";
@@ -94,6 +98,14 @@
 				53386EDACDEC5893A67B6180 /* PokerEngine */,
 			);
 			name = Packages;
+			sourceTree = "<group>";
+		};
+		A4657BB7B0472E12B90C3BFB /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				D9E19DF746771E9DC5381330 /* blueprint-hu.json */,
+			);
+			path = Resources;
 			sourceTree = "<group>";
 		};
 		C48FC78CACADDA0CA31CD059 = {
@@ -142,6 +154,7 @@
 			buildConfigurationList = 68695050A4B1DFA25D49A017 /* Build configuration list for PBXNativeTarget "PokerApp_macOS" */;
 			buildPhases = (
 				0EBCC1E2891438AFBBEB1A26 /* Sources */,
+				9BF6F49110681D29D99482E9 /* Resources */,
 				68D5F9D7907E986D7CDA3665 /* Frameworks */,
 			);
 			buildRules = (
@@ -161,6 +174,7 @@
 			buildConfigurationList = C3DF8C527DF9731A6939A410 /* Build configuration list for PBXNativeTarget "PokerApp_iOS" */;
 			buildPhases = (
 				817F98CA46F4184DB5FAE070 /* Sources */,
+				C56AE2872B9917BCC282A8AA /* Resources */,
 				35517793D3E36446C6B91A7A /* Frameworks */,
 			);
 			buildRules = (
@@ -209,6 +223,25 @@
 			);
 		};
 /* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		9BF6F49110681D29D99482E9 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				D4D274A5518E0BBA4C390E60 /* blueprint-hu.json in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		C56AE2872B9917BCC282A8AA /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				E7C3BDAE44E5CAE63D519EED /* blueprint-hu.json in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		0EBCC1E2891438AFBBEB1A26 /* Sources */ = {
