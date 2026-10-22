@@ -11,7 +11,7 @@ public struct Blueprint: Codable, Sendable, Equatable {
     public let ladderVersion: Int
     public private(set) var iterations: UInt64
     public private(set) var entries: [UInt64: Entry]
-    public static let supportedLadderVersion = 1
+    public static let supportedLadderVersion = 2
 
     public init(ladderVersion: Int = Blueprint.supportedLadderVersion,
                 iterations: UInt64 = 0, entries: [UInt64: Entry] = [:]) {

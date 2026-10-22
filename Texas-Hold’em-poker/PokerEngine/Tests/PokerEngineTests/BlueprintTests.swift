@@ -47,12 +47,14 @@ final class BlueprintTests: XCTestCase {
         // Brief deviation: fold 的 rawValue 是 0（check=1），2×0.8 落在 fold 槽而非下标 1。
         XCTAssertEqual(loaded.entries[42]?.strategySum[AbstractSlot.fold.rawValue] ?? 0, 2 * 0.8, accuracy: 1e-12)
         XCTAssertEqual(loaded.entries[42]?.strategySum[AbstractSlot.check.rawValue] ?? 0, 2 * 0.2, accuracy: 1e-12)
+        // T4 控制器指令随附：supportedLadderVersion 1→2（动作抽象语义变更），版本守卫
+        // 测试的「未来版本」同步 2→3——守卫语义不变：任何 ≠ supported 的版本拒载。
         let raw = try String(contentsOf: url, encoding: .utf8)
-            .replacingOccurrences(of: "\"ladderVersion\":1", with: "\"ladderVersion\":2")
+            .replacingOccurrences(of: "\"ladderVersion\":2", with: "\"ladderVersion\":3")
         let bad = URL(fileURLWithPath: "/tmp/bp-bad.json")
         try raw.write(to: bad, atomically: true, encoding: .utf8)
         XCTAssertThrowsError(try Blueprint.load(from: bad)) { e in
-            XCTAssertEqual(e as? BlueprintError, .versionMismatch(2))
+            XCTAssertEqual(e as? BlueprintError, .versionMismatch(3))
         }
         XCTAssertThrowsError(try Blueprint.load(from: URL(fileURLWithPath: "/tmp/definitely-not-there.json"))) { e in
             XCTAssertEqual(e as? BlueprintError, .corrupted)
