@@ -314,6 +314,30 @@ struct FastActionEnumeratorTests {
         try assertAllAccepted(state, payloads: result.payloads, catalog: catalog, roomID: roomID, tokens: tokens)
     }
 
+    /// P1:截止时间安全阀——病态状态(动作空间爆炸)下枚举必须能被时间预算截断,
+    /// 返回部分结果并标记 truncated;默认(nil)仍为完备枚举,语义不变。
+    @Test func deadlineCapsEnumerationTime() throws {
+        let catalog = try verifiedCatalog()
+        let state = try freshFourPlayerState(catalog: catalog)
+        let actor = try #require(state.activePlayerID)
+        let start = DispatchTime.now()
+        let result = try GameCore.FastActionEnumerator.enumerate(
+            state: state, actorID: actor, catalog: catalog,
+            deadlineNs: start.uptimeNanoseconds + 1  // 立即到期
+        )
+        let elapsedMs = Double(DispatchTime.now().uptimeNanoseconds - start.uptimeNanoseconds) / 1_000_000
+        #expect(elapsedMs < 500)
+        #expect(result.truncated == true)
+        // 已返回的部分结果仍然合法。
+        let tokens = Dictionary(uniqueKeysWithValues: state.players.map {
+            ($0.id, GameCore.ReconnectToken(rawValue: "dl-token-\($0.id.rawValue)"))
+        })
+        try assertAllAccepted(
+            state, payloads: result.payloads, catalog: catalog,
+            roomID: .init(rawValue: "dl-room"), tokens: tokens
+        )
+    }
+
     /// 终审 Important-3:钉住 build 跳过 complete() 重验所依赖的成本不变量——
     /// 任意现金水平(尤其低于"建造费+市场购买"的边界值)下,枚举出的 build
     /// 动作必须全部可被宿主接受(不得枚举出买不起的建造)。

@@ -20,7 +20,8 @@ extension GameCore {
             actorID: PlayerID,
             catalog: VerifiedGameDataCatalog,
             limit: Int? = nil,
-            prioritizer: ((PlayerIntent.Payload) -> Double)? = nil
+            prioritizer: ((PlayerIntent.Payload) -> Double)? = nil,
+            deadlineNs: UInt64? = nil
         ) throws -> Result {
             guard state.activePlayerID == actorID else {
                 return .init(payloads: [], truncated: false)
@@ -52,8 +53,21 @@ extension GameCore {
             // 无先验的 limit:DFS 收满即停(MCTS 内部节点用,免去全量展开);
             // 有先验的 limit 仍需全量枚举后排序截断(保证取到先验最高的 K 个)。
             let earlyExitPayloadLimit = (limit != nil && prioritizer == nil) ? limit! : nil
+            var deadlineCheckCounter = 0
             while let draft = stack.popLast() {
                 guard draft.selections.count <= 128 else { throw EnumerationError.depthExceeded }
+                // 截止时间安全阀(P1):病态状态动作空间爆炸时按预算返回部分结果;
+                // 默认 nil 不检查,完备枚举语义不变。
+                if deadlineNs != nil {
+                    deadlineCheckCounter += 1
+                    if deadlineCheckCounter & 127 == 0,
+                       DispatchTime.now().uptimeNanoseconds > deadlineNs!,
+                       complete.isEmpty == false {
+                        // 零动作不截断:deadline 只在已找到 ≥1 完整动作时生效,
+                        // 否则调用方(MCTS)会拿到空集抛 noActionsAvailable,座位死锁。
+                        return .init(payloads: complete, truncated: true)
+                    }
+                }
                 let query = LegalActionQuery(
                     requestID: "enumerate", baseVersion: state.authoritativeVersion, draft: draft
                 )

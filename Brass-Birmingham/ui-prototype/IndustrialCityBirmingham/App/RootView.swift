@@ -149,6 +149,8 @@ struct RootView: View {
             ContentUnavailableView("在线房间暂未开放", systemImage: "network.slash",
                                    description: Text("朋友测试阶段先使用附近离线房间。"))
 #endif
+        case .singlePlayer:
+            SinglePlayerSetupView(onNavigate: navigate)
         case .nearby:
 #if DEBUG
             NearbyRoomView(

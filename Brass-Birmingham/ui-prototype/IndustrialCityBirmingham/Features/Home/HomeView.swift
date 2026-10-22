@@ -29,6 +29,8 @@ struct HomeView: View {
                             .accessibilityIdentifier("home.online")
                         Button("附近离线房间") { onNavigate(.nearby) }
                             .accessibilityIdentifier("home.nearby")
+                        Button("单人挑战") { onNavigate(.singlePlayer) }
+                            .accessibilityIdentifier("home.single")
                     }
                     .buttonStyle(BrassPrimaryButtonStyle())
 
