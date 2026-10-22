@@ -59,6 +59,7 @@ let catalog = try load()
 let games = CommandLine.arguments.count > 1 ? Int(CommandLine.arguments[1]) ?? 20 : 20
 let aiSims = CommandLine.arguments.count > 2 ? Int(CommandLine.arguments[2]) ?? 12 : 12
 let mode = CommandLine.arguments.count > 3 ? CommandLine.arguments[3] : "random"
+let gatePort = CommandLine.arguments.count > 4 ? UInt16(CommandLine.arguments[4]) ?? 7745 : 7745
 // random 模式:3 AI + 1 随机席;ab 模式:p1/p2=基线(旧配置),p3/p4=候选(新配置)。
 let baselineConfig = GameCore.MCTSConfiguration(
     simulations: 24, explorationConstant: 1.25, timeLimitMs: 4_000, seed: 0
@@ -67,7 +68,18 @@ let baselineConfig = GameCore.MCTSConfiguration(
 let candidateConfig = GameCore.MCTSConfiguration(
     simulations: aiSims, explorationConstant: 1.25, timeLimitMs: 4_000, seed: 0
 )
-let aiConfig = candidateConfig
+// gate 模式:候选 = 网络引导 MCTS(p3/p4),现任 = 启发式 P1(p1/p2)。
+var gateEvaluator: GameCore.RemoteEvaluation?
+if mode == "gate" {
+    let client = GameCore.InferenceClient(host: "127.0.0.1", port: gatePort)
+    _ = try client.evaluate(batch: [[Float](repeating: 0, count: GameCore.NeuralProtocol.featureDim)])
+    gateEvaluator = GameCore.RemoteEvaluation(client: client, catalog: catalog)
+    print("ARENA-GATE-SERVER-OK port=\(gatePort)")
+}
+var aiConfig = candidateConfig
+if let gateEvaluator {
+    aiConfig.evaluator = gateEvaluator
+}
 var randomWins = 0
 var aiWins = 0
 var baselineWins = 0
@@ -91,6 +103,24 @@ for gameIndex in 0..<games {
         switch state.turnPhase {
         case .active, .forcedSale:
             guard let actor = state.activePlayerID else { fatalError("no actor") }
+            if mode == "gate" && actor != players[0] && actor != players[1] {
+                let decision = try GameCore.MonteCarloTreeSearch.chooseAction(
+                    state: state, actorID: actor, catalog: catalog, configuration: aiConfig
+                )
+                try GameCore.SimulationRunner.apply(
+                    decision.payload, actorID: actor, roomID: roomID, to: &state, catalog: catalog
+                )
+                continue
+            }
+            if mode == "gate" && (actor == players[0] || actor == players[1]) {
+                let decision = try GameCore.MonteCarloTreeSearch.chooseAction(
+                    state: state, actorID: actor, catalog: catalog, configuration: baselineConfig
+                )
+                try GameCore.SimulationRunner.apply(
+                    decision.payload, actorID: actor, roomID: roomID, to: &state, catalog: catalog
+                )
+                continue
+            }
             if mode == "ab" && actor != players[0] && actor != players[1] {
                 // 非基线座位即候选(p3/p4)。
                 let decision = try GameCore.MonteCarloTreeSearch.chooseAction(
@@ -161,6 +191,15 @@ for gameIndex in 0..<games {
     ))
 }
 let rate = Double(randomWins) / Double(games) * 100
+if mode == "gate" {
+    let candidateRate = Double(candidateWins) / Double(games) * 100
+    print(String(
+        format: "P1_ARENA_GATE games=%d heuristicWins=%d netWins=%d netWinRate=%.1f%% avgGameSec=%.1f",
+        games, baselineWins, candidateWins, candidateRate, totalSec / Double(games)
+    ))
+    print(candidateRate > 55.0 ? "P1_ARENA_GATE PROMOTE" : "P1_ARENA_GATE REJECT")
+    exit(candidateRate > 55.0 ? 0 : 1)
+}
 if mode == "ab" {
     print(String(
         format: "P1_ARENA_AB games=%d baselineWins=%d candidateWins=%d avgGameSec=%.1f",

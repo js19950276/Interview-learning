@@ -216,14 +216,23 @@ extension GameCore {
                 }
             }
 
-            // — markets(54)—
-            for slot in state.coalMarket.slots {
-                out.append(slot.hasCube ? 1 : 0)
-                out.append(Float(slot.price) / 8)
+            // — markets(54)— 槽位固定 14+10(官方市场),状态数组不足时补零
+            //(legacy 两态市场为空,维度必须与真实局一致)。
+            for index in 0..<14 {
+                if let slot = Self.at(state.coalMarket.slots, index) {
+                    out.append(slot.hasCube ? 1 : 0)
+                    out.append(Float(slot.price) / 8)
+                } else {
+                    out.append(contentsOf: [0, 0])
+                }
             }
-            for slot in state.ironMarket.slots {
-                out.append(slot.hasCube ? 1 : 0)
-                out.append(Float(slot.price) / 8)
+            for index in 0..<10 {
+                if let slot = Self.at(state.ironMarket.slots, index) {
+                    out.append(slot.hasCube ? 1 : 0)
+                    out.append(Float(slot.price) / 8)
+                } else {
+                    out.append(contentsOf: [0, 0])
+                }
             }
             out.append(8.0 / 16) // 煤无限供应标记价 £8
             out.append(6.0 / 16) // 铁无限供应标记价 £6

@@ -54,6 +54,9 @@ extension GameCore {
             var expandedNodes: Int
             /// 调试面板用:根子女按访问数降序前 5(动作类型 + 访问数 + 行动方平均效用)。
             var topCandidates: [String]
+            /// P2 训练目标(spec §6):根子女访问数按动作类型(8)/卡牌定义(31)归一分布。
+            var policyTargetsA: [Float] = []
+            var policyTargetsB: [Float] = []
         }
 
         /// 树内节点(单线程使用,不跨并发域)。
@@ -212,8 +215,69 @@ extension GameCore {
                 totalVisits: root.visits,
                 elapsedMs: elapsedMs,
                 expandedNodes: expandedNodes,
-                topCandidates: Array(top)
+                topCandidates: Array(top),
+                policyTargetsA: targetsA(root: root),
+                policyTargetsB: targetsB(root: root, state: state, catalog: catalog)
             )
+        }
+
+        static func targetsA(root: Node) -> [Float] {
+            let kinds = ActionKind.allCases
+            var kindVisits = [Float](repeating: 0, count: 8)
+            var total: Float = 0
+            for child in root.children where child.visits > 0 {
+                guard let payload = child.payload else { continue }
+                let kind: ActionKind?
+                switch payload {
+                case .pass: kind = .pass
+                case .build: kind = .build
+                case .network: kind = .network
+                case .develop: kind = .develop
+                case .sell: kind = .sell
+                case .loan: kind = .loan
+                case .scout: kind = .scout
+                case .forcedSale: kind = .forcedSale
+                default: kind = nil
+                }
+                if let kind, let index = kinds.firstIndex(of: kind) {
+                    kindVisits[index] += Float(child.visits)
+                }
+                total += Float(child.visits)
+            }
+            guard total > 0 else { return kindVisits }
+            return kindVisits.map { $0 / total }
+        }
+
+        static func targetsB(root: Node, state: GameState, catalog: VerifiedGameDataCatalog) -> [Float] {
+            let layout = StateEncoder.makeLayout(catalog: catalog)
+            var cardVisits = [Float](repeating: 0, count: layout.cards.count)
+            var total: Float = 0
+            for child in root.children where child.visits > 0 {
+                guard let payload = child.payload else { continue }
+                let instanceID: String?
+                switch payload {
+                case .pass(let i): instanceID = i.cardID
+                case .build(let i): instanceID = i.cardID
+                case .network(let i): instanceID = i.cardID
+                case .develop(let i): instanceID = i.cardID
+                case .sell(let i): instanceID = i.cardID
+                case .loan(let i): instanceID = i.cardID
+                case .scout(let i): instanceID = i.cardIDs.first
+                default: instanceID = nil
+                }
+                if let id = instanceID {
+                    for player in state.players {
+                        if let card = player.hand.first(where: { $0.id == id }),
+                           let cardIndex = layout.cardIndex[card.definitionID] {
+                            cardVisits[cardIndex] += Float(child.visits)
+                            break
+                        }
+                    }
+                }
+                total += Float(child.visits)
+            }
+            guard total > 0 else { return cardVisits }
+            return cardVisits.map { $0 / total }
         }
 
         /// 节点首访时枚举该状态全部动作:active/forcedSale 走完备枚举器;
