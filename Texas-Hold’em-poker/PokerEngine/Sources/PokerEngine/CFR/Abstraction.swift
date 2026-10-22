@@ -1,4 +1,7 @@
 /// 蓝图信息抽象（spec 阶段 2b §4）：牌桶 × 纹理 × 序列 → UInt64 键；7 槽位动作映射。
+/// `raiseMin` 为设计性死位：自「去最小加注档」修复起，多档加注位点不再由
+/// `Abstraction.slots(for:legal:)` 填充（仅剩单档=全下的位点不经过该档）；
+/// 保留枚举位以兼容既有表的 7 槽位下标布局。
 public enum AbstractSlot: Int, CaseIterable, Codable, Sendable {
     case fold = 0, check, call, raiseMin, raiseHalf, raisePot, allIn
 }
@@ -92,7 +95,9 @@ public enum Abstraction {
         (Int((k >> 15) & 0x3), Int((k >> 6) & 0x1FF), Int(k & 0x3F))
     }
 
-    // MARK: 档位 → 槽位（加注档按 ladder 内顺序：首→raiseMin、末→allIn、中间→half/pot）
+    // MARK: 档位 → 槽位（求解器式下注抽象：≥2 加注档时丢弃最低（最小加注）档，
+    // 保留档按位映射 [½池, 满池, 全下]——加注尺寸几何增长，加注战争深度有界。
+    // ladderActions（冻结）仍是档位来源，本层只做抽象过滤，不重算档位。）
     // 全下判定优先于最小加注：单点区间（短码仅剩全下一档）首档即末档，须落 .allIn。
     public static func slots(for ladder: [PlayerAction], legal: LegalActions) -> [(action: PlayerAction, slot: AbstractSlot)] {
         var out: [(action: PlayerAction, slot: AbstractSlot)] = []
@@ -101,18 +106,24 @@ public enum Abstraction {
             if case .raiseTo = act { return true }
             return false
         }.count
-        var raiseCount = 0
+        let dropMin = raiseTotal >= 2          // 多档位点丢弃最小加注档
+        let kept = dropMin ? raiseTotal - 1 : raiseTotal
+        var raiseCount = 0                     // ladder 内加注档原始序号
         for act in ladder {
             switch act {
             case .fold: out.append((act, .fold))
             case .check: out.append((act, .check))
             case .call: out.append((act, .call))
             case .bet, .raiseTo:
+                if dropMin && raiseCount == 0 {
+                    raiseCount += 1
+                    continue   // 最小加注档：不映射任何槽位（.raiseMin 死位由设计产生）
+                }
+                let p = raiseCount - (dropMin ? 1 : 0)   // 保留档内位置
                 let slot: AbstractSlot
-                if raiseCount == raiseTotal - 1 { slot = .allIn }
-                else if raiseCount == 0 { slot = .raiseMin }
-                else if raiseCount == 1 { slot = .raiseHalf }
-                else { slot = .raisePot }   // raiseTotal == 4 的第 3 档（满池）
+                if p == kept - 1 { slot = .allIn }
+                else if p == 0 { slot = .raiseHalf }
+                else { slot = .raisePot }   // kept == 3 的中位档（满池）
                 out.append((act, slot))
                 raiseCount += 1
             }
