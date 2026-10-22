@@ -29,6 +29,8 @@ extension GameCore {
         var timeLimitMs: Int? = 4_000
         /// 同 seed 同状态 → 同决策(枚举序稳定 + 平手取发现序)。
         var seed: UInt64 = 0
+        /// P2:可替换评估来源;nil = 启发式(P1 行为逐位不变)。
+        var evaluator: (any MCTSEvaluator)? = nil
 
         static func preset(_ difficulty: AIDifficulty) -> MCTSConfiguration {
             .init(simulations: difficulty.simulations, explorationConstant: 1.25, timeLimitMs: 4_000, seed: 0)
@@ -37,6 +39,8 @@ extension GameCore {
 
     nonisolated enum MCTSError: Error, Equatable, Sendable {
         case noActionsAvailable
+        /// 远程评估失败:自博弈必须整体退出,绝不静默降级(Review Focus 5)。
+        case inferenceFailed(underlying: String?)
     }
 
     /// PUCT 树搜索 + MaxN 多人备份(spec §7)。
@@ -77,6 +81,7 @@ extension GameCore {
             catalog: VerifiedGameDataCatalog,
             configuration: MCTSConfiguration
         ) throws -> Decision {
+            let evaluator = configuration.evaluator
             let start = DispatchTime.now()
             let deadlineNs: UInt64? = configuration.timeLimitMs.map {
                 start.uptimeNanoseconds + UInt64($0) * 1_000_000
@@ -89,11 +94,11 @@ extension GameCore {
             var rng = SplitMix64Seed(seed: seed)
 
             let root = Node()
-            enumeratePending(node: root, state: state, actorID: actorID, catalog: catalog, deadlineNs: deadlineNs)
+            try enumeratePending(node: root, state: state, actorID: actorID, catalog: catalog, deadlineNs: deadlineNs, evaluator: evaluator)
             if root.pending?.isEmpty != false {
                 // 死区兜底:根枚举被截止阀门截空或确实无动作时,无截止重枚举一次——
                 // 活性优先于预算(宁可单步超时,不可座位死锁)。
-                enumeratePending(node: root, state: state, actorID: actorID, catalog: catalog, deadlineNs: nil)
+                try enumeratePending(node: root, state: state, actorID: actorID, catalog: catalog, deadlineNs: nil, evaluator: evaluator)
             }
             guard let rootPending = root.pending, rootPending.isEmpty == false else {
                 throw MCTSError.noActionsAvailable
@@ -114,9 +119,10 @@ extension GameCore {
                 descent: while true {
                     // 首访非根节点:在此节点的状态上完备枚举一次(受同一搜索截止时间约束)。
                     if node !== root, node.pending == nil {
-                        enumeratePending(
+                        // 枚举/先验失败硬传播;仅 SimulationRunner.apply 的失败按死分支弃模拟。
+                        try enumeratePending(
                             node: node, state: work, actorID: work.activePlayerID,
-                            catalog: catalog, deadlineNs: deadlineNs
+                            catalog: catalog, deadlineNs: deadlineNs, evaluator: evaluator
                         )
                     }
                     if var pending = node.pending, pending.isEmpty == false {
@@ -131,8 +137,8 @@ extension GameCore {
                             try SimulationRunner.apply(
                                 entry.payload, actorID: actor, roomID: roomID, to: &work, catalog: catalog
                             )
-                        } catch {
-                            break descent // 枚举产物理应合法;万一失败按死分支弃本次模拟
+                        } catch is Error {
+                            break descent // 应用失败=死分支,弃本次模拟(枚举合法性由宿主对拍保障)
                         }
                         node = child
                         path.append(child)
@@ -158,8 +164,15 @@ extension GameCore {
                     path.append(next)
                 }
 
-                // 叶评估:终局走 finalStandings,否则启发式;同一入口内部已分流。
-                let leafUtility = HeuristicEvaluator.utilities(state: work, incomeTrack: incomeTrack)
+                // 叶评估:终局走 finalStandings,否则评估器(缺省启发式);
+                // 远程失败硬传播(绝不静默降级)。
+                let leafUtility: [PlayerID: Double]
+                do {
+                    leafUtility = try configuration.evaluator?.utilities(state: work, incomeTrack: incomeTrack)
+                        ?? HeuristicEvaluator.utilities(state: work, incomeTrack: incomeTrack)
+                } catch {
+                    throw MCTSError.inferenceFailed(underlying: String(describing: error))
+                }
                 // MaxN 备份:路径上每节点累计每玩家效用(轮到谁最大化谁是选择层的事)。
                 for nodeOnPath in path {
                     nodeOnPath.visits += 1
@@ -211,8 +224,9 @@ extension GameCore {
             state: GameState,
             actorID: PlayerID?,
             catalog: VerifiedGameDataCatalog,
-            deadlineNs: UInt64?
-        ) {
+            deadlineNs: UInt64?,
+            evaluator: (any MCTSEvaluator)?
+        ) throws {
             switch state.turnPhase {
             case .awaitingTurnEndConfirmation:
                 if let active = state.activePlayerID {
@@ -239,7 +253,16 @@ extension GameCore {
             let payloads = (try? FastActionEnumerator.enumerate(
                 state: state, actorID: actorID, catalog: catalog, deadlineNs: deadlineNs
             ))?.payloads ?? []
-            node.pending = payloads.map { ($0, 1.0, nil) }
+            // 先验:评估器给权重(远程=网络分布),缺省等权 1.0(P1 数值行为);
+            // 远程失败硬传播。
+            let weights: [Double]
+            do {
+                weights = try evaluator?.priors(for: payloads, state: state, catalog: catalog)
+                    ?? Array(repeating: 1.0, count: payloads.count)
+            } catch {
+                throw MCTSError.inferenceFailed(underlying: String(describing: error))
+            }
+            node.pending = payloads.enumerated().map { ($0.element, weights[$0.offset], nil) }
         }
 
         /// PUCT:a* = argmax Q(s,a) + c·P(s,a)·√N/(1+N(a));
