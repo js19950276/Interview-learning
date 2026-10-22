@@ -58,11 +58,20 @@ struct SM64: RandomNumberGenerator {
 let catalog = try load()
 let games = CommandLine.arguments.count > 1 ? Int(CommandLine.arguments[1]) ?? 20 : 20
 let aiSims = CommandLine.arguments.count > 2 ? Int(CommandLine.arguments[2]) ?? 12 : 12
-let aiConfig = GameCore.MCTSConfiguration(
+let mode = CommandLine.arguments.count > 3 ? CommandLine.arguments[3] : "random"
+// random 模式:3 AI + 1 随机席;ab 模式:p1/p2=基线(旧配置),p3/p4=候选(新配置)。
+let baselineConfig = GameCore.MCTSConfiguration(
+    simulations: 24, explorationConstant: 1.25, timeLimitMs: 4_000, seed: 0
+)
+// ab 模式:基线固定 24 模拟,候选用第 2 参(如 160)——按模拟数对比棋力。
+let candidateConfig = GameCore.MCTSConfiguration(
     simulations: aiSims, explorationConstant: 1.25, timeLimitMs: 4_000, seed: 0
 )
+let aiConfig = candidateConfig
 var randomWins = 0
 var aiWins = 0
+var baselineWins = 0
+var candidateWins = 0
 var totalSec = 0.0
 
 for gameIndex in 0..<games {
@@ -82,6 +91,25 @@ for gameIndex in 0..<games {
         switch state.turnPhase {
         case .active, .forcedSale:
             guard let actor = state.activePlayerID else { fatalError("no actor") }
+            if mode == "ab" && actor != players[0] && actor != players[1] {
+                // 非基线座位即候选(p3/p4)。
+                let decision = try GameCore.MonteCarloTreeSearch.chooseAction(
+                    state: state, actorID: actor, catalog: catalog, configuration: candidateConfig
+                )
+                try GameCore.SimulationRunner.apply(
+                    decision.payload, actorID: actor, roomID: roomID, to: &state, catalog: catalog
+                )
+                continue
+            }
+            if mode == "ab" && (actor == players[0] || actor == players[1]) {
+                let decision = try GameCore.MonteCarloTreeSearch.chooseAction(
+                    state: state, actorID: actor, catalog: catalog, configuration: baselineConfig
+                )
+                try GameCore.SimulationRunner.apply(
+                    decision.payload, actorID: actor, roomID: roomID, to: &state, catalog: catalog
+                )
+                continue
+            }
             if actor == randomSeat {
                 let result = try GameCore.FastActionEnumerator.enumerate(
                     state: state, actorID: actor, catalog: catalog
@@ -121,13 +149,25 @@ for gameIndex in 0..<games {
     }
     let randomWon = winners.contains(randomSeat)
     if randomWon { randomWins += 1 } else { aiWins += 1 }
+    let baselineWon = winners.contains(where: { $0 == players[0] || $0 == players[1] })
+    let candidateWon = winners.contains(where: { $0 == players[2] || $0 == players[3] })
+    if baselineWon { baselineWins += 1 }
+    if candidateWon { candidateWins += 1 }
     print(String(
-        format: "GAME %02d steps=%d sec=%.1f randomSeatWon=%@ standings=%@",
+        format: "GAME %02d steps=%d sec=%.1f randomSeatWon=%@ base=%@ cand=%@ standings=%@",
         gameIndex, steps, seconds, randomWon ? "YES" : "no",
+        baselineWon ? "Y" : "n", candidateWon ? "Y" : "n",
         standings.map { $0.map(\.rawValue).joined(separator: "+") }.joined(separator: " > ") as NSString
     ))
 }
 let rate = Double(randomWins) / Double(games) * 100
+if mode == "ab" {
+    print(String(
+        format: "P1_ARENA_AB games=%d baselineWins=%d candidateWins=%d avgGameSec=%.1f",
+        games, baselineWins, candidateWins, totalSec / Double(games)
+    ))
+    exit(0)
+}
 print(String(
     format: "P1_ARENA games=%d aiWins=%d randomWins=%d randomWinRate=%.1f%% avgGameSec=%.1f",
     games, aiWins, randomWins, rate, totalSec / Double(games)
