@@ -73,4 +73,38 @@ final class TrainerTests: XCTestCase {
         Trainer.train(&b2, iterations: 20, seed: 5)
         XCTAssertEqual(bp, b2)
     }
+
+    /// 并行分片：同 (seed, iterations, concurrency) 逐字节确定；分片覆盖无遗漏无重复；
+    /// 条目全并（不丢 worker 独有键、逐槽求和、迭代数相加）。
+    /// 对裁定的实证修正：worker 表全新开始（裁定要求），σ 读自有表 → 对手采样路径在
+    /// chunk 边界后与串行分叉，访问键集与串行**不保证**一致（40 迭代 seed 313 实测即
+    /// 不一致，原「键集合一致/ulp 差」断言失败）；跨 concurrency 差异是结构性的。
+    /// 故「条目全并」语义改为以 Blueprint.merge 直接锚定（独有键不丢 + 元素求和）。
+    func testParallelDeterministicAndComplete() {
+        var a = Blueprint(), b = Blueprint()
+        Trainer.train(&a, iterations: 40, seed: 313, concurrency: 4)
+        Trainer.train(&b, iterations: 40, seed: 313, concurrency: 4)
+        XCTAssertEqual(a, b)                 // 同参逐字节确定
+        XCTAssertEqual(a.iterations, 40)     // 分片覆盖无遗漏无重复（Σ分片 = 40）
+        XCTAssertFalse(a.entries.isEmpty)
+
+        // 合并完整性：共有键逐槽元素求和、worker 独有键不丢、迭代数相加
+        let slots: [(action: PlayerAction, slot: AbstractSlot)] = [
+            (.check, .check), (.raiseTo(40), .raiseMin)
+        ]
+        var w0 = Blueprint(), w1 = Blueprint()
+        w0.addRegret(key: 7, slots: slots, deltas: [1.0, 2.0])
+        w0.addStrategy(key: 7, slots: slots, probs: [0.5, 0.5], weight: 2.0)
+        w0.tickIteration()
+        w1.addRegret(key: 7, slots: slots, deltas: [10.0, 20.0])     // 共有键
+        w1.addRegret(key: 9, slots: slots, deltas: [100.0, 200.0])   // 仅 w1 有的键
+        w1.tickIteration(); w1.tickIteration()
+        w0.merge(w1)
+        XCTAssertEqual(Set(w0.entries.keys), [7, 9])
+        XCTAssertEqual(w0.iterations, 3)
+        XCTAssertEqual(w0.entries[7]?.regret[AbstractSlot.check.rawValue], 11.0)      // 1+10
+        XCTAssertEqual(w0.entries[7]?.regret[AbstractSlot.raiseMin.rawValue], 22.0)   // 2+20
+        XCTAssertEqual(w0.entries[9]?.regret[AbstractSlot.check.rawValue], 100.0)     // 独有键原值保留
+        XCTAssertEqual(w0.entries[7]?.strategySum[AbstractSlot.check.rawValue], 1.0)  // 2.0×0.5，缺失侧按 0
+    }
 }

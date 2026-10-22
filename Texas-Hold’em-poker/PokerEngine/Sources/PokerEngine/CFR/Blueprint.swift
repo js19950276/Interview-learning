@@ -22,6 +22,23 @@ public struct Blueprint: Codable, Sendable, Equatable {
 
     public mutating func tickIteration() { iterations &+= 1 }
 
+    /// 分片并行合并（Trainer concurrency > 1）：条目逐键元素求和（regret / strategySum），
+    /// 迭代数累加。只存在于部分 worker 的键不会被丢弃（缺失侧按 0 累加）。
+    /// 确定性由调用方保证：必须按 worker 序（0..k-1）顺序合并——同 (seed, iterations,
+    /// from, concurrency) 逐字节确定；不同 concurrency 的差异是结构性的（worker 从全新
+    /// 表开始，采样路径分叉），非仅浮点求和顺序。
+    /// 注意：worker 表各自全新开始，首访暖种在每个访问到该键的 worker 各发生一次，
+    /// 合并会把种子也累加（键被 k 个 worker 访问 → k× 种子）——已接受的确定性代价。
+    public mutating func merge(_ other: Blueprint) {
+        for (key, e) in other.entries {
+            var acc = entries[key] ?? Entry()
+            for i in e.regret.indices { acc.regret[i] += e.regret[i] }
+            for i in e.strategySum.indices { acc.strategySum[i] += e.strategySum[i] }
+            entries[key] = acc
+        }
+        iterations &+= other.iterations
+    }
+
     public mutating func addRegret(key: UInt64, slots: [(action: PlayerAction, slot: AbstractSlot)], deltas: [Double]) {
         var e = entries[key] ?? Entry()
         for (i, s) in slots.enumerated() { e.regret[s.slot.rawValue] += deltas[i] }
