@@ -21,17 +21,6 @@ extension GameCore {
             let merchantIndex: [String: Int]
             let slotOwners: [(locationID: String, slotIndex: Int)]
 
-            var sections: [(String, Int)] {
-                [
-                    ("global", 16),
-                    ("players", 4 * 92),
-                    ("slots", slotOwners.count * 14),
-                    ("routes", routes.count * 7),
-                    ("merchants", merchantSlots.count * 10),
-                    ("markets", 54),
-                    ("cards", 62),
-                ]
-            }
         }
 
         static func makeLayout(catalog: VerifiedGameDataCatalog) -> Layout {
@@ -156,7 +145,7 @@ extension GameCore {
                 out.append(contentsOf: bottom)
             }
 
-            // — slots 49×15 —
+            // — slots 49×14 —
             var placementBySlot: [String: BoardIndustryPlacement] = [:]
             for placement in state.boardIndustryPlacements {
                 placementBySlot["\(placement.locationID)#\(placement.slotIndex)"] = placement
@@ -180,7 +169,7 @@ extension GameCore {
                 }
             }
 
-            // — routes 39×8 —
+            // — routes 39×7 —
             for route in layout.routes {
                 // 当前时代的已建链接(V1 口径:一条路同代一条;跨代两条时取当代)。
                 let link = state.placedLinks.last { $0.routeID == route.id && $0.era == state.era }
@@ -253,7 +242,7 @@ extension GameCore {
             }
             out.append(contentsOf: deckCounts.map { $0 / 30 })
 
-            assert(out.count == 1549, "布局表与实现不一致: \(out.count)")
+            precondition(out.count == 1549, "布局表与实现不一致: \(out.count)")
             return out
         }
     }

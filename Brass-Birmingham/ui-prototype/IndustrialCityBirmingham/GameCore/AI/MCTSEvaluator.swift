@@ -49,6 +49,12 @@ extension GameCore {
         func utilities(
             state: GameState, incomeTrack: [IncomeTrack.Entry]
         ) throws -> [PlayerID: Double] {
+            // 终局叶:排名效用是精确已知的,不走网络(终审 I1——省一次推理且无噪声)。
+            if state.turnPhase == .ended, let standings = state.finalStandings {
+                return HeuristicEvaluator.standingsUtilities(
+                    standings: standings, players: state.players
+                )
+            }
             let features = StateEncoder.encode(state: state, catalog: catalog)
             let result = try client.evaluateSingle(features)
             guard result.values.count == 1 else { throw InferenceError.truncatedResponse }
@@ -92,7 +98,10 @@ extension GameCore {
                 }
                 weights.append(weight)
             }
-            return weights
+            // spec §7:先验在枚举出的合法动作集上归一(否则 ~1e-3 量级积使 U 项失效)。
+            let total = weights.reduce(0, +)
+            guard total > 0 else { return weights }
+            return weights.map { $0 / total }
         }
 
         static func softmax(_ values: [Float]) -> [Double] {

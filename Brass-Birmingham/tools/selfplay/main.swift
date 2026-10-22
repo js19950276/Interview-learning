@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 
 // P2 自博弈 CLI:网络引导 MCTS 自对弈,产出训练分片(f16 特征 + 访问分布 + 终局价值)。
@@ -42,6 +43,21 @@ func load() throws -> GameCore.VerifiedGameDataCatalog {
         manifestData: encoder.encode(manifest), files: files
     )
 }
+
+// I4 错峰互斥锁:与训练互检(训练侧 O_EXCL+存活检测;此处同语义)。
+let lockPath = repoRoot.appending(path: "tools/.lock").path
+if let content = try? String(contentsOfFile: lockPath, encoding: .utf8) {
+    let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
+    if let pid = Int32(trimmed.split(separator: ":").last ?? ""), pid > 0, kill(pid, 0) == 0 {
+        print("SELFPLAY-LOCK-REFUSED holder=\(trimmed)")
+        exit(5)
+    }
+    try? FileManager.default.removeItem(atPath: lockPath)  // 死进程残留锁接管
+}
+try? "selfplay:\(ProcessInfo.processInfo.processIdentifier)".write(
+    toFile: lockPath, atomically: true, encoding: .utf8
+)
+defer { try? FileManager.default.removeItem(atPath: lockPath) }
 
 let args = CommandLine.arguments
 let gameCount = args.count > 1 ? Int(args[1]) ?? 1 : 1
@@ -96,22 +112,26 @@ for gameOffset in 0..<gameCount {
                 decision = try GameCore.MonteCarloTreeSearch.chooseAction(
                     state: state, actorID: actor, catalog: catalog, configuration: config
                 )
+            } catch GameCore.MCTSError.noActionsAvailable {
+                print("SELFPLAY-NO-ACTIONS game=\(gameIndex) step=\(stepGuard)")
+                exit(6)
+            } catch GameCore.MCTSError.inferenceFailed(let underlying) {
+                print("SELFPLAY-INFERENCE-FAILED game=\(gameIndex) error=\(underlying ?? "unknown")")
+                exit(3)
             } catch {
                 print("SELFPLAY-INFERENCE-FAILED game=\(gameIndex) error=\(error)")
                 exit(3)
             }
-            // 记录样本:特征 + 访问分布(动作类型/卡牌定义两个因子口径,spec §6)。
-            // topCandidates 不含全量分布——重算:chooseAction 返回 visits 口径不足,
-            // 简化 V1:用 decision 内部不可得,故以"选中动作 one-hot + top 候选加权"代替?
-            // 不:训练目标需要真实分布。改为把分布记录放进 Decision(Swift 侧扩展)。
-            // ——本 CLI 依赖 Decision.policyTargets(见 MonteCarloTreeSearch 扩展)。
+            // 记录样本:特征 + 双因子访问分布(Decision.policyTargetsA/B,spec §6)。
             featuresList.append(GameCore.StateEncoder.encode(state: state, catalog: catalog))
             policyAList.append(decision.policyTargetsA)
             policyBList.append(decision.policyTargetsB)
             decisionCount += 1
 
-            // 落子:前 1/3 决策按访问分布采样(温度 1),其余贪心;
-            // V1 简化:直接使用 chooseAction 已按 visits 贪心的 payload(采样口径待 P2 迭代)。
+            // 落子:V1 一律贪心(决策 = 访问最多)。
+            // Ruling(2026-10-22,终审 I7):spec §7 前 1/3 步按访问分布采样暂缓——
+            // 修复前星形树访问分布近平坦,采样与贪心几乎等价(假多样性);
+            // C2 修复后先验真正生效时再启用。多样性当前来自各局种子差异。
             do {
                 try GameCore.SimulationRunner.apply(
                     decision.payload, actorID: actor, roomID: roomID, to: &state, catalog: catalog
@@ -189,7 +209,10 @@ for gameOffset in 0..<gameCount {
             blob.append(Data(bytes: &bits, count: 4))
         }
     }
-    try blob.write(to: URL(fileURLWithPath: path))
+    // 原子写:中途被杀不留截断文件(终审 M8;训练侧另有尺寸校验兜底)。
+    let tmpPath = path + ".tmp"
+    try blob.write(to: URL(fileURLWithPath: tmpPath))
+    try FileManager.default.moveItem(atPath: tmpPath, toPath: path)
     totalSamples += decisionCount
     print("GAME game=\(gameIndex) decisions=\(decisionCount) winner=\(standings.first?.map(\.rawValue).joined(separator: "+") ?? "-") shard=\(path)")
 }

@@ -125,10 +125,47 @@ struct StateEncoderTests {
         let catalog = try verifiedCatalog()
         let players = (1...4).map { GameCore.PlayerID(rawValue: "enc-p\($0)") }
         var setupRules = GameCore.SetupRules(seed: 20_601)
-        let state = try setupRules.makeGame(catalog: catalog, playerIDs: players).state
-        let encoded = GameCore.StateEncoder.encode(state: state, catalog: catalog)
-        // 布局或数值口径变更 → 哈希变 → 必须递增 featuresVersion 并重录此值。
-        #expect(hashFeatures(encoded) == "15538613166211547935")
+        var state = try setupRules.makeGame(catalog: catalog, playerIDs: players).state
+        let roomID = GameCore.RoomID(rawValue: "enc-room")
+        // 布局或数值口径变更 → 哈希链变 → 必须递增 featuresVersion 并重录。
+        // 链覆盖初始态 + 随机推进 12 步(含占用槽/路线/弃牌区,终审 I2:
+        // 单初始态 golden 锁不住这些区段的占用编码路径)。
+        var chain: [String] = []
+        var rng = SplitMix64(seed: 99)
+        for _ in 0..<13 {
+            chain.append(hashFeatures(GameCore.StateEncoder.encode(state: state, catalog: catalog)))
+            switch state.turnPhase {
+            case .active, .forcedSale:
+                let payloads = try GameCore.FastActionEnumerator.enumerate(
+                    state: state, actorID: state.activePlayerID!, catalog: catalog
+                ).payloads
+                guard let payload = payloads.randomElement(using: &rng) else { break }
+                try GameCore.SimulationRunner.apply(
+                    payload, actorID: state.activePlayerID!, roomID: roomID, to: &state, catalog: catalog
+                )
+            case .awaitingTurnEndConfirmation:
+                try GameCore.SimulationRunner.apply(
+                    .confirmTurnEnd, actorID: state.activePlayerID!, roomID: roomID, to: &state, catalog: catalog
+                )
+            case .eraIntermission(let inter):
+                guard let p = state.players.map(\.id)
+                    .first(where: { inter.confirmedPlayerIDs.contains($0) == false }) else { break }
+                try GameCore.SimulationRunner.apply(
+                    .confirmEraIntermission, actorID: p, roomID: roomID, to: &state, catalog: catalog
+                )
+            case .ended:
+                break
+            }
+        }
+        var chainHash: UInt64 = 0xcbf2_9ce4_8422_2325
+        for link in chain.joined(separator: "|") {
+            for byte in link.utf8 {
+                chainHash ^= UInt64(byte)
+                chainHash = chainHash &* 0x0000_0100_0000_01B3
+            }
+        }
+        #expect(String(chainHash) == "4714901619788747067")
+        #expect(chain[0] == "15538613166211547935")
         #expect(GameCore.StateEncoder.featuresVersion == 1)
     }
 }

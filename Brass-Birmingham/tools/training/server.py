@@ -16,8 +16,7 @@ from bb import BrassNet, FEATURE_DIM, POLICY_A, POLICY_B, RESPONSE_FLOATS, VALUE
 parser = argparse.ArgumentParser()
 parser.add_argument("--checkpoint", default="runs/incumbent.pt")
 parser.add_argument("--port", type=int, default=7745)
-parser.add_argument("--device", default="mps" if torch.backends.mps.is_available() else "cpu")
-parser.add_argument("--batch-window-ms", type=int, default=10)
+parser.add_argument("--device", default="cpu")  # 默认 cpu:分片逐字节可复现(spec §8.2);mps 显式传参
 args = parser.parse_args()
 
 checkpoint = torch.load(args.checkpoint, map_location="cpu", weights_only=True)
@@ -44,14 +43,19 @@ def handle_connection(conn):
         while True:
             header = recv_exactly(conn, 8)
             count, dim = struct.unpack("<II", header)
+            assert dim == FEATURE_DIM, f"维度不符: {dim}"
             body = np.frombuffer(recv_exactly(conn, count * dim * 2), dtype="<f2")
             features = torch.from_numpy(body.astype(np.float32)).reshape(count, dim).to(device)
             with torch.no_grad():
                 logits_a, logits_b, values = model(features)
+            # 帧协议:逐样本交错 count×(A[8]+B[31]+V[4])(终审 C1:
+            # 此前块状布局与 Swift 解码器静默错位,仅 count=1 时巧合一致)。
+            a = logits_a.float().cpu().numpy().astype("<f4")
+            b = logits_b.float().cpu().numpy().astype("<f4")
+            v = values.float().cpu().numpy().astype("<f4")
             payload = struct.pack("<I", count)
-            payload += logits_a.float().cpu().numpy().astype("<f4").tobytes()
-            payload += logits_b.float().cpu().numpy().astype("<f4").tobytes()
-            payload += values.float().cpu().numpy().astype("<f4").tobytes()
+            for sample in range(count):
+                payload += a[sample].tobytes() + b[sample].tobytes() + v[sample].tobytes()
             conn.sendall(payload)
 
 

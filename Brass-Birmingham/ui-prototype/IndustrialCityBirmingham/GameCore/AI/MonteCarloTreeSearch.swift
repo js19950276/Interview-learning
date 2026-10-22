@@ -326,7 +326,18 @@ extension GameCore {
             } catch {
                 throw MCTSError.inferenceFailed(underlying: String(describing: error))
             }
-            node.pending = payloads.enumerated().map { ($0.element, weights[$0.offset], nil) }
+            var entries = payloads.enumerated().map { ($0.element, weights[$0.offset], nil as PlayerID?) }
+            if weights.contains(where: { $0 != weights.first ?? 1.0 }) {
+                // 先验非等权(远程评估):按先验升序排,removeLast 先弹最高——
+                // 网络先验引导展开顺序(P2 终审 C2:此前逆枚举序无视先验)。
+                entries = entries.enumerated()
+                    .sorted { lhs, rhs in
+                        let lp = lhs.element.1, rp = rhs.element.1
+                        return lp == rp ? lhs.offset < rhs.offset : lp < rp
+                    }
+                    .map(\.element)
+            }
+            node.pending = entries
         }
 
         /// PUCT:a* = argmax Q(s,a) + c·P(s,a)·√N/(1+N(a));
@@ -347,13 +358,14 @@ extension GameCore {
             return best
         }
 
-        /// 根先验噪声:均匀混合(0.75 + 0.5·U)近似 spec 的 Dirichlet(α=0.3, 权重 0.25);
-        /// V1 无网络先验,仅用于自博弈多样性;seed 确定 → 结果仍可复现。
+        /// 根先验噪声(spec §7:0.75·P_evaluator + 0.25·Dirichlet 近似)。
+        /// P2 修复:此前直接覆盖评估器先验,网络策略头对搜索/目标完全失效(终审 C2)。
         private static func applyRootNoise(_ root: Node, using rng: inout SplitMix64Seed) {
             guard let pending = root.pending, pending.count > 1 else { return }
             for index in pending.indices {
                 let unit = Double(rng.next() % 1_000) / 1_000
-                root.pending?[index].prior = 0.75 + 0.5 * unit
+                let noise = 0.5 + unit  // [0.5, 1.5) 均匀近似 Dirichlet 抖动
+                root.pending?[index].prior = 0.75 * pending[index].prior + 0.25 * noise
             }
         }
 

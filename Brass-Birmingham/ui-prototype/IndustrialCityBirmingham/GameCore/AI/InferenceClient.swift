@@ -95,6 +95,14 @@ extension GameCore {
             guard fileDescriptor < 0 else { return }
             let fd = socket(AF_INET, SOCK_STREAM, 0)
             guard fd >= 0 else { throw InferenceError.connectionFailed }
+            // 对端关闭时 send 触发 SIGPIPE 会直接杀进程(exit 141)而非走设计好的
+            // 错误路径;Darwin 无 MSG_NOSIGNAL,必须套接字级关掉(终审 I5)。
+            var noSigPipe: Int32 = 1
+            setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &noSigPipe, socklen_t(MemoryLayout<Int32>.size))
+            // 收发超时(计划 Task 4:10s)——服务挂起时自博弈不得永久卡死。
+            var timeout = timeval(tv_sec: 10, tv_usec: 0)
+            setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
+            setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
             var address = sockaddr_in()
             address.sin_family = sa_family_t(AF_INET)
             address.sin_port = port.bigEndian

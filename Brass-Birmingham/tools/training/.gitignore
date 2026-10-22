@@ -3,3 +3,4 @@ runs/
 shards/
 *.pt
 __pycache__/
+tools/.lock

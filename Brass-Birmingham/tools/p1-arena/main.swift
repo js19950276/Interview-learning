@@ -84,6 +84,8 @@ var randomWins = 0
 var aiWins = 0
 var baselineWins = 0
 var candidateWins = 0
+var gateBaseScore = 0.0
+var gateCandScore = 0.0
 var totalSec = 0.0
 
 for gameIndex in 0..<games {
@@ -103,7 +105,13 @@ for gameIndex in 0..<games {
         switch state.turnPhase {
         case .active, .forcedSale:
             guard let actor = state.activePlayerID else { fatalError("no actor") }
-            if mode == "gate" && actor != players[0] && actor != players[1] {
+            // I6:座位按局奇偶轮换(偶数局基线 p1/p2,奇数局互换),消除先手座位混淆。
+            let baselineIsFront = gameIndex % 2 == 0
+            func isBaseline(_ seat: GameCore.PlayerID) -> Bool {
+                let front = seat == players[0] || seat == players[1]
+                return baselineIsFront ? front : !front
+            }
+            if mode == "gate" && isBaseline(actor) == false {
                 let decision = try GameCore.MonteCarloTreeSearch.chooseAction(
                     state: state, actorID: actor, catalog: catalog, configuration: aiConfig
                 )
@@ -112,7 +120,7 @@ for gameIndex in 0..<games {
                 )
                 continue
             }
-            if mode == "gate" && (actor == players[0] || actor == players[1]) {
+            if mode == "gate" && isBaseline(actor) {
                 let decision = try GameCore.MonteCarloTreeSearch.chooseAction(
                     state: state, actorID: actor, catalog: catalog, configuration: baselineConfig
                 )
@@ -179,8 +187,16 @@ for gameIndex in 0..<games {
     }
     let randomWon = winners.contains(randomSeat)
     if randomWon { randomWins += 1 } else { aiWins += 1 }
-    let baselineWon = winners.contains(where: { $0 == players[0] || $0 == players[1] })
-    let candidateWon = winners.contains(where: { $0 == players[2] || $0 == players[3] })
+    // I6:并列半分(spec §9.2)——独占赢家得 1,并列组按组内己方席位占比加权。
+    let baseSeats: Set<GameCore.PlayerID> = gameIndex % 2 == 0 ? [players[0], players[1]] : [players[2], players[3]]
+    let candSeats: Set<GameCore.PlayerID> = gameIndex % 2 == 0 ? [players[2], players[3]] : [players[0], players[1]]
+    let winnersSet = Set(winners)
+    let baseShare = Double(winnersSet.intersection(baseSeats).count) / Double(winners.count)
+    let candShare = Double(winnersSet.intersection(candSeats).count) / Double(winners.count)
+    let baselineWon = baseShare > 0.5
+    let candidateWon = candShare > 0.5
+    gateBaseScore += baseShare
+    gateCandScore += candShare
     if baselineWon { baselineWins += 1 }
     if candidateWon { candidateWins += 1 }
     print(String(
@@ -192,7 +208,8 @@ for gameIndex in 0..<games {
 }
 let rate = Double(randomWins) / Double(games) * 100
 if mode == "gate" {
-    let candidateRate = Double(candidateWins) / Double(games) * 100
+    // 半分口径的候选得分率(并列局各按占比分摊,和为 1)。
+    let candidateRate = gateCandScore / Double(games) * 100
     print(String(
         format: "P1_ARENA_GATE games=%d heuristicWins=%d netWins=%d netWinRate=%.1f%% avgGameSec=%.1f",
         games, baselineWins, candidateWins, candidateRate, totalSec / Double(games)

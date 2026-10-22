@@ -12,6 +12,7 @@ POLICY_B = 31
 VALUE = 4
 RESPONSE_FLOATS = POLICY_A + POLICY_B + VALUE
 SHARD_MAGIC = b"BBSP"
+EXPECTED_LAYOUT16 = 55594  # 与 Swift StateEncoder.layoutHash16() 对拍锁定
 
 
 class BrassNet(nn.Module):
@@ -51,11 +52,22 @@ def write_shard(path, features_f16: np.ndarray, policy_a: np.ndarray,
 
 def read_shard(path):
     """返回 (features_f16, policy_a, policy_b, values, header 元组)。"""
+    import os
     with open(path, "rb") as fh:
         header = fh.read(20)
-        assert header[:4] == SHARD_MAGIC, f"非分片文件: {path}"
+        if len(header) < 20 or header[:4] != SHARD_MAGIC:
+            raise ValueError(f"非分片或截断文件: {path}")
         version, layout16, count, dim, _ = struct.unpack("<HHIII", header[4:])
-        assert version == FEATURES_VERSION, f"featuresVersion 不匹配: {version}"
+        if version != FEATURES_VERSION:
+            raise ValueError(f"featuresVersion 不匹配: {version} != {FEATURES_VERSION} ({path})")
+        if layout16 != EXPECTED_LAYOUT16:
+            raise ValueError(f"布局哈希不匹配: {layout16} != {EXPECTED_LAYOUT16} ({path})")
+        if dim != FEATURE_DIM:
+            raise ValueError(f"维度不匹配: {dim} != {FEATURE_DIM} ({path})")
+        size = os.fstat(fh.fileno()).st_size - 20
+        expected = count * (dim * 2 + (POLICY_A + POLICY_B + VALUE) * 4)
+        if size != expected:
+            raise ValueError(f"截断分片: {size} 字节,期望 {expected} ({path})")
         features = np.frombuffer(fh.read(count * dim * 2), dtype="<f2").reshape(count, dim)
         policy_a = np.frombuffer(fh.read(count * POLICY_A * 4), dtype="<f4").reshape(count, POLICY_A)
         policy_b = np.frombuffer(fh.read(count * POLICY_B * 4), dtype="<f4").reshape(count, POLICY_B)
