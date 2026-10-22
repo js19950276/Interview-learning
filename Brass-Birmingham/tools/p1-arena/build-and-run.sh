@@ -10,4 +10,4 @@ swiftc -O -D DEBUG -o "$OUT" \
   "$GAMECORE"/Data/*.swift "$GAMECORE"/Simulation/*.swift "$GAMECORE"/AI/*.swift \
   "$HERE"/main.swift "$HERE"/shim.swift "$HERE"/uistub.swift
 echo "built: $OUT"
-"$OUT" "${1:-20}" "${2:-12}" "${3:-random}"
+"$OUT" "${1:-20}" "${2:-12}" "${3:-random}" "${4:-7745}"

@@ -39,7 +39,7 @@ public let valuePlayers = 4
 FEATURES_VERSION = 1; FEATURE_DIM = 1636; POLICY_A = 8; POLICY_B = 31; VALUE = 4
 ```
 
-**分片格式 v1**(小端):`magic "BBSP" | u16 featuresVersion | u16 布局哈希低16位 | u32 sampleCount | u32 dim | u32 reserved` + 每样本 `f16[dim] + f32[8] policyA + f32[31] policyB + f32[4] value`(value 按局内 playerOrder 座次序,4 人恒 4)。
+**分片格式 v1**(小端;按列分块,非逐样本交错——实现口径,2026-10-22 终审 M2 修正):`magic "BBSP" | u16 featuresVersion | u16 布局哈希低16位 | u32 sampleCount | u32 dim | u32 reserved` + `f16[sampleCount×dim] 特征块 | f32[sampleCount×8] A 块 | f32[sampleCount×31] B 块 | f32[sampleCount×4] value 块`(value 行按局内 playerOrder 座次序,4 人恒 4)。
 
 ## Review Focus
 

@@ -29,6 +29,8 @@ extension GameCore {
         var timeLimitMs: Int? = 4_000
         /// 同 seed 同状态 → 同决策(枚举序稳定 + 平手取发现序)。
         var seed: UInt64 = 0
+        /// P2:可替换评估来源;nil = 启发式(P1 行为逐位不变)。
+        var evaluator: (any MCTSEvaluator)? = nil
 
         static func preset(_ difficulty: AIDifficulty) -> MCTSConfiguration {
             .init(simulations: difficulty.simulations, explorationConstant: 1.25, timeLimitMs: 4_000, seed: 0)
@@ -37,6 +39,8 @@ extension GameCore {
 
     nonisolated enum MCTSError: Error, Equatable, Sendable {
         case noActionsAvailable
+        /// 远程评估失败:自博弈必须整体退出,绝不静默降级(Review Focus 5)。
+        case inferenceFailed(underlying: String?)
     }
 
     /// PUCT 树搜索 + MaxN 多人备份(spec §7)。
@@ -50,6 +54,9 @@ extension GameCore {
             var expandedNodes: Int
             /// 调试面板用:根子女按访问数降序前 5(动作类型 + 访问数 + 行动方平均效用)。
             var topCandidates: [String]
+            /// P2 训练目标(spec §6):根子女访问数按动作类型(8)/卡牌定义(31)归一分布。
+            var policyTargetsA: [Float] = []
+            var policyTargetsB: [Float] = []
         }
 
         /// 树内节点(单线程使用,不跨并发域)。
@@ -77,6 +84,7 @@ extension GameCore {
             catalog: VerifiedGameDataCatalog,
             configuration: MCTSConfiguration
         ) throws -> Decision {
+            let evaluator = configuration.evaluator
             let start = DispatchTime.now()
             let deadlineNs: UInt64? = configuration.timeLimitMs.map {
                 start.uptimeNanoseconds + UInt64($0) * 1_000_000
@@ -89,11 +97,11 @@ extension GameCore {
             var rng = SplitMix64Seed(seed: seed)
 
             let root = Node()
-            enumeratePending(node: root, state: state, actorID: actorID, catalog: catalog, deadlineNs: deadlineNs)
+            try enumeratePending(node: root, state: state, actorID: actorID, catalog: catalog, deadlineNs: deadlineNs, evaluator: evaluator)
             if root.pending?.isEmpty != false {
                 // 死区兜底:根枚举被截止阀门截空或确实无动作时,无截止重枚举一次——
                 // 活性优先于预算(宁可单步超时,不可座位死锁)。
-                enumeratePending(node: root, state: state, actorID: actorID, catalog: catalog, deadlineNs: nil)
+                try enumeratePending(node: root, state: state, actorID: actorID, catalog: catalog, deadlineNs: nil, evaluator: evaluator)
             }
             guard let rootPending = root.pending, rootPending.isEmpty == false else {
                 throw MCTSError.noActionsAvailable
@@ -114,9 +122,10 @@ extension GameCore {
                 descent: while true {
                     // 首访非根节点:在此节点的状态上完备枚举一次(受同一搜索截止时间约束)。
                     if node !== root, node.pending == nil {
-                        enumeratePending(
+                        // 枚举/先验失败硬传播;仅 SimulationRunner.apply 的失败按死分支弃模拟。
+                        try enumeratePending(
                             node: node, state: work, actorID: work.activePlayerID,
-                            catalog: catalog, deadlineNs: deadlineNs
+                            catalog: catalog, deadlineNs: deadlineNs, evaluator: evaluator
                         )
                     }
                     if var pending = node.pending, pending.isEmpty == false {
@@ -131,8 +140,8 @@ extension GameCore {
                             try SimulationRunner.apply(
                                 entry.payload, actorID: actor, roomID: roomID, to: &work, catalog: catalog
                             )
-                        } catch {
-                            break descent // 枚举产物理应合法;万一失败按死分支弃本次模拟
+                        } catch is Error {
+                            break descent // 应用失败=死分支,弃本次模拟(枚举合法性由宿主对拍保障)
                         }
                         node = child
                         path.append(child)
@@ -158,8 +167,15 @@ extension GameCore {
                     path.append(next)
                 }
 
-                // 叶评估:终局走 finalStandings,否则启发式;同一入口内部已分流。
-                let leafUtility = HeuristicEvaluator.utilities(state: work, incomeTrack: incomeTrack)
+                // 叶评估:终局走 finalStandings,否则评估器(缺省启发式);
+                // 远程失败硬传播(绝不静默降级)。
+                let leafUtility: [PlayerID: Double]
+                do {
+                    leafUtility = try configuration.evaluator?.utilities(state: work, incomeTrack: incomeTrack)
+                        ?? HeuristicEvaluator.utilities(state: work, incomeTrack: incomeTrack)
+                } catch {
+                    throw MCTSError.inferenceFailed(underlying: String(describing: error))
+                }
                 // MaxN 备份:路径上每节点累计每玩家效用(轮到谁最大化谁是选择层的事)。
                 for nodeOnPath in path {
                     nodeOnPath.visits += 1
@@ -199,8 +215,69 @@ extension GameCore {
                 totalVisits: root.visits,
                 elapsedMs: elapsedMs,
                 expandedNodes: expandedNodes,
-                topCandidates: Array(top)
+                topCandidates: Array(top),
+                policyTargetsA: targetsA(root: root),
+                policyTargetsB: targetsB(root: root, state: state, catalog: catalog)
             )
+        }
+
+        static func targetsA(root: Node) -> [Float] {
+            let kinds = ActionKind.allCases
+            var kindVisits = [Float](repeating: 0, count: 8)
+            var total: Float = 0
+            for child in root.children where child.visits > 0 {
+                guard let payload = child.payload else { continue }
+                let kind: ActionKind?
+                switch payload {
+                case .pass: kind = .pass
+                case .build: kind = .build
+                case .network: kind = .network
+                case .develop: kind = .develop
+                case .sell: kind = .sell
+                case .loan: kind = .loan
+                case .scout: kind = .scout
+                case .forcedSale: kind = .forcedSale
+                default: kind = nil
+                }
+                if let kind, let index = kinds.firstIndex(of: kind) {
+                    kindVisits[index] += Float(child.visits)
+                }
+                total += Float(child.visits)
+            }
+            guard total > 0 else { return kindVisits }
+            return kindVisits.map { $0 / total }
+        }
+
+        static func targetsB(root: Node, state: GameState, catalog: VerifiedGameDataCatalog) -> [Float] {
+            let layout = StateEncoder.makeLayout(catalog: catalog)
+            var cardVisits = [Float](repeating: 0, count: layout.cards.count)
+            var total: Float = 0
+            for child in root.children where child.visits > 0 {
+                guard let payload = child.payload else { continue }
+                let instanceID: String?
+                switch payload {
+                case .pass(let i): instanceID = i.cardID
+                case .build(let i): instanceID = i.cardID
+                case .network(let i): instanceID = i.cardID
+                case .develop(let i): instanceID = i.cardID
+                case .sell(let i): instanceID = i.cardID
+                case .loan(let i): instanceID = i.cardID
+                case .scout(let i): instanceID = i.cardIDs.first
+                default: instanceID = nil
+                }
+                if let id = instanceID {
+                    for player in state.players {
+                        if let card = player.hand.first(where: { $0.id == id }),
+                           let cardIndex = layout.cardIndex[card.definitionID] {
+                            cardVisits[cardIndex] += Float(child.visits)
+                            break
+                        }
+                    }
+                }
+                total += Float(child.visits)
+            }
+            guard total > 0 else { return cardVisits }
+            return cardVisits.map { $0 / total }
         }
 
         /// 节点首访时枚举该状态全部动作:active/forcedSale 走完备枚举器;
@@ -211,8 +288,9 @@ extension GameCore {
             state: GameState,
             actorID: PlayerID?,
             catalog: VerifiedGameDataCatalog,
-            deadlineNs: UInt64?
-        ) {
+            deadlineNs: UInt64?,
+            evaluator: (any MCTSEvaluator)?
+        ) throws {
             switch state.turnPhase {
             case .awaitingTurnEndConfirmation:
                 if let active = state.activePlayerID {
@@ -239,7 +317,27 @@ extension GameCore {
             let payloads = (try? FastActionEnumerator.enumerate(
                 state: state, actorID: actorID, catalog: catalog, deadlineNs: deadlineNs
             ))?.payloads ?? []
-            node.pending = payloads.map { ($0, 1.0, nil) }
+            // 先验:评估器给权重(远程=网络分布),缺省等权 1.0(P1 数值行为);
+            // 远程失败硬传播。
+            let weights: [Double]
+            do {
+                weights = try evaluator?.priors(for: payloads, state: state, catalog: catalog)
+                    ?? Array(repeating: 1.0, count: payloads.count)
+            } catch {
+                throw MCTSError.inferenceFailed(underlying: String(describing: error))
+            }
+            var entries = payloads.enumerated().map { ($0.element, weights[$0.offset], nil as PlayerID?) }
+            if weights.contains(where: { $0 != weights.first ?? 1.0 }) {
+                // 先验非等权(远程评估):按先验升序排,removeLast 先弹最高——
+                // 网络先验引导展开顺序(P2 终审 C2:此前逆枚举序无视先验)。
+                entries = entries.enumerated()
+                    .sorted { lhs, rhs in
+                        let lp = lhs.element.1, rp = rhs.element.1
+                        return lp == rp ? lhs.offset < rhs.offset : lp < rp
+                    }
+                    .map(\.element)
+            }
+            node.pending = entries
         }
 
         /// PUCT:a* = argmax Q(s,a) + c·P(s,a)·√N/(1+N(a));
@@ -260,13 +358,14 @@ extension GameCore {
             return best
         }
 
-        /// 根先验噪声:均匀混合(0.75 + 0.5·U)近似 spec 的 Dirichlet(α=0.3, 权重 0.25);
-        /// V1 无网络先验,仅用于自博弈多样性;seed 确定 → 结果仍可复现。
+        /// 根先验噪声(spec §7:0.75·P_evaluator + 0.25·Dirichlet 近似)。
+        /// P2 修复:此前直接覆盖评估器先验,网络策略头对搜索/目标完全失效(终审 C2)。
         private static func applyRootNoise(_ root: Node, using rng: inout SplitMix64Seed) {
             guard let pending = root.pending, pending.count > 1 else { return }
             for index in pending.indices {
                 let unit = Double(rng.next() % 1_000) / 1_000
-                root.pending?[index].prior = 0.75 + 0.5 * unit
+                let noise = 0.5 + unit  // [0.5, 1.5) 均匀近似 Dirichlet 抖动
+                root.pending?[index].prior = 0.75 * pending[index].prior + 0.25 * noise
             }
         }
 
