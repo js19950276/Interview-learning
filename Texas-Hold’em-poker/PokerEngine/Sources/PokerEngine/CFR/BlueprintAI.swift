@@ -23,13 +23,8 @@ public struct BlueprintAI: PokerAI {
                                     &+ UInt64(truncatingIfNeeded: seat) &* 97
                                     &+ UInt64(state.actions.count) &* 7
                                     &+ seedSalt)
-        let total = probs.reduce(0, +)
-        let r = Double(rng.next() % 1_000_000) / 1_000_000 * total
-        var acc = 0.0
-        for (i, p) in probs.enumerated() {
-            acc += p
-            if r < acc { return slots[i].action }
-        }
-        return slots[slots.count - 1].action
+        // 与 Trainer 走查共用同一采样例程（同 %-1e6 算术，诊断已验证两实现逐行等价）。
+        let idx = Trainer.sampleIndex(probs, rng: &rng)
+        return slots[idx].action
     }
 }

@@ -102,8 +102,8 @@ final class AbstractionTests: XCTestCase {
         let s = GameState.start(config: GameConfig(playerCount: 2, startingStack: 2000, format: .cash(sb: 10, bb: 20)),
                                 seed: 5, buttonSeat: 0)
         let slots = Abstraction.slots(for: ladderActions(legalActions(s), state: s), legal: legalActions(s))
-        // 翻前按钮位 ladder = [call, fold, 最小40, ½池60, 全下2000]（½池=40 与最小加注 clamp 去重，3 个加注档）；
-        // 抽象层去最小加注档（3 档 ≥2 → 丢 40），保留档按位 [½池, 全下]：60→raiseHalf、2000→allIn
+        // 翻前按钮位 ladder = [call, fold, 最小40, 满池60, 全下2010]（60 是满池档，½池 40 已与最小加注归并；全下 = SB 10 + 2000，共 3 个加注档）；
+        // 抽象层去最小加注档（3 档 ≥2 → 丢 40），保留档按位 [满池, 全下]：60→raiseHalf、2010→allIn
         XCTAssertEqual(slots.map(\.slot), [.call, .fold, .raiseHalf, .allIn])
         XCTAssertFalse(slots.contains { $0.slot == .raiseMin })   // 最小加注档无槽位映射（设计性死位）
         // 短码单点区间：归并后仅剩一个加注档且为全下

@@ -95,11 +95,13 @@ public enum Trainer {
     private static func walk(_ state: GameState, bp: inout Blueprint,
                              traverser: Int, pi: Double,
                              rng: inout SeededGenerator) -> Double {
+        // 终局效用基线派生自配置（原硬编码 20_000 与 huConfig.startingStack 隐式耦合）
+        let baseStack = Double(huConfig.startingStack)
         if state.street == .handOver {
-            return Double(state.players[traverser].stack - 20_000)
+            return Double(state.players[traverser].stack) - baseStack
         }
         guard let actor = state.actorSeat else {
-            return Double(state.players[traverser].stack - 20_000)
+            return Double(state.players[traverser].stack) - baseStack
         }
         let legal = legalActions(state)
         let ladder = ladderActions(legal, state: state)

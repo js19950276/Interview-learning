@@ -130,7 +130,10 @@ case "train":
             print("iter=\(iter) keys=\(keys)")
         }
         done += seg
-        if let url = outURL { try? bp.save(to: url) }
+        // checkpoint 失败不中断训练（后续段仍可能成功落盘），但必须可见而非静默吞掉。
+        if let url = outURL {
+            do { try bp.save(to: url) } catch { print("checkpoint save failed: \(error)") }
+        }
     }
     var sizeText = "n/a"
     if let url = outURL,

@@ -61,4 +61,16 @@ final class BlueprintTests: XCTestCase {
             XCTAssertEqual(e as? BlueprintError, .corrupted)
         }
     }
+
+    /// 终审修复回归：JSON 可解码但条目残缺（regret 数组短于槽位数）必须拒载为
+    /// .corrupted——否则查表侧按 slot rawValue 索引 regret/strategySum 会越界崩溃。
+    func testLoadRejectsDecodableButShortEntryArrays() throws {
+        // regret 仅 2 元素（槽位数 7）、strategySum 完整：解码成功但结构残缺。
+        let raw = #"{"ladderVersion":3,"iterations":0,"entries":{"1":{"regret":[0,0],"strategySum":[0,0,0,0,0,0,0]}}}"#
+        let url = URL(fileURLWithPath: "/tmp/bp-short-entry.json")
+        try raw.write(to: url, atomically: true, encoding: .utf8)
+        XCTAssertThrowsError(try Blueprint.load(from: url)) { e in
+            XCTAssertEqual(e as? BlueprintError, .corrupted)
+        }
+    }
 }

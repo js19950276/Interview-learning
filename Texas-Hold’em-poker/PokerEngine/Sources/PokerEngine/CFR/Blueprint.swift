@@ -98,6 +98,11 @@ public struct Blueprint: Codable, Sendable, Equatable {
         guard bp.ladderVersion == supportedLadderVersion else {
             throw BlueprintError.versionMismatch(bp.ladderVersion)
         }
+        // 防御可解码但残缺的条目导致查表越界崩溃
+        guard bp.entries.values.allSatisfy({ $0.regret.count == AbstractSlot.allCases.count
+                                             && $0.strategySum.count == AbstractSlot.allCases.count }) else {
+            throw BlueprintError.corrupted
+        }
         return bp
     }
 }
