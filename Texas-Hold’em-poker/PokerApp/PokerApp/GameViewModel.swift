@@ -2,12 +2,14 @@ import Foundation
 import Combine
 import PokerEngine
 
-/// AI 难度档：baseline 沿用 VM 默认（全员 HeuristicAI），其余档位全机器人换 PIMCAI 预设。
+/// AI 难度档：baseline 沿用 VM 默认（全员 HeuristicAI），其余档位全机器人换 PIMCAI 预设；
+/// master 单挑局用蓝图查表 AI（Bundle 资源），非单挑/加载失败回退普通档。
 enum AIDifficulty: String, CaseIterable, Identifiable {
     case baseline = "基线（启发式）"
     case easy = "轻松"
     case normal = "普通"
     case hard = "困难"
+    case master = "大师（蓝图）"
     var id: String { rawValue }
 
     /// nil → 沿用 VM 默认（全员 HeuristicAI）
@@ -18,6 +20,18 @@ enum AIDifficulty: String, CaseIterable, Identifiable {
         case .easy: pimc = PIMCAI.easy
         case .normal: pimc = PIMCAI.normal
         case .hard: pimc = PIMCAI.hard
+        case .master:
+            // 蓝图仅单挑训练（spec §1）：多人局或加载失败一律回退普通档，App 不崩
+            let normal = Dictionary(uniqueKeysWithValues:
+                (0..<playerCount).filter { $0 != humanSeat }.map { ($0, PIMCAI.normal as any PokerAI) })
+            guard playerCount == 2,
+                  let url = Bundle.main.url(forResource: "blueprint-hu", withExtension: "json"),
+                  let bp = try? Blueprint.load(from: url) else {
+                print("警告：大师档不可用（非单挑或蓝图加载失败），回退普通档")
+                return normal
+            }
+            return Dictionary(uniqueKeysWithValues:
+                (0..<playerCount).filter { $0 != humanSeat }.map { ($0, BlueprintAI(blueprint: bp) as any PokerAI) })
         }
         guard let ai = pimc else { return nil }
         return Dictionary(uniqueKeysWithValues:

@@ -18,3 +18,8 @@ cd PokerEngine 后：
 
     swift run AIConsole battle --a pimc:normal --b heuristic:0.5 --table hu --hands 20000 --concurrency 8
     swift run AIConsole bench --ai pimc:hard --hands 100
+
+## 蓝图训练（2b）
+
+    swift run AIConsole train --iterations 10000000 --seed 20261022 --checkpoint-every 1000000 --out blueprint-hu.json
+    swift run AIConsole battle --a blueprint:hu --b pimc:normal --table hu --hands 20000
