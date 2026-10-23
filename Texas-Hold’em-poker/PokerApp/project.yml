@@ -9,9 +9,10 @@ packages:
     path: ../PokerEngine
 settingGroups:
   iOS:
-    # Designed for iPad（macOS 目的地构建 iOS 变体，SDK=iphoneos）无需签名团队；
-    # 本机无开发团队，真机签名本不可行；模拟器构建（iphonesimulator）不受影响
-    "CODE_SIGNING_ALLOWED[sdk=iphoneos*]": NO
+    # 真机安装：自动签名（Team JB7ZKPWM9C，证书 js19950726@163.com）；
+    # Designed for iPad 的 macOS 目的地构建 iPhone 变体时同样用此团队签名
+    DEVELOPMENT_TEAM: JB7ZKPWM9C
+    CODE_SIGN_STYLE: Automatic
   macOS: {}
 targets:
   PokerApp:
