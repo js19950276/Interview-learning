@@ -21,6 +21,9 @@ parser.add_argument("--window", type=int, default=200_000, help="滑窗:最新 N
 parser.add_argument("--batch", type=int, default=1024)
 parser.add_argument("--lr", type=float, default=1e-3)
 parser.add_argument("--out", default="runs/candidate.pt")
+parser.add_argument("--init-from", default=None,
+                    help="热启动:从既有 checkpoint 继续训(AlphaZero 标准做法;"
+                         "缺省仍从随机初始化)")
 parser.add_argument("--overfit-batch", action="store_true",
                     help="验收②:单批 512 样本训满 steps,过拟合即收敛证据")
 parser.add_argument("--log-every", type=int, default=100)
@@ -78,6 +81,10 @@ try:
 
     device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
     model = BrassNet().to(device)
+    if args.init_from:
+        checkpoint = torch.load(args.init_from, map_location="cpu", weights_only=True)
+        model.load_state_dict(checkpoint["state_dict"])
+        print(f"TRAIN-WARM-START from {args.init_from}")
     opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-4)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=args.steps)
     xt16 = torch.from_numpy(X16)  # f16 常驻 CPU;按批转 f32 上设备
