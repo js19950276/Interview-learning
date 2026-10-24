@@ -128,25 +128,18 @@ extension GameCore {
                             catalog: catalog, deadlineNs: deadlineNs, evaluator: evaluator
                         )
                     }
-                    if var pending = node.pending, pending.isEmpty == false {
-                        // 展开一个未展开动作为新叶(合成确认动作用其指定行动者)。
-                        let entry = pending.removeLast()
-                        node.pending = pending
-                        let child = Node(payload: entry.payload, prior: entry.prior, actor: entry.actor)
-                        node.children.append(child)
-                        let actor = entry.actor ?? work.activePlayerID
-                        guard let actor else { break descent }
-                        do {
-                            try SimulationRunner.apply(
-                                entry.payload, actorID: actor, roomID: roomID, to: &work, catalog: catalog
+                    // 首访节点:把全部动作建成子节点(访问数 0、带先验)——
+                    // 教科书结构:PUCT 的探索项使未访问子节点与已访问子节点竞争,
+                    // 选中未访问的=展开为叶,选中已访问的=下潜深挖。
+                    // (训练循环第 4 轮诊断:此前"每次模拟优先展开新根动作"使
+                    // 600 动作 × 24 模拟永远一层星形、PUCT 闲置、算力无法聚焦。)
+                    if node.children.isEmpty, let pending = node.pending, pending.isEmpty == false {
+                        for entry in pending.reversed() {
+                            node.children.append(
+                                Node(payload: entry.payload, prior: entry.prior, actor: entry.actor)
                             )
-                        } catch is Error {
-                            break descent // 应用失败=死分支,弃本次模拟(枚举合法性由宿主对拍保障)
                         }
-                        node = child
-                        path.append(child)
-                        expandedNodes += 1
-                        break descent
+                        node.pending = []
                     }
                     if work.turnPhase == .ended { break descent } // 终局叶
                     if node.children.isEmpty { break descent } // 无动作死叶,直接评估
@@ -161,10 +154,15 @@ extension GameCore {
                             payload, actorID: actor, roomID: roomID, to: &work, catalog: catalog
                         )
                     } catch {
-                        break descent
+                        break descent // 应用失败=死分支,弃本次模拟
                     }
+                    let expandedNow = next.visits == 0
                     node = next
                     path.append(next)
+                    if expandedNow {
+                        expandedNodes += 1
+                        break descent // 新展开的是叶
+                    }
                 }
 
                 // 叶评估:终局走 finalStandings,否则评估器(缺省启发式);
@@ -348,7 +346,11 @@ extension GameCore {
             var best: Node?
             var bestScore = -Double.infinity
             for child in node.children {
-                let q = child.valueSum[actor].map { $0 / Double(max(child.visits, 1)) } ?? 0
+                // visits=0 的 Q 项为 0、探索项满额——未访问子节点与已访问子节点
+                // 在同一 argmax 里竞争(教科书 AlphaZero;先验聚焦算力的前提)。
+                let q = child.visits > 0
+                    ? (child.valueSum[actor] ?? 0) / Double(child.visits)
+                    : 0
                 let score = q + c * child.prior * sqrtN / Double(1 + child.visits)
                 if score > bestScore {
                     bestScore = score
