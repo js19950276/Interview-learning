@@ -46,18 +46,20 @@ func load() throws -> GameCore.VerifiedGameDataCatalog {
 
 // I4 错峰互斥锁:与训练互检(训练侧 O_EXCL+存活检测;此处同语义)。
 let lockPath = repoRoot.appending(path: "tools/.lock").path
+// 锁语义:错峰只约束"自博弈 vs 训练"。多个自博弈进程可并行(提高吞吐),
+// 因此仅在持有者是 train: 且存活时拒绝;自博弈持有者不阻塞,自己也不写锁
+// (写锁由训练侧独占使用)。
 if let content = try? String(contentsOfFile: lockPath, encoding: .utf8) {
     let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
-    if let pid = Int32(trimmed.split(separator: ":").last ?? ""), pid > 0, kill(pid, 0) == 0 {
+    if trimmed.hasPrefix("train:"),
+       let pid = Int32(trimmed.split(separator: ":").last ?? ""), pid > 0, kill(pid, 0) == 0 {
         print("SELFPLAY-LOCK-REFUSED holder=\(trimmed)")
         exit(5)
     }
-    try? FileManager.default.removeItem(atPath: lockPath)  // 死进程残留锁接管
+    if trimmed.hasPrefix("train:") {
+        try? FileManager.default.removeItem(atPath: lockPath)  // 训练死进程残留锁接管
+    }
 }
-try? "selfplay:\(ProcessInfo.processInfo.processIdentifier)".write(
-    toFile: lockPath, atomically: true, encoding: .utf8
-)
-defer { try? FileManager.default.removeItem(atPath: lockPath) }
 
 let args = CommandLine.arguments
 let gameCount = args.count > 1 ? Int(args[1]) ?? 1 : 1
