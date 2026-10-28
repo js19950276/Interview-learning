@@ -11,6 +11,10 @@ import time
 import numpy as np
 import torch
 
+# MPS 单流:多线程并发前向会互相卡死(夜9 双自博弈进程复现)。
+# 前向全程持锁串行化;推理毫秒级,自博弈客户端本就串行请求,吞吐几乎无损。
+FORWARD_LOCK = threading.Lock()
+
 from bb import BrassNet, FEATURE_DIM, POLICY_A, POLICY_B, RESPONSE_FLOATS, VALUE
 
 parser = argparse.ArgumentParser()
@@ -46,7 +50,7 @@ def handle_connection(conn):
             assert dim == FEATURE_DIM, f"维度不符: {dim}"
             body = np.frombuffer(recv_exactly(conn, count * dim * 2), dtype="<f2")
             features = torch.from_numpy(body.astype(np.float32)).reshape(count, dim).to(device)
-            with torch.no_grad():
+            with FORWARD_LOCK, torch.no_grad():
                 logits_a, logits_b, values = model(features)
             # 帧协议:逐样本交错 count×(A[8]+B[31]+V[4])(终审 C1:
             # 此前块状布局与 Swift 解码器静默错位,仅 count=1 时巧合一致)。
