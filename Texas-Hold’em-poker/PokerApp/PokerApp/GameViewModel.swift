@@ -46,17 +46,25 @@ final class GameViewModel: ObservableObject {
     @Published private(set) var state: GameState
     private(set) var lastResult: HandResult?
     private let bots: [Int: any PokerAI]
+    /// 观战快进的替身决策：搜索型 AI 即使零停顿，纯计算也有 0.3~2.5s/决策的预算，
+    /// 人类弃牌后整手会累计十几秒不可见等待——观战期间一律换启发式替身。
+    private let spectatorBots: [Int: any PokerAI]
     private let thinkNanos: UInt64
+    private let streetPauseNanos: UInt64
 
     init(config: GameConfig, seed: UInt64,
-         bots: [Int: any PokerAI]? = nil, thinkMilliseconds: Int = 700,
+         bots: [Int: any PokerAI]? = nil, thinkMilliseconds: Int = 1500,
+         streetPauseMilliseconds: Int = 1000,
          ai: AIDifficulty = .baseline) {
         state = .start(config: config, seed: seed)
         let defaults: [Int: any PokerAI] = Dictionary(uniqueKeysWithValues:
             (0..<config.playerCount).filter { $0 != config.humanSeat }
                 .map { ($0, HeuristicAI(aggression: 0.5) as any PokerAI) })
         self.bots = bots ?? ai.bots(humanSeat: config.humanSeat, playerCount: config.playerCount) ?? defaults
+        spectatorBots = Dictionary(uniqueKeysWithValues:
+            self.bots.keys.map { ($0, HeuristicAI(aggression: 0.5) as any PokerAI) })
         thinkNanos = UInt64(max(1, thinkMilliseconds)) * 1_000_000
+        streetPauseNanos = UInt64(max(1, streetPauseMilliseconds)) * 1_000_000
     }
 
     var humanLegal: LegalActions? {
@@ -71,7 +79,7 @@ final class GameViewModel: ObservableObject {
     /// 人类行动，然后驱动机器人直到再次轮到人类或本手结束。
     func act(_ action: PlayerAction) async {
         guard state.actorSeat == state.config.humanSeat else { return }
-        state.apply(action)
+        await applyPaced(action)
         await driveBots()
     }
 
@@ -83,17 +91,32 @@ final class GameViewModel: ObservableObject {
     }
 
     /// 驱动机器人直到回到人类或本手结束。UI 需在 .task {} 调用一次（机器人先手的开局）。
+    /// 人类已弃牌/被淘汰时快进：跳过全部节奏停顿，且换启发式替身决策（搜索型 AI 的计算时间也不等）。
     func driveBots() async {
         while let seat = state.actorSeat,
               seat != state.config.humanSeat,
               let bot = bots[seat] {
+            let human = state.players[state.config.humanSeat]
+            let paced = human.status != .folded && human.status != .eliminated
+            let brain: any PokerAI = paced ? bot : (spectatorBots[seat] ?? bot)
             let snapshot = state
             let decision = await Task.detached(priority: .userInitiated) {
-                bot.decide(snapshot, seat: seat)
+                brain.decide(snapshot, seat: seat)
             }.value
-            try? await Task.sleep(nanoseconds: thinkNanos)
+            if paced { try? await Task.sleep(nanoseconds: thinkNanos) }
             guard state.actorSeat == seat else { return }   // 防竞态：状态未变才应用
-            state.apply(decision)
+            await applyPaced(decision, paced: paced)
+        }
+    }
+
+    /// 应用动作；若该动作刚发出新街道（翻牌/转牌/河牌）且下一位行动者仍是机器人，
+    /// 先停一拍再继续，给玩家看清新牌面的准备时间（手牌结束或轮到人类则不停）。
+    private func applyPaced(_ action: PlayerAction, paced: Bool = true) async {
+        let streetBefore = state.street
+        state.apply(action)
+        if paced, state.street != streetBefore, state.street != .handOver,
+           state.actorSeat != state.config.humanSeat {
+            try? await Task.sleep(nanoseconds: streetPauseNanos)
         }
     }
 }

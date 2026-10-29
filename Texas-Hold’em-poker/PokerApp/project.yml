@@ -27,6 +27,8 @@ targets:
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         PRODUCT_BUNDLE_IDENTIFIER: com.interviewlearning.poker.app
         SWIFT_STRICT_CONCURRENCY: complete
+        # 图标由 Scripts/gen_appicon.swift 生成（双 A 扇形），单尺寸双平台
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
       groups:
         - ${platform}
   PokerAppTests:
@@ -38,6 +40,16 @@ targets:
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES
+  PokerAppUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [PokerAppUITests]
+    dependencies:
+      - target: PokerApp_iOS
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: PokerApp_iOS
 schemes:
   PokerApp:
     build:
@@ -46,3 +58,11 @@ schemes:
         PokerApp_macOS: all
     test:
       targets: [PokerAppTests]
+  # iOS 测试专用 scheme：UI 测试的宿主 app 必须只有 iOS 变体，
+  # 否则与 macOS 变体同名（PokerApp.app）时 runner 会拿错平台的产品
+  PokerApp_iOS_Tests:
+    build:
+      targets:
+        PokerApp_iOS: all
+    test:
+      targets: [PokerAppTests, PokerAppUITests]

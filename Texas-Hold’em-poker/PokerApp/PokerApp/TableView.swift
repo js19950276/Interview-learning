@@ -11,20 +11,37 @@ struct GameView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            header
-            TableView(vm: vm)
-            if vm.isSessionOver {
-                sessionOverlay
-            } else if vm.isHandOver {
-                resultOverlay
-            } else if let legal = vm.humanLegal {
-                ActionBar(vm: vm, legal: legal)
-            } else {
-                Text("等待对手…").padding()
+        ZStack {
+            tableBackground
+            VStack(spacing: 0) {
+                header
+                ZStack {
+                    TableView(vm: vm)
+                    if vm.isSessionOver {
+                        sessionOverlay
+                    } else if vm.isHandOver {
+                        resultOverlay
+                    }
+                }
+                ActionBar(vm: vm)   // 常驻底部：行结构恒定 → 高度恒定，桌面不再被顶起
             }
         }
+        // 桌面照片整体偏暗，对局界面固定深色，浅色模式的黑字压在照片上不可读
+        .environment(\.colorScheme, .dark)
         .task { await vm.driveBots() }   // 机器人先手的开局在这里启动
+    }
+
+    /// 全屏俯拍扑克桌照片做背景，叠深色遮罩压暗，保证座位/底池/公共牌文字可读。
+    private var tableBackground: some View {
+        GeometryReader { geo in
+            Image("poker-table-bg")
+                .resizable()
+                .scaledToFill()
+                .frame(width: geo.size.width, height: geo.size.height)
+                .clipped()
+                .overlay(Color.black.opacity(0.30))
+        }
+        .ignoresSafeArea()
     }
 
     private var header: some View {
@@ -148,59 +165,112 @@ private struct SeatView: View {
     }
 }
 
+/// 常驻底部操作栏：三行结构（滑块/快捷额度/动作按钮）永远渲染，
+/// 非你回合整套禁用压暗——高度恒定，桌面不会因它出现/消失而上下浮动。
 private struct ActionBar: View {
     @ObservedObject var vm: GameViewModel
-    let legal: LegalActions
     @State private var raiseTarget: Double = 0
+
+    private var legal: LegalActions? { vm.humanLegal }
+    private var active: Bool { legal != nil }
+
+    /// 可用加注区间（下界==上界的仅全下局面没有滑块调节的意义）
+    private var range: ClosedRange<Int>? {
+        guard let r = legal?.betRange, r.lowerBound < r.upperBound else { return nil }
+        return r
+    }
+
+    /// 非你回合时占据额度标签位置的状态文案
+    private var statusText: String {
+        if vm.isSessionOver { return "会话结束" }
+        if vm.isHandOver { return "本手结束" }
+        return "等待对手…"
+    }
 
     var body: some View {
         VStack(spacing: 8) {
-            if let range = legal.betRange, range.lowerBound < range.upperBound {
-                HStack {
-                    Text("\(legal.isRaiseContext ? "加注到" : "下注") \(Int(raiseTarget))")
+            HStack {
+                if !active {
+                    Text(statusText).font(.footnote)
+                } else if legal?.betRange == nil {
+                    Text("无法加注").font(.footnote)          // 面对超过身家的全下：只能弃/跟
+                } else if range == nil {
+                    Text("仅剩全下").font(.footnote)          // 下界==上界：无可调区间
+                } else {
+                    Text("\(legal?.isRaiseContext == true ? "加注到" : "下注") \(Int(raiseTarget))")
                         .font(.footnote.monospacedDigit())
-                    Slider(value: $raiseTarget,
-                           in: Double(range.lowerBound)...Double(range.upperBound))
                 }
-                HStack {
-                    quick("最小", Double(range.lowerBound))
-                    quick("1/2 池", potTarget(vm.state.potTotal / 2))
-                    quick("满池", potTarget(vm.state.potTotal))
-                    quick("全下", Double(range.upperBound))
-                }
+                Slider(value: $raiseTarget,
+                       in: range.map { Double($0.lowerBound)...Double($0.upperBound) } ?? 0...1)
+                    .disabled(range == nil)
+                    .opacity(range == nil ? 0.35 : 1)
             }
+            HStack {
+                quick("最小", Double(range?.lowerBound ?? 0))
+                quick("1/2 池", potTarget(vm.state.potTotal / 2))
+                quick("满池", potTarget(vm.state.potTotal))
+                quick("全下", Double(range?.upperBound ?? 0))
+            }
+            .disabled(range == nil)
+            .opacity(range == nil ? 0.35 : 1)
             HStack(spacing: 12) {
-                Button("弃牌") { Task { await vm.act(.fold) } }
-                    .buttonStyle(.bordered)
-                if legal.canCheck {
-                    Button("过牌") { Task { await vm.act(.check) } }.buttonStyle(.bordered)
-                }
-                if legal.canCall, legal.callAmount > 0 {
-                    Button("跟注 \(legal.callAmount)") { Task { await vm.act(.call) } }
-                        .buttonStyle(.bordered)
-                }
-                if let range = legal.betRange {
-                    if range.lowerBound == range.upperBound {
-                        Button("全下 \(range.upperBound)") { Task { await vm.act(.raiseTo(range.upperBound)) } }
-                            .buttonStyle(.borderedProminent)
-                    } else {
-                        Button(legal.isRaiseContext ? "加注" : "下注") {
-                            Task { await vm.act(.raiseTo(Int(raiseTarget))) }
-                        }
-                        .buttonStyle(.borderedProminent)
-                    }
+                if let legal {
+                    liveButtons(legal)
+                } else {
+                    skeletonButtons
                 }
             }
+            .disabled(!active)
+            .opacity(active ? 1 : 0.35)
         }
         .padding()
         .background(.bar)
-        .onAppear {
-            if let r = legal.betRange { raiseTarget = Double(min(r.lowerBound + (r.upperBound - r.lowerBound) / 2, r.upperBound)) }
+        // 常驻后不再按回合重挂载：新回合/新街道都要重算滑块目标，防上一局的额度残留成非法加注
+        .onAppear { syncRaiseTarget() }
+        .onChange(of: legal) { _, _ in syncRaiseTarget() }
+    }
+
+    @ViewBuilder
+    private func liveButtons(_ legal: LegalActions) -> some View {
+        Button("弃牌") { Task { await vm.act(.fold) } }
+            .buttonStyle(.bordered)
+        if legal.canCheck {
+            Button("过牌") { Task { await vm.act(.check) } }.buttonStyle(.bordered)
+        }
+        if legal.canCall, legal.callAmount > 0 {
+            Button("跟注 \(legal.callAmount)") { Task { await vm.act(.call) } }
+                .buttonStyle(.bordered)
+        }
+        if let r = legal.betRange {
+            if r.lowerBound == r.upperBound {
+                Button("全下 \(r.upperBound)") { Task { await vm.act(.raiseTo(r.upperBound)) } }
+                    .buttonStyle(.borderedProminent)
+            } else {
+                Button(legal.isRaiseContext ? "加注" : "下注") {
+                    Task { await vm.act(.raiseTo(Int(raiseTarget))) }
+                }
+                .buttonStyle(.borderedProminent)
+            }
         }
     }
 
+    /// 非你回合的占位按钮组：与 liveButtons 同款样式，只为撑住行高
+    private var skeletonButtons: some View {
+        HStack(spacing: 12) {
+            Button("弃牌") {}.buttonStyle(.bordered)
+            Button("过牌") {}.buttonStyle(.bordered)
+            Button("跟注") {}.buttonStyle(.bordered)
+            Button("加注") {}.buttonStyle(.borderedProminent)
+        }
+    }
+
+    private func syncRaiseTarget() {
+        guard let r = range else { return }
+        raiseTarget = Double(min(r.lowerBound + (r.upperBound - r.lowerBound) / 2, r.upperBound))
+    }
+
     private func potTarget(_ base: Int) -> Double {
-        guard let r = legal.betRange else { return 0 }
+        guard let r = range else { return 0 }
         let t = Double(base + vm.state.currentBet)
         return min(max(t, Double(r.lowerBound)), Double(r.upperBound))
     }

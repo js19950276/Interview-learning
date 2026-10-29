@@ -8,14 +8,15 @@ struct CardView: View {
     var body: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 6)
-                .fill(.background)
+                // 亮牌固定白底：对局界面深色背景下牌面才像真牌；牌背/空槽仍随系统底色
+                .fill(card == nil || hidden ? AnyShapeStyle(.background) : AnyShapeStyle(.white))
                 .shadow(radius: 2)
             if let card, !hidden {
                 VStack(spacing: 2) {
                     Text(card.rankSymbol).font(.system(size: 16, weight: .bold))
                     Text(card.suitSymbol).font(.system(size: 14))
                 }
-                .foregroundColor([Suit.heart, .diamond].contains(card.suit) ? .red : .primary)
+                .foregroundColor([Suit.heart, .diamond].contains(card.suit) ? .red : .black)
             } else if hidden {
                 Image(systemName: "questionmark").foregroundStyle(.secondary)
             }
