@@ -3,16 +3,16 @@ import PokerEngine
 
 @main
 struct PokerApp: App {
-    @State private var session: GameSession?
+    @State private var localVM: GameViewModel?
 
     var body: some Scene {
         WindowGroup {
-            if let session {
-                GameView(session: session) { self.session = nil }
+            if let localVM {
+                GameView(vm: localVM, onExit: { self.localVM = nil })
             } else {
-                MenuView { config, seed, difficulty in
-                    self.session = GameSession(config: config, seed: seed, difficulty: difficulty)
-                }
+                MenuView(onStart: { config, seed, difficulty in
+                    self.localVM = GameViewModel(config: config, seed: seed, ai: difficulty)
+                }, onMultiplayer: { })
             }
         }
     }
@@ -25,4 +25,3 @@ struct GameSession: Identifiable {
     let seed: UInt64
     var difficulty: AIDifficulty = .baseline
 }
-

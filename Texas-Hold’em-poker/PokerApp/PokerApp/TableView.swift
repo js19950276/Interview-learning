@@ -1,34 +1,33 @@
 import SwiftUI
 import PokerEngine
 
-struct GameView: View {
-    @StateObject private var vm: GameViewModel
+struct GameView<VM: GamePresenting>: View {
+    @ObservedObject var vm: VM
     let onExit: () -> Void
-
-    init(session: GameSession, onExit: @escaping () -> Void) {
-        _vm = StateObject(wrappedValue: GameViewModel(config: session.config, seed: session.seed, ai: session.difficulty))
-        self.onExit = onExit
-    }
 
     var body: some View {
         ZStack {
             tableBackground
-            VStack(spacing: 0) {
-                header
-                ZStack {
-                    TableView(vm: vm)
-                    if vm.isSessionOver {
-                        sessionOverlay
-                    } else if vm.isHandOver {
-                        resultOverlay
+            if let surface = vm.surface {
+                VStack(spacing: 0) {
+                    header(surface: surface)
+                    ZStack {
+                        TableView(vm: vm, surface: surface)
+                        if vm.isSessionOver {
+                            sessionOverlay(surface: surface)
+                        } else if vm.isHandOver {
+                            resultOverlay(surface: surface)
+                        }
                     }
+                    ActionBar(vm: vm)   // 常驻底部：行结构恒定 → 高度恒定，桌面不再被顶起
                 }
-                ActionBar(vm: vm)   // 常驻底部：行结构恒定 → 高度恒定，桌面不再被顶起
+            } else {
+                ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
         // 桌面照片整体偏暗，对局界面固定深色，浅色模式的黑字压在照片上不可读
         .environment(\.colorScheme, .dark)
-        .task { await vm.driveBots() }   // 机器人先手的开局在这里启动
+        .task { await vm.driveBots() }   // 机器人先手的开局在这里启动（联机 VM 为空实现）
     }
 
     /// 全屏俯拍扑克桌照片做背景，叠深色遮罩压暗，保证座位/底池/公共牌文字可读。
@@ -44,21 +43,23 @@ struct GameView: View {
         .ignoresSafeArea()
     }
 
-    private var header: some View {
+    private func header(surface: any TableSurface) -> some View {
         HStack {
             Button("退出") { onExit() }
             Spacer()
             VStack(alignment: .trailing, spacing: 2) {
-                if case .sng = vm.state.config.format {
-                    let (sb, bb) = currentBlinds(for: vm.state.config.format, handNumber: vm.state.handNumber)
-                    Text("第 \(vm.state.handNumber + 1) 手 · 盲注 \(sb)/\(bb)")
+                if case .sng = surface.format {
+                    let (sb, bb) = currentBlinds(for: surface.format, handNumber: surface.handNumber)
+                    Text("第 \(surface.handNumber + 1) 手 · 盲注 \(sb)/\(bb)")
                         .font(.footnote)
                 } else {
-                    Text("第 \(vm.state.handNumber + 1) 手").font(.footnote)
+                    Text("第 \(surface.handNumber + 1) 手").font(.footnote)
                 }
-                if let last = vm.lastResult, let w = last.awards.last?.winners.first {
+                if let last = vm.lastResult,
+                   let w = last.awards.last?.winners.first,
+                   let winner = surface.seatPlayer(w) {
                     // 只计该赢家实际分得的池（多方摊牌/边池时其余池与其无关，不能记到它头上）
-                    Text("上一手：\(vm.state.players[w].name) 赢 \(last.awards.filter { $0.winners.contains(w) }.reduce(0) { $0 + $1.amount })")
+                    Text("上一手：\(winner.name) 赢 \(last.awards.filter { $0.winners.contains(w) }.reduce(0) { $0 + $1.amount })")
                         .font(.caption2).foregroundStyle(.secondary)
                 }
             }
@@ -66,10 +67,10 @@ struct GameView: View {
         .padding()
     }
 
-    private var resultOverlay: some View {
+    private func resultOverlay(surface: any TableSurface) -> some View {
         VStack(spacing: 12) {
-            ForEach(vm.state.handResult?.awards ?? [], id: \.potIndex) { award in
-                let names = award.winners.map { vm.state.players[$0].name }.joined(separator: "、")
+            ForEach(surface.handResult?.awards ?? [], id: \.potIndex) { award in
+                let names = award.winners.compactMap { surface.seatPlayer($0)?.name }.joined(separator: "、")
                 Text("\(names) 赢 \(award.amount)")
             }
             Button("下一手") { Task { await vm.nextHand() } }
@@ -80,12 +81,12 @@ struct GameView: View {
         .padding()
     }
 
-    private var sessionOverlay: some View {
+    private func sessionOverlay(surface: any TableSurface) -> some View {
         VStack(spacing: 8) {
-            Text(vm.state.tournamentPayouts.isEmpty ? "会话结束" : "锦标赛结束")
+            Text(surface.tournamentPayouts.isEmpty ? "会话结束" : "锦标赛结束")
                 .font(.title2.bold())
-            ForEach(vm.state.tournamentPayouts, id: \.place) { p in
-                Text("第 \(p.place) 名 · \(vm.state.players[p.seat].name) · \(p.amount)")
+            ForEach(surface.tournamentPayouts, id: \.place) { p in
+                Text("第 \(p.place) 名 · \(surface.seatPlayer(p.seat)?.name ?? "?") · \(p.amount)")
             }
             Button("回到菜单") { onExit() }
                 .buttonStyle(.borderedProminent)
@@ -96,28 +97,29 @@ struct GameView: View {
     }
 }
 
-private struct TableView: View {
-    @ObservedObject var vm: GameViewModel
+private struct TableView<VM: GamePresenting>: View {
+    @ObservedObject var vm: VM
+    let surface: any TableSurface
 
     var body: some View {
         GeometryReader { geo in
-            let n = vm.state.players.count
+            let n = surface.seats.count
             ZStack {
-                ForEach(vm.state.players) { p in
+                ForEach(surface.seats, id: \.seat) { p in
                     let angle = Double(p.seat) / Double(n) * 2 * .pi + .pi / 2   // 座位 0 在正下方
                     SeatView(player: p,
-                             isActor: vm.state.actorSeat == p.seat,
-                             isButton: vm.state.buttonSeat == p.seat,
-                             isHuman: p.seat == vm.state.config.humanSeat,
-                             street: vm.state.street)
+                             isActor: surface.actorSeat == p.seat,
+                             isButton: surface.buttonSeat == p.seat,
+                             isHuman: p.seat == surface.yourSeat,
+                             street: surface.street)
                         .position(x: geo.size.width / 2 + cos(angle) * geo.size.width * 0.38,
                                   y: geo.size.height / 2 + sin(angle) * geo.size.height * 0.36)
                 }
                 VStack(spacing: 8) {
-                    Text("底池 \(vm.state.potTotal)").font(.headline)
+                    Text("底池 \(surface.potTotal)").font(.headline)
                     HStack(spacing: 6) {
                         ForEach(0..<5, id: \.self) { i in
-                            CardView(card: i < vm.state.board.count ? vm.state.board[i] : nil)
+                            CardView(card: i < surface.board.count ? surface.board[i] : nil)
                         }
                     }
                 }
@@ -127,7 +129,7 @@ private struct TableView: View {
 }
 
 private struct SeatView: View {
-    let player: PlayerState
+    let player: any SeatSurface
     let isActor: Bool
     let isButton: Bool
     let isHuman: Bool
@@ -144,6 +146,10 @@ private struct SeatView: View {
                     // 弃牌者到手牌不再于 handOver 亮出（muck 不展示）
                     CardView(card: player.holeCards[0], hidden: (!isHuman && street != .handOver) || player.status == .folded)
                     CardView(card: player.holeCards[1], hidden: (!isHuman && street != .handOver) || player.status == .folded)
+                } else if player.holdsCards {
+                    // 快照里不可见的对手手牌：画牌背（联机路径独有状态）
+                    CardView(card: nil, hidden: true)
+                    CardView(card: nil, hidden: true)
                 } else {
                     CardView(card: nil).opacity(0.3)
                     CardView(card: nil).opacity(0.3)
@@ -167,12 +173,14 @@ private struct SeatView: View {
 
 /// 常驻底部操作栏：三行结构（滑块/快捷额度/动作按钮）永远渲染，
 /// 非你回合整套禁用压暗——高度恒定，桌面不会因它出现/消失而上下浮动。
-private struct ActionBar: View {
-    @ObservedObject var vm: GameViewModel
+private struct ActionBar<VM: GamePresenting>: View {
+    @ObservedObject var vm: VM
     @State private var raiseTarget: Double = 0
 
     private var legal: LegalActions? { vm.humanLegal }
     private var active: Bool { legal != nil }
+    private var potTotal: Int { vm.surface?.potTotal ?? 0 }
+    private var currentBet: Int { vm.surface?.currentBet ?? 0 }
 
     /// 可用加注区间（下界==上界的仅全下局面没有滑块调节的意义）
     private var range: ClosedRange<Int>? {
@@ -207,8 +215,8 @@ private struct ActionBar: View {
             }
             HStack {
                 quick("最小", Double(range?.lowerBound ?? 0))
-                quick("1/2 池", potTarget(vm.state.potTotal / 2))
-                quick("满池", potTarget(vm.state.potTotal))
+                quick("1/2 池", potTarget(potTotal / 2))
+                quick("满池", potTarget(potTotal))
                 quick("全下", Double(range?.upperBound ?? 0))
             }
             .disabled(range == nil)
@@ -271,7 +279,7 @@ private struct ActionBar: View {
 
     private func potTarget(_ base: Int) -> Double {
         guard let r = range else { return 0 }
-        let t = Double(base + vm.state.currentBet)
+        let t = Double(base + currentBet)
         return min(max(t, Double(r.lowerBound)), Double(r.upperBound))
     }
 

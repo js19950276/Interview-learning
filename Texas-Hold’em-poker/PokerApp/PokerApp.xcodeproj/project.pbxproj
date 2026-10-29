@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		0D825CE94F26B370947DB70E /* GuestSessionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4ABA2A6D72A2EAC11FDE31DF /* GuestSessionTests.swift */; };
 		0FB94273E8910E8D176527BA /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 50DCA2BD0CFD510E301880C2 /* Assets.xcassets */; };
+		1464ED11295A35E78990C7EE /* GamePresenting.swift in Sources */ = {isa = PBXBuildFile; fileRef = 51525B7A6B4E5EC7F326A6A6 /* GamePresenting.swift */; };
 		14C1B88C3F8DDEBBFD1AF5E7 /* Transport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0AA8382DAE84DCC62E2ECCBE /* Transport.swift */; };
 		1B47BF47E7ACFB5345FD0831 /* NearbyTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0072D4FF33ABAA7A04B6B03 /* NearbyTransport.swift */; };
 		1B98798346730FA50947438A /* BonjourRoomBrowser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44DB44A8FC168339FCCE4E6E /* BonjourRoomBrowser.swift */; };
@@ -25,7 +26,9 @@
 		5BCBAFD5247D33A2F42AE76E /* Transport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0AA8382DAE84DCC62E2ECCBE /* Transport.swift */; };
 		60FCECE964EA74497399CF55 /* NearbyPreflight.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6A059156FF6A2C0F5459390 /* NearbyPreflight.swift */; };
 		6CF155657730075BF67284DD /* MenuView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A326930D365C2B1129CE966 /* MenuView.swift */; };
+		6E995FA0550CC4C5632AAE88 /* GamePresentingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C72B05E0CCA5A5212357F0A0 /* GamePresentingTests.swift */; };
 		6F895224B8700121E280EE76 /* LengthPrefixedFrameCodec.swift in Sources */ = {isa = PBXBuildFile; fileRef = A63A0F9622B2F0098648A196 /* LengthPrefixedFrameCodec.swift */; };
+		75D184E1270DA9523D05D7C8 /* GamePresenting.swift in Sources */ = {isa = PBXBuildFile; fileRef = 51525B7A6B4E5EC7F326A6A6 /* GamePresenting.swift */; };
 		75E5441C370507E68768F3BC /* PokerEngine in Frameworks */ = {isa = PBXBuildFile; productRef = 16FDDA045490FEBE892ECB19 /* PokerEngine */; };
 		776BE1AC62E017131B82AA44 /* LengthPrefixedFrameCodec.swift in Sources */ = {isa = PBXBuildFile; fileRef = A63A0F9622B2F0098648A196 /* LengthPrefixedFrameCodec.swift */; };
 		7B34A8427766DC86E91E3357 /* GameViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5BEDB4717D1A5B16D82FD19 /* GameViewModelTests.swift */; };
@@ -89,6 +92,7 @@
 		45BA4C2C7E67BAB7E86F02D6 /* LoopbackHarness.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoopbackHarness.swift; sourceTree = "<group>"; };
 		4ABA2A6D72A2EAC11FDE31DF /* GuestSessionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GuestSessionTests.swift; sourceTree = "<group>"; };
 		50DCA2BD0CFD510E301880C2 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		51525B7A6B4E5EC7F326A6A6 /* GamePresenting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GamePresenting.swift; sourceTree = "<group>"; };
 		53386EDACDEC5893A67B6180 /* PokerEngine */ = {isa = PBXFileReference; lastKnownFileType = folder; name = PokerEngine; path = ../PokerEngine; sourceTree = SOURCE_ROOT; };
 		673FF1FA5EC45CA58D180B59 /* PokerMessages.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PokerMessages.swift; sourceTree = "<group>"; };
 		74F99E8A5230CE8EE9668A55 /* TableView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TableView.swift; sourceTree = "<group>"; };
@@ -100,6 +104,7 @@
 		B4439B8EA3D70568EF5ABD01 /* NearbyTransportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NearbyTransportTests.swift; sourceTree = "<group>"; };
 		B6FAEE2F41BF4AD281822079 /* PlaceholderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaceholderTests.swift; sourceTree = "<group>"; };
 		BD7575A5A8A84F559F93BEE6 /* PokerApp.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = PokerApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		C72B05E0CCA5A5212357F0A0 /* GamePresentingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GamePresentingTests.swift; sourceTree = "<group>"; };
 		D01CA6E01F5794C52FE08BA6 /* PokerApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PokerApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		D5BEDB4717D1A5B16D82FD19 /* GameViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameViewModelTests.swift; sourceTree = "<group>"; };
 		D85CFDAA78DBAB25973591BC /* HostSessionLobbyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostSessionLobbyTests.swift; sourceTree = "<group>"; };
@@ -136,6 +141,7 @@
 			children = (
 				50DCA2BD0CFD510E301880C2 /* Assets.xcassets */,
 				202DA544DDDD1C0CD9A7E18F /* CardView.swift */,
+				51525B7A6B4E5EC7F326A6A6 /* GamePresenting.swift */,
 				A1A8F58514908FC0730B220A /* GameViewModel.swift */,
 				2A326930D365C2B1129CE966 /* MenuView.swift */,
 				A39DF02008A6EF3DB4531DEF /* PokerApp.swift */,
@@ -174,6 +180,7 @@
 		8CBB6803BB4E1181C940B0B9 /* PokerAppTests */ = {
 			isa = PBXGroup;
 			children = (
+				C72B05E0CCA5A5212357F0A0 /* GamePresentingTests.swift */,
 				D5BEDB4717D1A5B16D82FD19 /* GameViewModelTests.swift */,
 				4ABA2A6D72A2EAC11FDE31DF /* GuestSessionTests.swift */,
 				A43677715B0A771419F82B9F /* HostSessionGameTests.swift */,
@@ -385,6 +392,7 @@
 			files = (
 				364FEC9BAB537385D556F1C5 /* BonjourRoomBrowser.swift in Sources */,
 				A978002FBD54E8C5F00E4C97 /* CardView.swift in Sources */,
+				1464ED11295A35E78990C7EE /* GamePresenting.swift in Sources */,
 				E0EEDF225DC457AC8429ADBA /* GameViewModel.swift in Sources */,
 				9FC8FAE8C29F9D6AAE275039 /* GuestSession.swift in Sources */,
 				8DA010255F4BCE0453584306 /* HostSession.swift in Sources */,
@@ -405,6 +413,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				6E995FA0550CC4C5632AAE88 /* GamePresentingTests.swift in Sources */,
 				7B34A8427766DC86E91E3357 /* GameViewModelTests.swift in Sources */,
 				0D825CE94F26B370947DB70E /* GuestSessionTests.swift in Sources */,
 				BFF28AECD4E55B78ED0D9B5B /* HostSessionGameTests.swift in Sources */,
@@ -433,6 +442,7 @@
 			files = (
 				1B98798346730FA50947438A /* BonjourRoomBrowser.swift in Sources */,
 				596380F07434D19F3FA930C2 /* CardView.swift in Sources */,
+				75D184E1270DA9523D05D7C8 /* GamePresenting.swift in Sources */,
 				DC1F9E1D09CB7ABC675A65D1 /* GameViewModel.swift in Sources */,
 				4F4C86720C2C6689B6E77465 /* GuestSession.swift in Sources */,
 				BB6A3F5A70D95543BECA2F15 /* HostSession.swift in Sources */,

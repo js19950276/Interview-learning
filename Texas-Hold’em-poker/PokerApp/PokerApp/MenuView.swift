@@ -3,6 +3,7 @@ import PokerEngine
 
 struct MenuView: View {
     let onStart: (GameConfig, UInt64, AIDifficulty) -> Void
+    var onMultiplayer: () -> Void = {}
     @State private var isSNG = false
     @State private var playerCount = 6
     @State private var cashSB = 10
