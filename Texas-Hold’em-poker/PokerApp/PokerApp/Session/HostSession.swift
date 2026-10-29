@@ -325,10 +325,15 @@ actor HostSession {
             names[seat] = nil
             readySeats.remove(seat)
         }
-        // 对局期：deviceBySeat 保留（可重连）；若断线者正是行动者，托管推进后走统一后处理
-        // （扇出使 seq 前进 + 通知 UI）——重连补发按最新 seq 送出更新帧，客机 seq 门不回退。
+        // 对局期：deviceBySeat 保留（可重连）。仅当托管真的推进了引擎（断线者恰为行动者）
+        // 才走统一后处理扇出；引擎未变更则不扇出、seq 不前进——重连补发沿用当前 seq，
+        // 客机 seq 门「已见过即丢弃」分支得以覆盖真正的补发场景（快照只进不退）。
         await publishLobby()
-        if phase == .playing || phase == .finished { await afterEngineChange() }
+        if phase == .playing || phase == .finished {
+            let before = state
+            await reconcileDisconnectedActor()
+            if state != before { await afterEngineChange() }
+        }
     }
 
     private func bind(peer: PeerID, seat: Int) {

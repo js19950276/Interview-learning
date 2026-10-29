@@ -233,7 +233,7 @@ final class HostSessionGameTests: XCTestCase {
                                sender: .guest, from: guestT[0], to: hostPeer)
         snap = try await nextSnapshot(log: guestLogs[0])
         XCTAssertEqual(snap.yourSeat, 1, "重连还原原座位")
-        XCTAssertGreaterThan(snap.seq, lastSeq, "补发更新的快照")
+        XCTAssertGreaterThanOrEqual(snap.seq, lastSeq, "重连补发不回退快照（同 seq 或更新均可）")
         let rebound = await host.peerIDValue(seat: 1)
         XCTAssertEqual(rebound != nil, true)
     }
