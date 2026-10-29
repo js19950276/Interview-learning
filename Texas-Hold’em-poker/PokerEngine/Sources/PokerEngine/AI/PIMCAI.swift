@@ -12,20 +12,27 @@ public struct PIMCAI: PokerAI {
     public var exploreC: Double
     public var timeBudgetMs: Int?
     public var rollout: any PokerAI
+    /// 地狱难度：对手行为感知世界过滤（默认关闭，既有预设行为冻结不变）。
+    public var opponentFilter: Bool
 
     public init(worlds: Int, iterationsPerWorld: Int,
                 exploreC: Double = 1.4, timeBudgetMs: Int? = nil,
-                rollout: (any PokerAI)? = nil) {
+                rollout: (any PokerAI)? = nil, opponentFilter: Bool = false) {
         self.worlds = max(1, worlds)
         self.iterationsPerWorld = max(1, iterationsPerWorld)
         self.exploreC = exploreC
         self.timeBudgetMs = timeBudgetMs
         self.rollout = rollout ?? HeuristicAI(aggression: 0.5)
+        self.opponentFilter = opponentFilter
     }
 
     public static let easy = PIMCAI(worlds: 8, iterationsPerWorld: 25, timeBudgetMs: 300)
     public static let normal = PIMCAI(worlds: 16, iterationsPerWorld: 64, timeBudgetMs: 1000)
     public static let hard = PIMCAI(worlds: 32, iterationsPerWorld: 125, timeBudgetMs: 1500)
+    /// 地狱：32k 样本（256×125）+ 对手意图感知采样——对手真金投入约束其重采样持牌，
+    /// 修「重采样均匀化对手范围 → 面对大注高估胜率」（PIMC 0.598 vs 真实 0.140）的偏差。
+    public static let hell = PIMCAI(worlds: 256, iterationsPerWorld: 125, timeBudgetMs: 2500,
+                                    opponentFilter: true)
 
     public func decide(_ state: GameState, seat: Int) -> PlayerAction {
         let legal = legalActions(state)
@@ -38,6 +45,7 @@ public struct PIMCAI: PokerAI {
                                     &+ UInt64(state.actions.count) &* 31)
         let start = Date()
         let myStack = state.players[seat].stack
+        let myTotal = myStack + state.players[seat].handContribution   // 决策时点我方总额
         var sums = [Double](repeating: 0, count: ladder.count)
         var counts = [Int](repeating: 0, count: ladder.count)
 
@@ -48,6 +56,17 @@ public struct PIMCAI: PokerAI {
                 if let budgetMs = timeBudgetMs,
                    Date().timeIntervalSince(start) * 1000 > Double(budgetMs) { break }
                 var world = state.resampled(from: seat, using: &rng)
+                // 对手意图感知采样：不可信世界（对手大额投入却持垃圾）就地重采样，
+                // 最多 8 次尝试、第 8 次无论真假保留（退化兜底，绝不死循环）。
+                // 重采样消费同一 rng 流——同种子仍逐位确定。
+                if opponentFilter {
+                    var attempts = 1
+                    while attempts < 8, !Self.worldIsPlausible(world, seat: seat,
+                                                                effectiveStack: myTotal) {
+                        world = state.resampled(from: seat, using: &rng)
+                        attempts += 1
+                    }
+                }
                 if let fi = ladder.firstIndex(of: .fold) {
                     counts[fi] += 1   // fold EV 恒 0，仅记账不发 rollout
                 }
@@ -83,6 +102,39 @@ public struct PIMCAI: PokerAI {
             if ucb > bestUCB { bestUCB = ucb; best = i }
         }
         return best
+    }
+
+    /// Chen 记分基准（HeuristicAI.chenScore 为同模块 internal，直接复用成文实现）。
+    private static let chenBasis = HeuristicAI(aggression: 0.5)
+
+    /// 对手行为感知的世界合理性（地狱难度）：
+    /// 对手的真金投入是对其持牌范围的强约束，均匀重采样会系统性高估面对大注的胜率。
+    /// `effectiveStack` 传决策者本手总额（stack+handContribution）；每个对手的双边
+    /// 有效筹码 = min(我方总额, 对手总额)。弃牌/淘汰者与无牌者不校验（其投入已无意图）。
+    /// 两条拒绝规则（整数运算避免截断：≥0.25 即 4·invested ≥ eff；≥0.60 即 5·invested ≥ 3·eff）：
+    /// 1. 仅翻后：投入 ≥25% 有效筹码而成牌不足顶对（Abstraction.strengthBucket < 4）；
+    /// 2. 任意街：投入 ≥60% 有效筹码而翻前质量 Chen < 6（垃圾级起点）。
+    /// 跳过：盲注被迫全下（allIn 且投入 ≤ 大盲——非自愿投入无意图）与盲注级投入（<25%）。
+    static func worldIsPlausible(_ world: GameState, seat: Int, effectiveStack: Int) -> Bool {
+        let bb = currentBlinds(for: world.config.format, handNumber: world.handNumber).bb
+        for i in world.players.indices {
+            guard i != seat else { continue }
+            let opp = world.players[i]
+            guard opp.status != .folded, opp.status != .eliminated,
+                  opp.holeCards.count == 2 else { continue }
+            let invested = opp.handContribution
+            let eff = min(effectiveStack, opp.stack + opp.handContribution)
+            guard eff > 0 else { continue }
+            if opp.status == .allIn && invested <= bb { continue }   // 盲注被迫全下
+            // 规则 1：翻后大额投入却无顶对级成牌（强度桶 < 4）
+            if world.street != .preflop, world.board.count >= 3, invested * 4 >= eff {
+                let rank = HandEvaluator.evaluate(opp.holeCards + world.board)
+                if Abstraction.strengthBucket(rank, board: world.board) < 4 { return false }
+            }
+            // 规则 2：巨额投入却翻前垃圾（Chen < 6）
+            if invested * 5 >= eff * 3, chenBasis.chenScore(opp.holeCards) < 6 { return false }
+        }
+        return true
     }
 }
 

@@ -15,6 +15,7 @@ func makeAI(_ spec: String) -> (any PokerAI)? {
     case ("pimc", "easy"): return PIMCAI.easy
     case ("pimc", "normal"): return PIMCAI.normal
     case ("pimc", "hard"): return PIMCAI.hard
+    case ("pimc", "hell"): return PIMCAI.hell
     case ("blueprint", _):
         do {
             let bp = try Blueprint.load(from: URL(fileURLWithPath: blueprintPath))
@@ -59,7 +60,7 @@ func ci95(_ xs: [Double]) -> Double {
 switch sub {
 case "battle":
     guard let a = makeAI(aSpec), let b = makeAI(bSpec) else {
-        print("unknown ai spec (use heuristic:0.5 | pimc:easy|normal|hard | blueprint:hu)"); exit(2)
+        print("unknown ai spec (use heuristic:0.5 | pimc:easy|normal|hard|hell | blueprint:hu)"); exit(2)
     }
     let t0 = Date()
     let outcomes = await runBattle(a: a, b: b, table: table, hands: hands,
@@ -143,5 +144,5 @@ case "train":
     }
     print("summary iterations=\(bp.iterations) keys=\(bp.entries.count) out=\(outPath.isEmpty ? "(none)" : outPath) size=\(sizeText)")
 default:
-    print("usage: AIConsole battle|train|bench --a pimc:normal|blueprint:hu --b heuristic:0.5 --table hu|six --hands N --seed S --concurrency C --blueprint path (train: --iterations N [--from N] [--checkpoint-every N] --out path [--resume path]) (bench: --ai pimc:hard)")
+    print("usage: AIConsole battle|train|bench --a pimc:normal|blueprint:hu --b heuristic:0.5 --table hu|six --hands N --seed S --concurrency C --blueprint path (train: --iterations N [--from N] [--checkpoint-every N] --out path [--resume path]) (bench: --ai pimc:hard|hell)")
 }

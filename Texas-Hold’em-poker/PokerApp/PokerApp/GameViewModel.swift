@@ -9,6 +9,7 @@ enum AIDifficulty: String, CaseIterable, Identifiable {
     case easy = "轻松"
     case normal = "普通"
     case hard = "困难"
+    case hell = "地狱"
     case master = "大师（蓝图）"
     var id: String { rawValue }
 
@@ -20,6 +21,7 @@ enum AIDifficulty: String, CaseIterable, Identifiable {
         case .easy: pimc = PIMCAI.easy
         case .normal: pimc = PIMCAI.normal
         case .hard: pimc = PIMCAI.hard
+        case .hell: pimc = PIMCAI.hell
         case .master:
             // 蓝图仅单挑训练（spec §1）：多人局或加载失败一律回退普通档，App 不崩
             let normal = Dictionary(uniqueKeysWithValues:
