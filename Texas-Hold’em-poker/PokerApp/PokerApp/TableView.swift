@@ -290,4 +290,3 @@ private struct ActionBar<VM: GamePresenting>: View {
     }
 }
 
-extension PlayerState: @retroactive Identifiable { public var id: Int { seat } }

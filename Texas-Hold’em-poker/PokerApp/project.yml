@@ -19,6 +19,13 @@ targets:
     type: application
     platform: [iOS, macOS]
     sources: [PokerApp]
+    # 本地网络权限：真机首次联机弹窗 + Bonjour 服务类型声明（与 GENERATE_INFOPLIST_FILE 合并进产物）
+    info:
+      path: PokerApp/Info.plist
+      properties:
+        NSLocalNetworkUsageDescription: 用于在本地网络中发现并连接附近朋友的德州扑克房间。
+        NSBonjourServices:
+          - _poker-lan._tcp
     dependencies:
       - package: PokerEngine
     settings:

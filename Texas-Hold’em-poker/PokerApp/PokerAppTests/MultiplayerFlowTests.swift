@@ -14,8 +14,9 @@ final class MultiplayerFlowTests: XCTestCase {
             if condition() { return }
             try await Task.sleep(nanoseconds: 50_000_000)
         }
+        // 超时抛错中止调用方，避免其继续强解过期状态（对齐 LoopbackHarness 的 TestTimeout 约定）
         XCTFail(message)
-        return
+        throw TestTimeout()
     }
 
     func testThreeDevicesFullHand() async throws {

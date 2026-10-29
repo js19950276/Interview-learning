@@ -258,6 +258,8 @@ final class RoomBrowserModel: ObservableObject {
     func stop() {
         task?.cancel()
         task = nil
+        // 同上：捕获 let-local 浏览器，避免隐式强捕 self（模型可释放）
+        let browser = browser
         Task { await browser.cancel() }
     }
 }
