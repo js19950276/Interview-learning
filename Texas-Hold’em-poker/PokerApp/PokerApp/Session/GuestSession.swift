@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 import PokerEngine
 
 enum GuestUpdate: Sendable {
@@ -36,6 +37,8 @@ actor GuestSession {
     /// 在收尾时不得清掉新循环的引用（否则 leave() 会漏杀存活循环）。
     private var reconnectGeneration = 0
     private var pendingRejection: RejectionReason?
+    /// 静默丢弃观测（房间/发送者不匹配）：只记短标识，不记载荷（隐私）。
+    private let logger = Logger(subsystem: "com.interviewlearning.poker.app", category: "GuestSession")
 
     init(roomID: String, deviceID: String, displayName: String,
          transport: any Transport = NearbyTransport()) {
@@ -150,7 +153,10 @@ actor GuestSession {
     }
 
     private func handleEnvelope(_ envelope: PokerEnvelope) {
-        guard envelope.roomID == roomID, envelope.sender == .host else { return }
+        guard envelope.roomID == roomID, envelope.sender == .host else {
+            logger.notice("丢弃房间/发送者不匹配的信封 room=\(envelope.roomID, privacy: .public)")
+            return
+        }
         guard isFreshMessageID(envelope.messageID) else { return }
         switch envelope.payload {
         case let .welcome(welcomeSeat, lobby):

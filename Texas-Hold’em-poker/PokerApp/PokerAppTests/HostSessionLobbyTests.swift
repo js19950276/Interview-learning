@@ -26,9 +26,9 @@ final class HostSessionLobbyTests: XCTestCase {
 
     private var hostSessionForTeardown: HostSession?
 
-    private func makeHost() -> HostSession {
+    private func makeHost(roomName: String = "周五牌局") -> HostSession {
         let config = HostConfiguration(
-            roomName: "周五牌局", hostName: "老王",
+            roomName: roomName, hostName: "老王",
             tableConfig: GameConfig(playerCount: 2, startingStack: 2000, format: .cash(sb: 10, bb: 20)))
         let session = HostSession(configuration: config, transport: hostTransport)
         hostSessionForTeardown = session
@@ -61,6 +61,18 @@ final class HostSessionLobbyTests: XCTestCase {
         XCTAssertEqual(phase, .lobby)
         let roomID = await host.roomIDValue()
         XCTAssertTrue(roomID.hasPrefix("ROOM-"), "中文房间名清洗后兜底为 ROOM + 随机后缀，实际: \(roomID)")
+    }
+
+    /// 超长房间名（sanitize 后 >35）：roomID 必须保持 ≤40 且为 sanitize 不动点——
+    /// NearbyTransport.makeService 会对 roomID 再清洗（≤40 截断），若超长则
+    /// 广播名 ≠ roomID：客机拨广播名、房主静默丢弃其信封（roomID 不等），加入必然超时。
+    func testLongRoomNameStaysJoinableIdentifier() async throws {
+        let host = makeHost(roomName: "Friday Night Poker With Friends Table Extra Long Edition")
+        try await host.startHosting()
+        let roomID = await host.roomIDValue()
+        XCTAssertLessThanOrEqual(roomID.count, 40, "roomID 含后缀 ≤40，实际: \(roomID)（\(roomID.count) 字符）")
+        XCTAssertEqual(RoomName.sanitize(roomID), roomID,
+                       "roomID 必须是 sanitize 不动点（广告名 == roomID），实际: \(roomID)")
     }
 
     func testJoinAssignsSeatsInOrderAndBroadcastsLobby() async throws {

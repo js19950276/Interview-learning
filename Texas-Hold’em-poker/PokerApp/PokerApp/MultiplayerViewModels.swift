@@ -150,7 +150,14 @@ final class GuestGameViewModel: ObservableObject, GamePresenting {
             if case let GuestSession.GuestError.rejected(reason) = error {
                 fatal = rejectionText(reason)
             } else {
-                fatal = "加入房间超时，请确认房主页面仍开着后重试"
+                // 传输生命周期错误（本地网络权限被拒/Wi-Fi 关闭等）优先映射 NearbyIssue 文案；
+                // 真正的连接失败才落到超时提示。
+                let mapped = NearbyPreflight.issue(for: error)
+                if mapped != .connectionFailed {
+                    fatal = mapped.title + "：" + mapped.recoveryMessage
+                } else {
+                    fatal = "加入房间超时，请确认房主页面仍开着后重试"
+                }
             }
         }
     }

@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 import PokerEngine
 
 struct HostConfiguration: Sendable {
@@ -40,6 +41,8 @@ actor HostSession {
     private var state: GameState?
     private var seq = 0
     private var seenMessageIDs: Set<String> = []
+    /// 静默丢弃观测（坏帧/房间不匹配）：只记短标识，不记载荷（隐私）。
+    private let logger = Logger(subsystem: "com.interviewlearning.poker.app", category: "HostSession")
 
     init(configuration: HostConfiguration, transport: any Transport = NearbyTransport()) {
         self.configuration = configuration
@@ -52,7 +55,14 @@ actor HostSession {
     func startHosting() async throws {
         guard phase == .idle else { throw HostError.alreadyStarted }
         let suffix = String(UUID().uuidString.prefix(4)).uppercased()
-        roomID = "\(RoomName.sanitize(configuration.roomName))-\(suffix)"
+        // 房间名先截到 35 再拼 4 位后缀（合计 ≤40）：NearbyTransport.makeService 会对 roomID
+        // 再跑一次 sanitize（≤40 截断），若这里超长，广播名将与 roomID 错配——客机拨广播名、
+        // 房主静默丢弃其信封（roomID 不等），加入必然超时。截尾再去掉尾部「-」，
+        // 保证再清洗是不动点（sanitize 会收敛连续分隔符）。
+        let base = String(RoomName.sanitize(configuration.roomName).prefix(35))
+            .trimmingCharacters(in: CharacterSet(charactersIn: "-"))
+        roomID = "\(base)-\(suffix)"
+        assert(RoomName.sanitize(roomID) == roomID, "roomID 必须是 sanitize 不动点（≤40 含后缀）")
         names[0] = configuration.hostName.isEmpty ? "房主" : String(configuration.hostName.prefix(12))
         deviceBySeat[0] = "host"
         phase = .lobby
@@ -168,10 +178,13 @@ actor HostSession {
         if let state { updatesContinuation.yield(.state(state)) }
     }
 
-    /// 断线座位轮到时自动「能过则过、否则弃牌」（spec §2 决策）；12 次 > 9 座上限，防死循环。
+    /// 断线座位轮到时自动「能过则过、否则弃牌」（spec §2 决策）。
+    /// 迭代上限随桌伸缩（玩家数 × 4 条街 + 余量）：多名座位同时断线时跨街 check-around
+    /// 级联也能走完，上限仅作死循环保险，不再卡住整手牌。
     private func reconcileDisconnectedActor() async {
+        let cap = (state?.players.count ?? 9) * 4 + 4
         var iterations = 0
-        while iterations < 12,
+        while iterations < cap,
               var current = state,
               let actor = current.actorSeat,
               actor != 0,
@@ -234,7 +247,10 @@ actor HostSession {
     private func handle(_ event: TransportEvent) async {
         switch event {
         case let .received(data, peer):
-            guard let envelope = try? PokerWire.decode(data) else { return }
+            guard let envelope = try? PokerWire.decode(data) else {
+                logger.notice("丢弃无法解码的帧 peer=\(peer.rawValue, privacy: .public) 字节数=\(data.count)")
+                return
+            }
             await handleEnvelope(envelope, from: peer)
         case let .disconnected(peer, _):
             await handlePeerLeft(peer)
@@ -244,7 +260,10 @@ actor HostSession {
     }
 
     private func handleEnvelope(_ envelope: PokerEnvelope, from peer: PeerID) async {
-        guard envelope.roomID == roomID else { return }
+        guard envelope.roomID == roomID else {
+            logger.notice("丢弃房间不匹配的信封 peer=\(peer.rawValue, privacy: .public) room=\(envelope.roomID, privacy: .public)")
+            return
+        }
         guard isFreshMessageID(envelope.messageID) else { return }
         if envelope.protocolVersion != PokerProtocolVersion.current {
             try? await send(.rejection(.versionMismatch), to: peer)

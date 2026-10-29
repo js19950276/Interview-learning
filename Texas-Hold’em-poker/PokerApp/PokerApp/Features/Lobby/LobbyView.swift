@@ -132,7 +132,7 @@ private struct JoinRoomView: View {
 
     var body: some View {
         VStack(spacing: 12) {
-            TextField("你的名字（可留空）", text: $name)
+            TextField("你的名字（留空自动分配）", text: $name)
                 .textFieldStyle(.roundedBorder)
                 .padding(.horizontal)
             if let issue = browser.issue {
@@ -144,8 +144,9 @@ private struct JoinRoomView: View {
             } else {
                 List(browser.rooms) { room in
                     Button {
-                        let vm = GuestGameViewModel(roomID: room.roomID,
-                                                    displayName: name.isEmpty ? "玩家" : name)
+                        // 原样上送（可为空）：空名由房主兜底为「玩家-XXXX」，
+                        // 客机侧先行填「玩家」会让所有留空者撞名。
+                        let vm = GuestGameViewModel(roomID: room.roomID, displayName: name)
                         onJoin(vm)
                     } label: {
                         Text(room.serviceName)

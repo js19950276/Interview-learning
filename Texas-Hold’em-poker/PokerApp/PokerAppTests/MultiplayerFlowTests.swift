@@ -2,6 +2,24 @@ import XCTest
 import PokerEngine
 @testable import PokerApp
 
+/// connect 一律抛 NearbyIssue.permissionDenied 的传输桩：join() 错误映射用。
+/// Transport 要求 Sendable——actor 天然满足；事件流为已结束的空流。
+private actor PermissionDeniedTransport: Transport {
+    nonisolated let events: AsyncStream<TransportEvent>
+    private nonisolated let continuation: AsyncStream<TransportEvent>.Continuation
+
+    init() {
+        (events, continuation) = AsyncStream.makeStream(of: TransportEvent.self)
+        continuation.finish()
+    }
+
+    func startHosting(roomID: String, port: UInt16?) async throws {}
+    func browse() async throws {}
+    func connect(to peer: PeerID) async throws { throw NearbyIssue.permissionDenied }
+    func send(_ data: Data, to peer: PeerID) async throws {}
+    func disconnect() async {}
+}
+
 /// VM 级端到端：三个 VM（1 房主 + 2 客机）在 Loopback 上完成 入住→ready→开局→行动→handOver→下一手。
 @MainActor
 final class MultiplayerFlowTests: XCTestCase {
@@ -17,6 +35,17 @@ final class MultiplayerFlowTests: XCTestCase {
         // 超时抛错中止调用方，避免其继续强解过期状态（对齐 LoopbackHarness 的 TestTimeout 约定）
         XCTFail(message)
         throw TestTimeout()
+    }
+
+    /// 加入失败若根因是传输生命周期问题（本地网络权限被拒等），fatal 必须映射
+    /// NearbyIssue 文案，而不是误导性的「加入超时」。
+    func testJoinFailureMapsNearbyIssuePermissionDenied() async throws {
+        let vm = GuestGameViewModel(roomID: "R", displayName: "t",
+                                    transport: PermissionDeniedTransport())
+        await vm.join()
+        XCTAssertEqual(vm.fatal?.contains("本地网络权限"), true,
+                       "权限拒绝应显示 NearbyIssue 权限文案，实际: \(vm.fatal ?? "nil")")
+        await vm.leave()
     }
 
     func testThreeDevicesFullHand() async throws {
