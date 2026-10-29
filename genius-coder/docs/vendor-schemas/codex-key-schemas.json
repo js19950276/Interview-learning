@@ -1,0 +1,862 @@
+{
+ "$source": "codex app-server generate-json-schema (codex-cli 0.165.0-alpha.1.2, this machine)",
+ "definitions": {
+  "JSONRPCRequest": {
+   "$schema": "http://json-schema.org/draft-07/schema#",
+   "description": "A request that expects a response.",
+   "properties": {
+    "id": {
+     "$ref": "#/definitions/v2/RequestId"
+    },
+    "method": {
+     "type": "string"
+    },
+    "params": true,
+    "trace": {
+     "anyOf": [
+      {
+       "$ref": "#/definitions/W3cTraceContext"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Optional W3C Trace Context for distributed tracing."
+    }
+   },
+   "required": [
+    "id",
+    "method"
+   ],
+   "title": "JSONRPCRequest",
+   "type": "object"
+  },
+  "JSONRPCResponse": {
+   "$schema": "http://json-schema.org/draft-07/schema#",
+   "description": "A successful (non-error) response to a request.",
+   "properties": {
+    "id": {
+     "$ref": "#/definitions/v2/RequestId"
+    },
+    "result": true
+   },
+   "required": [
+    "id",
+    "result"
+   ],
+   "title": "JSONRPCResponse",
+   "type": "object"
+  },
+  "JSONRPCNotification": {
+   "$schema": "http://json-schema.org/draft-07/schema#",
+   "description": "A notification which does not expect a response.",
+   "properties": {
+    "method": {
+     "type": "string"
+    },
+    "params": true
+   },
+   "required": [
+    "method"
+   ],
+   "title": "JSONRPCNotification",
+   "type": "object"
+  },
+  "JSONRPCError": {
+   "$schema": "http://json-schema.org/draft-07/schema#",
+   "description": "A response to a request that indicates an error occurred.",
+   "properties": {
+    "error": {
+     "$ref": "#/definitions/JSONRPCErrorError"
+    },
+    "id": {
+     "$ref": "#/definitions/v2/RequestId"
+    }
+   },
+   "required": [
+    "error",
+    "id"
+   ],
+   "title": "JSONRPCError",
+   "type": "object"
+  },
+  "InitializeParams": {
+   "$schema": "http://json-schema.org/draft-07/schema#",
+   "properties": {
+    "capabilities": {
+     "anyOf": [
+      {
+       "$ref": "#/definitions/InitializeCapabilities"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "clientInfo": {
+     "$ref": "#/definitions/ClientInfo"
+    }
+   },
+   "required": [
+    "clientInfo"
+   ],
+   "title": "InitializeParams",
+   "type": "object"
+  },
+  "InitializeResponse": {
+   "$schema": "http://json-schema.org/draft-07/schema#",
+   "properties": {
+    "codexHome": {
+     "allOf": [
+      {
+       "$ref": "#/definitions/v2/AbsolutePathBuf"
+      }
+     ],
+     "description": "Absolute path to the server's $CODEX_HOME directory."
+    },
+    "platformFamily": {
+     "description": "Platform family for the running app-server target, for example `\"unix\"` or `\"windows\"`.",
+     "type": "string"
+    },
+    "platformOs": {
+     "description": "Operating system for the running app-server target, for example `\"macos\"`, `\"linux\"`, or `\"windows\"`.",
+     "type": "string"
+    },
+    "userAgent": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "codexHome",
+    "platformFamily",
+    "platformOs",
+    "userAgent"
+   ],
+   "title": "InitializeResponse",
+   "type": "object"
+  },
+  "ServerRequest": {
+   "$schema": "http://json-schema.org/draft-07/schema#",
+   "description": "Request initiated from the server and sent to the client.",
+   "oneOf": [
+    {
+     "description": "NEW APIs Sent when approval is requested for a specific command execution. This request is used for Turns started via turn/start.",
+     "properties": {
+      "id": {
+       "$ref": "#/definitions/v2/RequestId"
+      },
+      "method": {
+       "enum": [
+        "item/commandExecution/requestApproval"
+       ],
+       "title": "Item/commandExecution/requestApprovalRequestMethod",
+       "type": "string"
+      },
+      "params": {
+       "$ref": "#/definitions/CommandExecutionRequestApprovalParams"
+      }
+     },
+     "required": [
+      "id",
+      "method",
+      "params"
+     ],
+     "title": "Item/commandExecution/requestApprovalRequest",
+     "type": "object"
+    },
+    {
+     "description": "Sent when approval is requested for a specific file change. This request is used for Turns started via turn/start.",
+     "properties": {
+      "id": {
+       "$ref": "#/definitions/v2/RequestId"
+      },
+      "method": {
+       "enum": [
+        "item/fileChange/requestApproval"
+       ],
+       "title": "Item/fileChange/requestApprovalRequestMethod",
+       "type": "string"
+      },
+      "params": {
+       "$ref": "#/definitions/FileChangeRequestApprovalParams"
+      }
+     },
+     "required": [
+      "id",
+      "method",
+      "params"
+     ],
+     "title": "Item/fileChange/requestApprovalRequest",
+     "type": "object"
+    },
+    {
+     "description": "EXPERIMENTAL - Request input from the user for a tool call.",
+     "properties": {
+      "id": {
+       "$ref": "#/definitions/v2/RequestId"
+      },
+      "method": {
+       "enum": [
+        "item/tool/requestUserInput"
+       ],
+       "title": "Item/tool/requestUserInputRequestMethod",
+       "type": "string"
+      },
+      "params": {
+       "$ref": "#/definitions/ToolRequestUserInputParams"
+      }
+     },
+     "required": [
+      "id",
+      "method",
+      "params"
+     ],
+     "title": "Item/tool/requestUserInputRequest",
+     "type": "object"
+    },
+    {
+     "description": "Request input for an MCP server elicitation.",
+     "properties": {
+      "id": {
+       "$ref": "#/definitions/v2/RequestId"
+      },
+      "method": {
+       "enum": [
+        "mcpServer/elicitation/request"
+       ],
+       "title": "McpServer/elicitation/requestRequestMethod",
+       "type": "string"
+      },
+      "params": {
+       "$ref": "#/definitions/McpServerElicitationRequestParams"
+      }
+     },
+     "required": [
+      "id",
+      "method",
+      "params"
+     ],
+     "title": "McpServer/elicitation/requestRequest",
+     "type": "object"
+    },
+    {
+     "description": "Request approval for additional permissions from the user.",
+     "properties": {
+      "id": {
+       "$ref": "#/definitions/v2/RequestId"
+      },
+      "method": {
+       "enum": [
+        "item/permissions/requestApproval"
+       ],
+       "title": "Item/permissions/requestApprovalRequestMethod",
+       "type": "string"
+      },
+      "params": {
+       "$ref": "#/definitions/PermissionsRequestApprovalParams"
+      }
+     },
+     "required": [
+      "id",
+      "method",
+      "params"
+     ],
+     "title": "Item/permissions/requestApprovalRequest",
+     "type": "object"
+    },
+    {
+     "description": "Execute a dynamic tool call on the client.",
+     "properties": {
+      "id": {
+       "$ref": "#/definitions/v2/RequestId"
+      },
+      "method": {
+       "enum": [
+        "item/tool/call"
+       ],
+       "title": "Item/tool/callRequestMethod",
+       "type": "string"
+      },
+      "params": {
+       "$ref": "#/definitions/DynamicToolCallParams"
+      }
+     },
+     "required": [
+      "id",
+      "method",
+      "params"
+     ],
+     "title": "Item/tool/callRequest",
+     "type": "object"
+    },
+    {
+     "properties": {
+      "id": {
+       "$ref": "#/definitions/v2/RequestId"
+      },
+      "method": {
+       "enum": [
+        "account/chatgptAuthTokens/refresh"
+       ],
+       "title": "Account/chatgptAuthTokens/refreshRequestMethod",
+       "type": "string"
+      },
+      "params": {
+       "$ref": "#/definitions/ChatgptAuthTokensRefreshParams"
+      }
+     },
+     "required": [
+      "id",
+      "method",
+      "params"
+     ],
+     "title": "Account/chatgptAuthTokens/refreshRequest",
+     "type": "object"
+    },
+    {
+     "description": "Generate a fresh upstream attestation result on demand.",
+     "properties": {
+      "id": {
+       "$ref": "#/definitions/v2/RequestId"
+      },
+      "method": {
+       "enum": [
+        "attestation/generate"
+       ],
+       "title": "Attestation/generateRequestMethod",
+       "type": "string"
+      },
+      "params": {
+       "$ref": "#/definitions/AttestationGenerateParams"
+      }
+     },
+     "required": [
+      "id",
+      "method",
+      "params"
+     ],
+     "title": "Attestation/generateRequest",
+     "type": "object"
+    },
+    {
+     "description": "DEPRECATED APIs below Request to approve a patch. This request is used for Turns started via the legacy APIs (i.e. SendUserTurn, SendUserMessage).",
+     "properties": {
+      "id": {
+       "$ref": "#/definitions/v2/RequestId"
+      },
+      "method": {
+       "enum": [
+        "applyPatchApproval"
+       ],
+       "title": "ApplyPatchApprovalRequestMethod",
+       "type": "string"
+      },
+      "params": {
+       "$ref": "#/definitions/ApplyPatchApprovalParams"
+      }
+     },
+     "required": [
+      "id",
+      "method",
+      "params"
+     ],
+     "title": "ApplyPatchApprovalRequest",
+     "type": "object"
+    },
+    {
+     "description": "Request to exec a command. This request is used for Turns started via the legacy APIs (i.e. SendUserTurn, SendUserMessage).",
+     "properties": {
+      "id": {
+       "$ref": "#/definitions/v2/RequestId"
+      },
+      "method": {
+       "enum": [
+        "execCommandApproval"
+       ],
+       "title": "ExecCommandApprovalRequestMethod",
+       "type": "string"
+      },
+      "params": {
+       "$ref": "#/definitions/ExecCommandApprovalParams"
+      }
+     },
+     "required": [
+      "id",
+      "method",
+      "params"
+     ],
+     "title": "ExecCommandApprovalRequest",
+     "type": "object"
+    }
+   ],
+   "title": "ServerRequest"
+  },
+  "CommandExecutionRequestApprovalParams": {
+   "$schema": "http://json-schema.org/draft-07/schema#",
+   "properties": {
+    "approvalId": {
+     "description": "Unique identifier for this specific approval callback.\n\nFor regular shell/unified_exec approvals, this is null.\n\nFor zsh-exec-bridge subcommand approvals, multiple callbacks can belong to one parent `itemId`, so `approvalId` is a distinct opaque callback id (a UUID) used to disambiguate routing. Stdin approvals also use a distinct callback id; inspect `kind` to distinguish them.",
+     "type": [
+      "string",
+      "null"
+     ]
+    },
+    "command": {
+     "description": "The command to be executed.",
+     "type": [
+      "string",
+      "null"
+     ]
+    },
+    "commandActions": {
+     "description": "Best-effort parsed command actions for friendly display.",
+     "items": {
+      "$ref": "#/definitions/v2/CommandAction"
+     },
+     "type": [
+      "array",
+      "null"
+     ]
+    },
+    "cwd": {
+     "anyOf": [
+      {
+       "$ref": "#/definitions/v2/LegacyAppPathString"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "The command's working directory."
+    },
+    "environmentId": {
+     "default": null,
+     "description": "Environment in which the command will run.",
+     "type": [
+      "string",
+      "null"
+     ]
+    },
+    "itemId": {
+     "type": "string"
+    },
+    "kind": {
+     "allOf": [
+      {
+       "$ref": "#/definitions/CommandExecutionApprovalKind"
+      }
+     ],
+     "default": "command",
+     "description": "Kind of action under review. Defaults to `command` for older servers."
+    },
+    "networkApprovalContext": {
+     "anyOf": [
+      {
+       "$ref": "#/definitions/NetworkApprovalContext"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Optional context for a managed-network approval prompt."
+    },
+    "proposedExecpolicyAmendment": {
+     "description": "Optional proposed execpolicy amendment to allow similar commands without prompting.",
+     "items": {
+      "type": "string"
+     },
+     "type": [
+      "array",
+      "null"
+     ]
+    },
+    "proposedNetworkPolicyAmendments": {
+     "description": "Optional proposed network policy amendments (allow/deny host) for future requests.",
+     "items": {
+      "$ref": "#/definitions/NetworkPolicyAmendment"
+     },
+     "type": [
+      "array",
+      "null"
+     ]
+    },
+    "reason": {
+     "description": "Optional explanatory reason (e.g. request for network access).",
+     "type": [
+      "string",
+      "null"
+     ]
+    },
+    "startedAtMs": {
+     "description": "Unix timestamp (in milliseconds) when this approval request started.",
+     "format": "int64",
+     "type": "integer"
+    },
+    "threadId": {
+     "type": "string"
+    },
+    "turnId": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "itemId",
+    "startedAtMs",
+    "threadId",
+    "turnId"
+   ],
+   "title": "CommandExecutionRequestApprovalParams",
+   "type": "object"
+  },
+  "CommandExecutionRequestApprovalResponse": {
+   "$schema": "http://json-schema.org/draft-07/schema#",
+   "properties": {
+    "decision": {
+     "$ref": "#/definitions/CommandExecutionApprovalDecision"
+    }
+   },
+   "required": [
+    "decision"
+   ],
+   "title": "CommandExecutionRequestApprovalResponse",
+   "type": "object"
+  },
+  "FileChangeRequestApprovalParams": {
+   "$schema": "http://json-schema.org/draft-07/schema#",
+   "properties": {
+    "grantRoot": {
+     "description": "[UNSTABLE] When set, the agent is asking the user to allow writes under this root for the remainder of the session (unclear if this is honored today).",
+     "type": [
+      "string",
+      "null"
+     ]
+    },
+    "itemId": {
+     "type": "string"
+    },
+    "reason": {
+     "description": "Optional explanatory reason (e.g. request for extra write access).",
+     "type": [
+      "string",
+      "null"
+     ]
+    },
+    "startedAtMs": {
+     "description": "Unix timestamp (in milliseconds) when this approval request started.",
+     "format": "int64",
+     "type": "integer"
+    },
+    "threadId": {
+     "type": "string"
+    },
+    "turnId": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "itemId",
+    "startedAtMs",
+    "threadId",
+    "turnId"
+   ],
+   "title": "FileChangeRequestApprovalParams",
+   "type": "object"
+  },
+  "FileChangeRequestApprovalResponse": {
+   "$schema": "http://json-schema.org/draft-07/schema#",
+   "properties": {
+    "decision": {
+     "$ref": "#/definitions/FileChangeApprovalDecision"
+    }
+   },
+   "required": [
+    "decision"
+   ],
+   "title": "FileChangeRequestApprovalResponse",
+   "type": "object"
+  },
+  "PermissionsRequestApprovalParams": {
+   "$schema": "http://json-schema.org/draft-07/schema#",
+   "properties": {
+    "cwd": {
+     "$ref": "#/definitions/v2/LegacyAppPathString"
+    },
+    "environmentId": {
+     "default": null,
+     "type": [
+      "string",
+      "null"
+     ]
+    },
+    "itemId": {
+     "type": "string"
+    },
+    "permissions": {
+     "$ref": "#/definitions/v2/RequestPermissionProfile"
+    },
+    "reason": {
+     "type": [
+      "string",
+      "null"
+     ]
+    },
+    "startedAtMs": {
+     "description": "Unix timestamp (in milliseconds) when this approval request started.",
+     "format": "int64",
+     "type": "integer"
+    },
+    "threadId": {
+     "type": "string"
+    },
+    "turnId": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "cwd",
+    "itemId",
+    "permissions",
+    "startedAtMs",
+    "threadId",
+    "turnId"
+   ],
+   "title": "PermissionsRequestApprovalParams",
+   "type": "object"
+  },
+  "PermissionsRequestApprovalResponse": {
+   "$schema": "http://json-schema.org/draft-07/schema#",
+   "properties": {
+    "permissions": {
+     "$ref": "#/definitions/GrantedPermissionProfile"
+    },
+    "scope": {
+     "allOf": [
+      {
+       "$ref": "#/definitions/PermissionGrantScope"
+      }
+     ],
+     "default": "turn"
+    },
+    "strictAutoReview": {
+     "description": "Review every subsequent command in this turn before normal sandboxed execution.",
+     "type": [
+      "boolean",
+      "null"
+     ]
+    }
+   },
+   "required": [
+    "permissions"
+   ],
+   "title": "PermissionsRequestApprovalResponse",
+   "type": "object"
+  },
+  "ExecCommandApprovalParams": {
+   "$schema": "http://json-schema.org/draft-07/schema#",
+   "properties": {
+    "approvalId": {
+     "description": "Identifier for this specific approval callback.",
+     "type": [
+      "string",
+      "null"
+     ]
+    },
+    "callId": {
+     "description": "Use to correlate this with [codex_protocol::protocol::ExecCommandBeginEvent] and [codex_protocol::protocol::ExecCommandEndEvent].",
+     "type": "string"
+    },
+    "command": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "conversationId": {
+     "$ref": "#/definitions/v2/ThreadId"
+    },
+    "cwd": {
+     "type": "string"
+    },
+    "parsedCmd": {
+     "items": {
+      "$ref": "#/definitions/ParsedCommand"
+     },
+     "type": "array"
+    },
+    "reason": {
+     "type": [
+      "string",
+      "null"
+     ]
+    }
+   },
+   "required": [
+    "callId",
+    "command",
+    "conversationId",
+    "cwd",
+    "parsedCmd"
+   ],
+   "title": "ExecCommandApprovalParams",
+   "type": "object"
+  },
+  "ExecCommandApprovalResponse": {
+   "$schema": "http://json-schema.org/draft-07/schema#",
+   "properties": {
+    "decision": {
+     "$ref": "#/definitions/ReviewDecision"
+    }
+   },
+   "required": [
+    "decision"
+   ],
+   "title": "ExecCommandApprovalResponse",
+   "type": "object"
+  },
+  "ApplyPatchApprovalParams": {
+   "$schema": "http://json-schema.org/draft-07/schema#",
+   "properties": {
+    "callId": {
+     "description": "Use to correlate this with [codex_protocol::protocol::PatchApplyBeginEvent] and [codex_protocol::protocol::PatchApplyEndEvent].",
+     "type": "string"
+    },
+    "conversationId": {
+     "$ref": "#/definitions/v2/ThreadId"
+    },
+    "fileChanges": {
+     "additionalProperties": {
+      "$ref": "#/definitions/FileChange"
+     },
+     "type": "object"
+    },
+    "grantRoot": {
+     "description": "When set, the agent is asking the user to allow writes under this root for the remainder of the session (unclear if this is honored today).",
+     "type": [
+      "string",
+      "null"
+     ]
+    },
+    "reason": {
+     "description": "Optional explanatory reason (e.g. request for extra write access).",
+     "type": [
+      "string",
+      "null"
+     ]
+    }
+   },
+   "required": [
+    "callId",
+    "conversationId",
+    "fileChanges"
+   ],
+   "title": "ApplyPatchApprovalParams",
+   "type": "object"
+  },
+  "ApplyPatchApprovalResponse": {
+   "$schema": "http://json-schema.org/draft-07/schema#",
+   "properties": {
+    "decision": {
+     "$ref": "#/definitions/ReviewDecision"
+    }
+   },
+   "required": [
+    "decision"
+   ],
+   "title": "ApplyPatchApprovalResponse",
+   "type": "object"
+  },
+  "ToolRequestUserInputResponse": {
+   "$schema": "http://json-schema.org/draft-07/schema#",
+   "description": "EXPERIMENTAL. Response payload mapping question ids to answers.",
+   "properties": {
+    "answers": {
+     "additionalProperties": {
+      "$ref": "#/definitions/ToolRequestUserInputAnswer"
+     },
+     "type": "object"
+    }
+   },
+   "required": [
+    "answers"
+   ],
+   "title": "ToolRequestUserInputResponse",
+   "type": "object"
+  },
+  "McpServerElicitationRequestResponse": {
+   "$schema": "http://json-schema.org/draft-07/schema#",
+   "properties": {
+    "_meta": {
+     "description": "Optional client metadata for form-mode action handling."
+    },
+    "action": {
+     "$ref": "#/definitions/McpServerElicitationAction"
+    },
+    "content": {
+     "description": "Structured user input for accepted elicitations, mirroring RMCP `CreateElicitationResult`.\n\nThis is nullable because decline/cancel responses have no content."
+    }
+   },
+   "required": [
+    "action"
+   ],
+   "title": "McpServerElicitationRequestResponse",
+   "type": "object"
+  },
+  "DynamicToolCallResponse": {
+   "$schema": "http://json-schema.org/draft-07/schema#",
+   "properties": {
+    "contentItems": {
+     "items": {
+      "$ref": "#/definitions/v2/DynamicToolCallOutputContentItem"
+     },
+     "type": "array"
+    },
+    "success": {
+     "type": "boolean"
+    }
+   },
+   "required": [
+    "contentItems",
+    "success"
+   ],
+   "title": "DynamicToolCallResponse",
+   "type": "object"
+  },
+  "ChatgptAuthTokensRefreshResponse": {
+   "$schema": "http://json-schema.org/draft-07/schema#",
+   "properties": {
+    "accessToken": {
+     "type": "string"
+    },
+    "chatgptAccountId": {
+     "type": "string"
+    },
+    "chatgptPlanType": {
+     "type": [
+      "string",
+      "null"
+     ]
+    }
+   },
+   "required": [
+    "accessToken",
+    "chatgptAccountId"
+   ],
+   "title": "ChatgptAuthTokensRefreshResponse",
+   "type": "object"
+  },
+  "AttestationGenerateResponse": {
+   "$schema": "http://json-schema.org/draft-07/schema#",
+   "properties": {
+    "token": {
+     "description": "Opaque client attestation token.",
+     "type": "string"
+    }
+   },
+   "required": [
+    "token"
+   ],
+   "title": "AttestationGenerateResponse",
+   "type": "object"
+  }
+ }
+}
