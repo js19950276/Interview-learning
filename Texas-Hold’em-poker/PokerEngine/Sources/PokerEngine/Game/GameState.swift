@@ -85,6 +85,13 @@ public struct GameState: Equatable, Sendable {
 
     public var potTotal: Int { players.reduce(0) { $0 + $1.handContribution } }
 
+    /// 联机大厅昵称覆写。名字是展示元数据（不参与规则推进）；players 的 setter 是
+    /// internal(set)，故由引擎提供唯一写入口；越界座位安全忽略。
+    public mutating func renamePlayer(seat: Int, to name: String) {
+        guard players.indices.contains(seat) else { return }
+        players[seat].name = String(name.prefix(12))
+    }
+
     /// 开一局。stacks/buttonSeat/handNumber 供重放（HandHistory）使用。
     public static func start(config: GameConfig, seed: UInt64,
                              stacks: [Int]? = nil, buttonSeat: Int? = nil,

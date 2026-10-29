@@ -81,11 +81,13 @@ actor HostSession {
         var config = configuration.tableConfig
         config.playerCount = seats.count
         config.humanSeat = 0
-        // 注：GameState.players 对 App 模块只读（public internal(set)），无法把大厅名字写进引擎；
-        // 大厅名字保留在 names[seat]，Task 8 快照/渲染时以 names[seat] 覆盖引擎默认名「座位 N」。
-        let initialState = GameState.start(
+        // 昵称经引擎写入口落地（players 对 App 只读）：房主直读引擎与客机快照同源（T8）。
+        var initialState = GameState.start(
             config: config,
             seed: UInt64(Date().timeIntervalSince1970 * 1000))
+        for seat in seats {
+            initialState.renamePlayer(seat: seat, to: names[seat] ?? "座位 \(seat + 1)")
+        }
         state = initialState
         phase = .playing
         await publishLobby()          // phase .playing → 客机切牌桌
@@ -98,6 +100,114 @@ actor HostSession {
         processingTask = nil
         updatesContinuation.finish()
         await transport.disconnect()
+    }
+
+    // MARK: - 对局阶段公开 API（Task 8）
+
+    /// 房主自己（seat 0）的行动入口；与客机意图走同一校验与扇出路径。
+    func act(_ action: PlayerAction) async {
+        await applyAction(action, seat: 0)
+    }
+
+    /// 房主请求下一手（与客机请求等价，引擎幂等只放行一次）。
+    func requestNextHand() async {
+        await handleNextHand()
+    }
+
+    /// 前台自愈：App 挂起可能无声杀死监听 socket（scenePhase .active 调用）。
+    nonisolated func applicationDidBecomeActive() async {
+        await transport.reviveHostingIfNeeded()
+    }
+
+    // MARK: - 对局内消息与状态推进
+
+    private func handleGamePayload(_ payload: Payload, seat: Int) async {
+        guard phase == .playing, state != nil else { return }
+        switch payload {
+        case let .action(action):
+            await applyAction(action, seat: seat)
+        case .nextHand:
+            await handleNextHand()
+        default:
+            break
+        }
+    }
+
+    private func applyAction(_ action: PlayerAction, seat: Int) async {
+        guard phase == .playing, var current = state, let actor = current.actorSeat else { return }
+        guard actor == seat else {
+            try? await sendToSeat(seat, .rejection(.notYourTurn))
+            return
+        }
+        // 网络输入必须先过合法性门：引擎对非法动作按弃牌处理、对非法加注有 precondition
+        // 崩溃路径，绝不能让未校验的动作直达引擎（spec §8）。
+        let legal = legalActions(current)
+        guard isLegal(action, in: legal) else {
+            try? await sendToSeat(seat, .rejection(.illegalAction))
+            return
+        }
+        current.apply(action)
+        state = current
+        await afterEngineChange()
+    }
+
+    private func handleNextHand() async {
+        guard phase == .playing, let current = state,
+              current.street == .handOver, !current.tournamentOver else { return }
+        var next = current
+        next.nextHand()
+        state = next
+        await afterEngineChange()
+    }
+
+    /// 引擎变更后的统一后处理：托管断线者 → 扇出快照 → 通知房主 UI。
+    private func afterEngineChange() async {
+        if state?.tournamentOver == true { phase = .finished }
+        await reconcileDisconnectedActor()
+        await fanoutSnapshots()
+        if let state { updatesContinuation.yield(.state(state)) }
+    }
+
+    /// 断线座位轮到时自动「能过则过、否则弃牌」（spec §2 决策）；12 次 > 9 座上限，防死循环。
+    private func reconcileDisconnectedActor() async {
+        var iterations = 0
+        while iterations < 12,
+              var current = state,
+              let actor = current.actorSeat,
+              actor != 0,
+              peerBySeat[actor] == nil,
+              [.preflop, .flop, .turn, .river].contains(current.street) {
+            let legal = legalActions(current)
+            current.apply(legal.canCheck ? .check : .fold)
+            state = current
+            iterations += 1
+        }
+        if state?.tournamentOver == true { phase = .finished }
+    }
+
+    /// 每个在线座位生成 recipient 专属脱敏快照逐个发送；seq 单调；失败不阻塞其他座位。
+    private func fanoutSnapshots() async {
+        guard let current = state else { return }
+        seq += 1
+        for (seat, peer) in peerBySeat where seat != 0 {
+            let snapshot = TableSnapshot.make(from: current, recipient: seat, seq: seq)
+            try? await send(.snapshot(snapshot), to: peer)
+        }
+    }
+
+    /// 重连补发：沿用当前 seq（引擎未变更）。已见过该 seq 的客机按 seq 门丢弃（快照不回退），
+    /// 断线期间错过最新一帧的客机则借此补齐。
+    private func resendCurrentSnapshots() async {
+        guard let current = state else { return }
+        for (seat, peer) in peerBySeat where seat != 0 {
+            let snapshot = TableSnapshot.make(from: current, recipient: seat, seq: seq)
+            try? await send(.snapshot(snapshot), to: peer)
+        }
+    }
+
+    private func sendToSeat(_ seat: Int, _ payload: Payload) async {
+        guard let peer = peerBySeat[seat] else { return }
+        try? await send(payload, to: peer)
     }
 
     // MARK: - 测试观测
@@ -156,14 +266,11 @@ actor HostSession {
                 await handlePeerLeft(peer)
                 return
             }
-            await handleGamePayload(envelope.payload, seat: seat)   // Task 8 实现；本任务先留空方法
+            await handleGamePayload(envelope.payload, seat: seat)
         default:
             break
         }
     }
-
-    /// Task 8 填充对局逻辑；本任务先做空实现保证编译。
-    private func handleGamePayload(_ payload: Payload, seat: Int) async {}
 
     private func handleHello(deviceID: String, name: String, peer: PeerID) async {
         // "host" 是房主保留 deviceID；空 ID 视为畸形 hello，一律忽略
@@ -218,18 +325,16 @@ actor HostSession {
             names[seat] = nil
             readySeats.remove(seat)
         }
-        // 对局期：deviceBySeat 保留（可重连），座位标记为断线（Task 8 托管用）
+        // 对局期：deviceBySeat 保留（可重连）；若断线者正是行动者，托管推进后走统一后处理
+        // （扇出使 seq 前进 + 通知 UI）——重连补发按最新 seq 送出更新帧，客机 seq 门不回退。
         await publishLobby()
-        await reconcileDisconnectedActor()   // Task 8 实现；本任务空方法
+        if phase == .playing || phase == .finished { await afterEngineChange() }
     }
 
     private func bind(peer: PeerID, seat: Int) {
         seatByPeer[peer] = seat
         peerBySeat[seat] = peer
     }
-
-    /// Task 8 填充；本任务空实现保证编译。
-    private func reconcileDisconnectedActor() async {}
 
     private func isFreshMessageID(_ id: String) -> Bool {
         guard !seenMessageIDs.contains(id) else { return false }
@@ -262,10 +367,6 @@ actor HostSession {
             try? await send(.lobby(lobby), to: peer)
         }
     }
-
-    /// Task 8 填充；本任务空实现保证编译。
-    private func fanoutSnapshots() async {}
-    private func resendCurrentSnapshots() async {}
 
     private func send(_ payload: Payload, to peer: PeerID) async throws {
         try await transport.send(
