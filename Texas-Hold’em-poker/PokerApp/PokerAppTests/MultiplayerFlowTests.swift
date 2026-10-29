@@ -15,6 +15,7 @@ final class MultiplayerFlowTests: XCTestCase {
             try await Task.sleep(nanoseconds: 50_000_000)
         }
         XCTFail(message)
+        return
     }
 
     func testThreeDevicesFullHand() async throws {

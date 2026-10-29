@@ -78,8 +78,10 @@ final class HostGameViewModel: ObservableObject, GamePresenting {
 
     func beginConsumingUpdates() {
         guard updatesTask == nil else { return }
+        // 泵闭包捕获 let-local 会话而非隐式强 self：否则 for-await 挂起期间 VM 永不 deinit（退出即断开落空）
+        let session = session
         updatesTask = Task { [weak self] in
-            let updates = await session.updates
+            let updates = session.updates
             for await update in updates {
                 guard let self else { break }
                 self.consume(update)
@@ -168,8 +170,10 @@ final class GuestGameViewModel: ObservableObject, GamePresenting {
     var inGame: Bool { snapshot != nil }
 
     private func beginConsumingUpdates() {
+        // 同房主泵：捕获 let-local 会话，保证 VM 可 deinit → 退出即 leave（发 bye）
+        let session = session
         updatesTask = Task { [weak self] in
-            let updates = await session.updates
+            let updates = session.updates
             for await update in updates {
                 guard let self else { break }
                 self.consume(update)
@@ -234,8 +238,10 @@ final class RoomBrowserModel: ObservableObject {
         guard task == nil else { return }
         searching = true
         issue = nil
+        // 同 VM 泵：捕获 let-local 浏览器，不隐式强捕 self（模型可释放）
+        let browser = browser
         task = Task { [weak self] in
-            let states = await browser.states
+            let states = browser.states
             for await state in states {
                 guard let self else { break }
                 switch state {
