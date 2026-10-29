@@ -1,0 +1,929 @@
+›
+
+features*	
+ €R
+policyA
+*
+ €R
+policyB
+*
+ €R
+value
+*
+ €¢»
+?AlphaZero V1 net;featuresVersion=1;checkpoint=runs/incumbent.ptbrass-birmingham-selfplay¢4
+#com.github.apple.coremltools.sourcetorch==2.14.1¢:
+,com.github.apple.coremltools.conversion_date
+2026-10-29¢:
++com.github.apple.coremltools.source_dialectTorchScript¢+
+$com.github.apple.coremltools.version9.0²±>Ã<
+mainº<
+
+features
+
+
+CoreML7<
+CoreML7<policyApolicyBvalueŠ
+const
+net_embed_bias
+
+€*$
+name
+
+"
+net_embed_bias*:
+val3
+
+€*"
+@model_path/weights/weight.bin@
+const(
+net_embed_weight
+
+€
+*&
+name
+
+"
+net_embed_weight*B
+val;
+
+€
+*#
+@model_path/weights/weight.bin€’
+const"
+net_blocks_0_bias
+
+€*'
+name
+
+"
+net_blocks_0_bias*<
+val5
+
+€*$
+@model_path/weights/weight.binÀ¹0¤
+const+
+net_blocks_0_weight
+
+€
+€*)
+name!
+
+"
+net_blocks_0_weight*C
+val<
+
+€
+€*$
+@model_path/weights/weight.bin€¾0’
+const"
+net_blocks_1_bias
+
+€*'
+name
+
+"
+net_blocks_1_bias*<
+val5
+
+€*$
+@model_path/weights/weight.binÀ¾4¤
+const+
+net_blocks_1_weight
+
+€
+€*)
+name!
+
+"
+net_blocks_1_weight*C
+val<
+
+€
+€*$
+@model_path/weights/weight.bin€Ã4’
+const"
+net_blocks_2_bias
+
+€*'
+name
+
+"
+net_blocks_2_bias*<
+val5
+
+€*$
+@model_path/weights/weight.binÀÃ8¤
+const+
+net_blocks_2_weight
+
+€
+€*)
+name!
+
+"
+net_blocks_2_weight*C
+val<
+
+€
+€*$
+@model_path/weights/weight.bin€È8’
+const"
+net_blocks_3_bias
+
+€*'
+name
+
+"
+net_blocks_3_bias*<
+val5
+
+€*$
+@model_path/weights/weight.binÀÈ<¤
+const+
+net_blocks_3_weight
+
+€
+€*)
+name!
+
+"
+net_blocks_3_weight*C
+val<
+
+€
+€*$
+@model_path/weights/weight.bin€Í<’
+const"
+net_blocks_4_bias
+
+€*'
+name
+
+"
+net_blocks_4_bias*<
+val5
+
+€*$
+@model_path/weights/weight.binÀÍ@¤
+const+
+net_blocks_4_weight
+
+€
+€*)
+name!
+
+"
+net_blocks_4_weight*C
+val<
+
+€
+€*$
+@model_path/weights/weight.bin€Ò@’
+const"
+net_blocks_5_bias
+
+€*'
+name
+
+"
+net_blocks_5_bias*<
+val5
+
+€*$
+@model_path/weights/weight.binÀÒD¤
+const+
+net_blocks_5_weight
+
+€
+€*)
+name!
+
+"
+net_blocks_5_weight*C
+val<
+
+€
+€*$
+@model_path/weights/weight.bin€×D’
+const"
+net_blocks_6_bias
+
+€*'
+name
+
+"
+net_blocks_6_bias*<
+val5
+
+€*$
+@model_path/weights/weight.binÀ×H¤
+const+
+net_blocks_6_weight
+
+€
+€*)
+name!
+
+"
+net_blocks_6_weight*C
+val<
+
+€
+€*$
+@model_path/weights/weight.bin€ÜH’
+const"
+net_blocks_7_bias
+
+€*'
+name
+
+"
+net_blocks_7_bias*<
+val5
+
+€*$
+@model_path/weights/weight.binÀÜL¤
+const+
+net_blocks_7_weight
+
+€
+€*)
+name!
+
+"
+net_blocks_7_weight*C
+val<
+
+€
+€*$
+@model_path/weights/weight.bin€áL
+const
+net_head_a_bias
+
+
+*%
+name
+
+"
+net_head_a_bias*=
+val6
+
+
+&
+$
+"
+ ®/Ó<p¾Á»êÉ=0à=?FÉ½€£Q½²Œ<:Ô™½
+const(
+net_head_a_weight
+
+
+€*'
+name
+
+"
+net_head_a_weight*B
+val;
+
+
+€*$
+@model_path/weights/weight.binÀáPŒ
+const
+net_head_b_bias
+
+
+*%
+name
+
+"
+net_head_b_bias*;
+val4
+
+
+*$
+@model_path/weights/weight.bin€‚Q
+const(
+net_head_b_weight
+
+
+€*'
+name
+
+"
+net_head_b_weight*B
+val;
+
+
+€*$
+@model_path/weights/weight.binÀƒQ|
+const
+net_value_bias
+
+
+*$
+name
+
+"
+net_value_bias*-
+val&
+
+
+
+
+
+Y8>^hş½Œ>4~>œ
+const'
+net_value_weight
+
+
+€*&
+name
+
+"
+net_value_weight*B
+val;
+
+
+€*$
+@model_path/weights/weight.bin€€R–
+linear
+x
+
+
+features
+bias
+
+net_embed_bias
+weight
+
+net_embed_weight
+var_26
+
+
+€*
+name
+
+"
+
+linear_0V
+relu
+x
+
+
+var_26
+input_1
+
+
+€*
+name
+
+"	
+input_1›
+linear
+x
+	
+input_1
+bias
+
+net_blocks_0_bias!
+weight
+
+net_blocks_0_weight
+var_30
+
+
+€*
+name
+
+"
+
+linear_1d
+add
+x
+	
+input_1
+y
+
+
+var_30
+var_31
+
+
+€*
+name
+
+	"
+op_31V
+relu
+x
+
+
+var_31
+input_3
+
+
+€*
+name
+
+"	
+input_3›
+linear
+x
+	
+input_3
+bias
+
+net_blocks_1_bias!
+weight
+
+net_blocks_1_weight
+var_35
+
+
+€*
+name
+
+"
+
+linear_2d
+add
+x
+	
+input_3
+y
+
+
+var_35
+var_36
+
+
+€*
+name
+
+	"
+op_36V
+relu
+x
+
+
+var_36
+input_5
+
+
+€*
+name
+
+"	
+input_5›
+linear
+x
+	
+input_5
+bias
+
+net_blocks_2_bias!
+weight
+
+net_blocks_2_weight
+var_40
+
+
+€*
+name
+
+"
+
+linear_3d
+add
+x
+	
+input_5
+y
+
+
+var_40
+var_41
+
+
+€*
+name
+
+	"
+op_41V
+relu
+x
+
+
+var_41
+input_7
+
+
+€*
+name
+
+"	
+input_7›
+linear
+x
+	
+input_7
+bias
+
+net_blocks_3_bias!
+weight
+
+net_blocks_3_weight
+var_45
+
+
+€*
+name
+
+"
+
+linear_4d
+add
+x
+	
+input_7
+y
+
+
+var_45
+var_46
+
+
+€*
+name
+
+	"
+op_46V
+relu
+x
+
+
+var_46
+input_9
+
+
+€*
+name
+
+"	
+input_9›
+linear
+x
+	
+input_9
+bias
+
+net_blocks_4_bias!
+weight
+
+net_blocks_4_weight
+var_50
+
+
+€*
+name
+
+"
+
+linear_5d
+add
+x
+	
+input_9
+y
+
+
+var_50
+var_51
+
+
+€*
+name
+
+	"
+op_51X
+relu
+x
+
+
+var_51
+input_11
+
+
+€*
+name
+
+"
+
+input_11œ
+linear
+x
+
+
+input_11
+bias
+
+net_blocks_5_bias!
+weight
+
+net_blocks_5_weight
+var_55
+
+
+€*
+name
+
+"
+
+linear_6e
+add
+x
+
+
+input_11
+y
+
+
+var_55
+var_56
+
+
+€*
+name
+
+	"
+op_56X
+relu
+x
+
+
+var_56
+input_13
+
+
+€*
+name
+
+"
+
+input_13œ
+linear
+x
+
+
+input_13
+bias
+
+net_blocks_6_bias!
+weight
+
+net_blocks_6_weight
+var_60
+
+
+€*
+name
+
+"
+
+linear_7e
+add
+x
+
+
+input_13
+y
+
+
+var_60
+var_61
+
+
+€*
+name
+
+	"
+op_61X
+relu
+x
+
+
+var_61
+input_15
+
+
+€*
+name
+
+"
+
+input_15œ
+linear
+x
+
+
+input_15
+bias
+
+net_blocks_7_bias!
+weight
+
+net_blocks_7_weight
+var_65
+
+
+€*
+name
+
+"
+
+linear_8e
+add
+x
+
+
+input_15
+y
+
+
+var_65
+var_66
+
+
+€*
+name
+
+	"
+op_66R
+relu
+x
+
+
+var_66
+input
+
+
+€*
+name
+
+	"
+input
+linear
+x	
+
+input
+bias
+
+net_head_a_bias
+weight
+
+net_head_a_weight
+a
+
+
+*
+name
+
+"
+
+linear_9
+linear
+x	
+
+input
+bias
+
+net_head_b_bias
+weight
+
+net_head_b_weight
+b
+
+
+*
+name
+
+"
+	linear_10
+linear
+x	
+
+input
+bias
+
+net_value_bias
+weight
+
+net_value_weight
+v
+
+
+*
+name
+
+"
+	linear_11U
+const
+var_81
+*
+name
+
+	"
+op_81*
+val
+
+
+
+ÿÿÿÿÿÿÿÿÿe
+softmax
+
+x
+
+a
+axis
+
+
+var_81
+policyA
+
+
+*
+name
+
+	"
+op_83U
+const
+var_84
+*
+name
+
+	"
+op_84*
+val
+
+
+
+ÿÿÿÿÿÿÿÿÿe
+softmax
+
+x
+
+b
+axis
+
+
+var_84
+policyB
+
+
+*
+name
+
+	"
+op_86O
+sigmoid
+
+x
+
+v
+value
+
+
+*
+name
+
+	"
+op_87"æ
+	buildInfoØ"
+
+
+Å"Â
+6
+!
+
+"
+coremltools-version
+	
+"
+9.0
+A
+)
+!
+"
+coremltools-component-torch
+
+
+"
+2.14.1
+E
+(
+ 
+"
+coremltools-source-dialect
+
+"
+TorchScript

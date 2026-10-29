@@ -33,9 +33,23 @@ enum SinglePlayerSessionFactory {
         )
         try await coordinator.startSinglePlayerGame(aiDifficulties: Array(repeating: difficulty, count: 3))
         let aiSeats = await coordinator.aiSeatIDs
+        // spec §10.4:CoreML 模型优先,加载失败回退启发式(静默,面板可查评估来源)。
+        let evaluator: (any GameCore.MCTSEvaluator)?
+        if let coreML = try? GameCore.CoreMLEvaluation(catalog: catalog) {
+            evaluator = coreML
+        } else {
+            evaluator = nil
+        }
         let driver = AIPlayerDriver(
             coordinator: coordinator,
-            seats: aiSeats.map { AIPlayerDriver.SeatAssignment(seat: $0, difficulty: difficulty) }
+            seats: aiSeats.map {
+                AIPlayerDriver.SeatAssignment(
+                    seat: $0, difficulty: difficulty, configuration: .init(
+                        simulations: difficulty.simulations, explorationConstant: 1.25,
+                        timeLimitMs: 4_000, seed: 0, evaluator: evaluator
+                    )
+                )
+            }
         )
         driver.start()
         let store = SessionViewStore(
