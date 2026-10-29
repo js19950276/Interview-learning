@@ -46,7 +46,7 @@
 1. **非法动作直达引擎**（引擎对非法动作 assert+按弃牌处理、对 `add<=0` 的加注 precondition 崩溃）→ HostSession 一切动作入口先 `isLegal` 拦截 → Task 8 测试 `illegalActionRejectedEngineUntouched`。
 2. **陈旧/重复终止回调误杀活连接**（换连接后旧 NW 回调仍触发）→ TerminationRegistry 按连接对象过滤 → Task 4 测试 `terminationRegistryIgnoresStaleAndDuplicateTermination`。
 3. **TCP 粘包/半包解码错位** → Decoder 增量缓冲 → Task 2 测试 `decoderHandlesSplitAndCoalescedReadsInOrder`。
-4. **重连后重复消息被二次应用**（补发与在途重叠）→ messageID 去重 + 快照 seq 单调丢弃 → Task 8 `duplicateActionMessageAppliedOnce`、Task 9 `staleSnapshotBySeqDropped`。
+4. **重连后重复消息被二次应用**（补发与在途重叠）→ messageID 去重 + 快照 seq 单调丢弃 → Task 8 `duplicateActionMessageAppliedOnce`、Task 9 `testReconnectAfterSeverResumes`（同 seq 补发被丢弃、快照不回退）。
 5. **摊牌亮牌泄漏/漏亮**（mid-hand 泄漏他人手牌=作弊；摊牌漏亮=玩家看不懂）→ 三态脱敏规则 → Task 5 测试组（mid-hand 隐藏/摊牌亮/muck/全员弃牌不亮）。
 
 ---
@@ -91,10 +91,9 @@ final class CodableWireTests: XCTestCase {
         var s = GameState.start(config: GameConfig(playerCount: 2, startingStack: 500,
                                                    format: .cash(sb: 5, bb: 10)), seed: 11)
         while s.street != .handOver {
-            if let seat = s.actorSeat {
+            if s.actorSeat != nil {
                 let legal = legalActions(s)
                 s.apply(legal.canCheck ? .check : .call)
-                _ = seat
             }
         }
         let result = try XCTUnwrap(s.handResult)
@@ -351,7 +350,7 @@ cd "$REPO" && git add PokerApp/PokerApp/Transport/ PokerApp/PokerAppTests/Transp
 
 **Interfaces:**
 - Consumes: Task 2 的 `Transport/PeerID/TransportEvent/TransportError`。
-- Produces: `final class LoopbackTransportHub`（`nonisolated func makeTransport(peerID: PeerID) -> LoopbackTransport`、`nonisolated func severLink(between:and:)` DEBUG）、`actor LoopbackTransport: Transport`（`static func makePair(first: PeerID, second: PeerID) -> (LoopbackTransport, LoopbackTransport)`）；测试支持 `actor EventLog`（`record/all/waitFor(timeout:)`）、`struct TestTimeout: Error`、`func attachEvents(of:to:) -> Task<Void, Never>`、`func sendEnvelope(_:roomID:sender:from:to:) async throws`。
+- Produces: `final class LoopbackTransportHub`（`nonisolated func makeTransport(peerID: PeerID) -> LoopbackTransport`、`nonisolated func severLink(between:and:)`）、`actor LoopbackTransport: Transport`（`static func makePair(first: PeerID, second: PeerID) -> (LoopbackTransport, LoopbackTransport)`）；测试支持 `actor EventLog`（`record/all/waitFor(timeout:_:)`）、`struct TestTimeout: Error`、`func attachEvents(of:to:) -> Task<Void, Never>`（`sendEnvelope` 辅助在 Task 6 追加）。
 
 - [ ] **Step 1: 写失败测试**
 
@@ -462,17 +461,9 @@ func attachEvents(of transport: any Transport, to log: EventLog) -> Task<Void, N
         }
     }
 }
-
-/// 以「裸客机」身份向房主发送一条信封（会话级测试用，不经过 GuestSession）。
-func sendEnvelope(_ payload: PokerEnvelope, roomID: String, sender: Sender,
-                  from transport: any Transport, to host: PeerID) async throws {
-    try await transport.send(try PokerWire.encode(
-        PokerEnvelope(roomID: roomID, sender: sender, payload: payload)
-    ), to: host)
-}
 ```
 
-注意：`PokerEnvelope/PokerWire/Sender` 在 Task 6 才存在——**本任务先写 `sendEnvelope` 会编译失败**。两个选择（执行者取其一）：(a) 本任务先不建 `LoopbackHarness.swift`，把 `sendEnvelope` 挪到 Task 6 一起提交；本计划的文件清单按 (a) 执行：**Task 3 只提交 `LoopbackTransport.swift` + `LoopbackTransportTests.swift`，`LoopbackHarness.swift`（去掉 `sendEnvelope` 的版本）随 Task 3 提交，`sendEnvelope` 加入 Task 6**。即本任务创建的 `LoopbackHarness.swift` 只含 `TestTimeout/EventLog/attachEvents`。
+（向房主发裸信封的 `sendEnvelope` 辅助依赖 Task 6 的消息层，到 Task 6 再追加进本文件。）
 
 - [ ] **Step 2: 生成工程并跑测试确认失败**
 
@@ -648,7 +639,7 @@ final class NearbyTransportTests: XCTestCase {
     }
 
     func testRoomNameSanitizeStripsToAsciiAndCaps() {
-        XCTAssertEqual(RoomName.sanitize("房主的 德州桌!"), "----", "非 ASCII 折叠为分隔符后收敛")
+        XCTAssertEqual(RoomName.sanitize("房主的 德州桌!"), "ROOM", "非 ASCII 全部折叠为分隔符后为空名，兜底 ROOM")
         XCTAssertEqual(RoomName.sanitize("My Room 7"), "MY-ROOM-7")
         XCTAssertEqual(RoomName.sanitize("!!!"), "ROOM", "空名兜底")
     }
@@ -1247,6 +1238,7 @@ nonisolated final class NWRoomBrowserDriver: RoomBrowsing, @unchecked Sendable {
     private let queue = DispatchQueue(label: "PokerApp.NWRoomBrowserDriver")
     private let lock = NSLock()
     private var browser: NWBrowser?
+    private var knownIDs: Set<String> = []
     private var didStart = false
     private var didCancel = false
 
@@ -1273,11 +1265,23 @@ nonisolated final class NWRoomBrowserDriver: RoomBrowsing, @unchecked Sendable {
             }
         }
         browser.browseResultsChangedHandler = { [weak self] results, _ in
-            for result in results {
-                guard case let .service(name, _, _, _) = result.endpoint else { continue }
-                let endpointID = name + "|" + (result.endpoint.debugDescription)
-                self?.continuation.yield(.added(RoomListing(id: endpointID, serviceName: name)))
+            guard let self else { return }
+            // 全量快照差分：房间消失也要发 .removed（spec §5 名册出现/消失）
+            let current = results.compactMap { result -> (id: String, name: String)? in
+                guard case let .service(name, _, _, _) = result.endpoint else { return nil }
+                return (name + "|" + result.endpoint.debugDescription, name)
             }
+            let changes: [RoomBrowserUpdate] = lock.withLock {
+                var updates: [RoomBrowserUpdate] = []
+                let currentIDs = Set(current.map(\.id))
+                for id in knownIDs.subtracting(currentIDs) { updates.append(.removed(id)) }
+                for entry in current where !knownIDs.contains(entry.id) {
+                    updates.append(.added(RoomListing(id: entry.id, serviceName: entry.name)))
+                }
+                knownIDs = currentIDs
+                return updates
+            }
+            changes.forEach { continuation.yield($0) }
         }
         browser.start(queue: queue)
     }
@@ -1395,7 +1399,11 @@ final class TableSnapshotTests: XCTestCase {
     func testShowdownRevealsContendersButNotFolder() {
         // 先打到只剩两人摊牌：第三人翻牌前弃牌
         var s = GameState.start(config: config, seed: 9)
-        while s.actorSeat != 2 { s.apply(.check) }   // 推进到 seat 2 行动
+        // 推进必须用合法动作：面对下注时 .check 会被引擎按非法动作断言+弃牌处理
+        while s.actorSeat != 2 {
+            let legal = legalActions(s)
+            s.apply(legal.canCheck ? .check : .call)
+        }
         s.apply(.fold)
         while s.street != .handOver {
             if s.actorSeat != nil {
@@ -1414,7 +1422,10 @@ final class TableSnapshotTests: XCTestCase {
 
     func testUncontestedWinRevealsNothing() {
         var s = GameState.start(config: config, seed: 9)
-        while s.actorSeat != 2 { s.apply(.check) }
+        while s.actorSeat != 2 {
+            let legal = legalActions(s)
+            s.apply(legal.canCheck ? .check : .call)
+        }
         s.apply(.fold)
         while s.actorSeat != nil { s.apply(.fold) }   // 只剩一人，直接收池
         XCTAssertEqual(s.handResult?.awards.first?.ranks.isEmpty, true, "全员弃牌局无 ranks")
@@ -1881,7 +1892,7 @@ final class HostSessionLobbyTests: XCTestCase {
         XCTAssertEqual(received?.players[0].isHost, true)
         XCTAssertEqual(received?.roomName, "周五牌局")
         XCTAssertEqual(host.currentPhase(), .lobby)
-        XCTAssertTrue(host.roomIDValue().hasPrefix("ZHOU-WU-PAI-JU-"), "房间 ID=清洗名+随机后缀，实际: \(host.roomIDValue())")
+        XCTAssertTrue(host.roomIDValue().hasPrefix("ROOM-"), "中文房间名清洗后兜底为 ROOM + 随机后缀，实际: \(host.roomIDValue())")
     }
 
     func testJoinAssignsSeatsInOrderAndBroadcastsLobby() async throws {
@@ -1910,14 +1921,12 @@ final class HostSessionLobbyTests: XCTestCase {
                                sender: .guest, from: guestTransport, to: hostPeer)
         _ = try await nextEnvelope()   // welcome
         _ = try await nextEnvelope()   // lobby 广播
-        let seat1Peer = try XCTUnwrap(host.peerIDValue(seat: 1))
         try await sendEnvelope(.ready(true), roomID: host.roomIDValue(), sender: .seat(1),
                                from: guestTransport, to: hostPeer)
         let (lobby, _) = try await nextEnvelope()
         guard case let .lobby(state) = lobby.payload else { return XCTFail() }
         XCTAssertEqual(state.players[1].ready, true)
         XCTAssertFalse(state.players[0].ready, "房主尚未 ready")
-        _ = seat1Peer
     }
 
     func testVersionMismatchRejected() async throws {
@@ -2124,6 +2133,8 @@ actor HostSession {
     private func handleGamePayload(_ payload: Payload, seat: Int) async {}
 
     private func handleHello(deviceID: String, name: String, peer: PeerID) async {
+        // "host" 是房主保留 deviceID；空 ID 视为畸形 hello，一律忽略
+        guard !deviceID.isEmpty, deviceID != "host" else { return }
         // 已绑定连接重复 hello：重发 welcome 即可（幂等）
         if let bound = seatByPeer[peer] {
             try? await send(.welcome(seat: bound, lobby: buildLobby()), to: peer)
@@ -2140,7 +2151,7 @@ actor HostSession {
             bind(peer: peer, seat: seat)
             try? await send(.welcome(seat: seat, lobby: buildLobby()), to: peer)
             if phase == .playing || phase == .finished {
-                await fanoutSnapshots()   // 立即补发最新快照（含该座位）
+                await resendCurrentSnapshots()   // 补发当前快照：seq 不前进，已收过的客机按 seq 门丢弃，错过的补齐
             } else {
                 await publishLobby()
             }
@@ -2221,6 +2232,7 @@ actor HostSession {
 
     /// Task 8 填充；本任务空实现保证编译。
     private func fanoutSnapshots() async {}
+    private func resendCurrentSnapshots() async {}
 
     private func send(_ payload: Payload, to peer: PeerID) async throws {
         try await transport.send(
@@ -2307,11 +2319,9 @@ final class HostSessionGameTests: XCTestCase {
                                    from: transport, to: hostPeer)
         }
         await host.setReady(true)
-        for _ in 0..<guestCount {
-            for (index, transport) in guestT.enumerated() {
-                try await sendEnvelope(.ready(true), roomID: host.roomIDValue(),
-                                       sender: .seat(index + 1), from: transport, to: hostPeer)
-            }
+        for (index, transport) in guestT.enumerated() {
+            try await sendEnvelope(.ready(true), roomID: host.roomIDValue(),
+                                   sender: .seat(index + 1), from: transport, to: hostPeer)
         }
         return host
     }
@@ -2376,9 +2386,10 @@ final class HostSessionGameTests: XCTestCase {
         try await host.startGame()
         _ = try await nextSnapshot(log: guestLogs[0])
         _ = try await nextSnapshot(log: guestLogs[1])
-        guard var actor = currentActor(), actor != 0 else {
-            // 行动者是房主：走 host.act 路径
-            try await host.act(.check)
+        guard let actor = currentActor(), actor != 0 else {
+            // 行动者是房主：走 host.act 路径（必须发合法动作，否则被自己的合法性门拒绝）
+            let legal = legalActions(host.gameState()!)
+            await host.act(legal.canCheck ? .check : .call)
             _ = try await nextSnapshot(log: guestLogs[0])
             return
         }
@@ -2389,7 +2400,6 @@ final class HostSessionGameTests: XCTestCase {
         let snapshot = try await nextSnapshot(log: guestLogs[actor - 1])
         XCTAssertEqual(snapshot.seq, 2)
         XCTAssertNotEqual(host.gameState()!.actions.count, before.actions.count)
-        actor = currentActor() ?? actor
     }
 
     func testIllegalActionRejectedEngineUntouched() async throws {
@@ -2457,8 +2467,10 @@ final class HostSessionGameTests: XCTestCase {
         let deadline = Date().addingTimeInterval(10)
         while host.gameState()!.street != .handOver, Date() < deadline {
             if let actor = currentActor() {
-                if actor == 0 { try await host.act(.check) }
-                else {
+                if actor == 0 {
+                    let legal = legalActions(host.gameState()!)
+                    await host.act(legal.canCheck ? .check : .call)
+                } else {
                     let legal = legalActions(host.gameState()!)
                     try await sendAction(seat: actor, legal.canCheck ? .check : .call)
                 }
@@ -2509,14 +2521,12 @@ final class HostSessionGameTests: XCTestCase {
         let deadline = Date().addingTimeInterval(10)
         while host.gameState()!.street != .handOver, Date() < deadline {
             if let actor = currentActor() {
-                if actor == 0 { try await host.act(.fold) }
+                if actor == 0 { await host.act(.fold) }
                 else { try await sendAction(seat: actor, .fold) }
                 try? await Task.sleep(nanoseconds: 100_000_000)
             }
         }
         let handNumberBefore = host.gameState()!.handNumber
-        try await sendAction(seat: 1, .nextHand == .nextHand ? .fold : .fold) // 占位不生效，见下一行
-        // 发真正的 nextHand（上面一行是误导防御——直接用信封 API）
         try await sendEnvelope(.nextHand, roomID: host.roomIDValue(), sender: .seat(1),
                                from: guestT[0], to: hostPeer)
         _ = try await nextSnapshot(log: guestLogs[0])
@@ -2529,8 +2539,6 @@ final class HostSessionGameTests: XCTestCase {
     }
 }
 ```
-
-（`testNextHandFirstRequestWins` 中那行「占位」调用是笔误防御：`sendAction` 的参数类型是 `PlayerAction`，不能传 `.nextHand`；执行者直接删掉该行，仅保留下面两个 `sendEnvelope(.nextHand, ...)` 调用。）
 
 - [ ] **Step 2: 跑测试确认失败**
 
@@ -2645,13 +2653,23 @@ Expected: 编译过（Task 7 留了空方法）但 FAIL——空 `fanoutSnapshot
         }
     }
 
+    /// 重连补发：沿用当前 seq（引擎未变更）。已见过该 seq 的客机按 seq 门丢弃（快照不回退），
+    /// 断线期间错过最新一帧的客机则借此补齐。
+    private func resendCurrentSnapshots() async {
+        guard let current = state else { return }
+        for (seat, peer) in peerBySeat where seat != 0 {
+            let snapshot = TableSnapshot.make(from: current, recipient: seat, seq: seq)
+            try? await send(.snapshot(snapshot), to: peer)
+        }
+    }
+
     private func sendToSeat(_ seat: Int, _ payload: Payload) async {
         guard let peer = peerBySeat[seat] else { return }
         try? await send(payload, to: peer)
     }
 ```
 
-并删除 Task 7 中对应的空方法占位（`handleGamePayload`/`reconcileDisconnectedActor`/`fanoutSnapshots` 的 `{}` 版本）。
+并删除 Task 7 中对应的空方法占位（`handleGamePayload`/`reconcileDisconnectedActor`/`fanoutSnapshots`/`resendCurrentSnapshots` 的 `{}` 版本）。
 
 - [ ] **Step 4: 跑测试确认通过（含 Task 7 回归）**
 
@@ -2762,11 +2780,10 @@ final class GuestSessionTests: XCTestCase {
             let state = host.gameState()!
             if state.street == .handOver { break }
             guard let actor = state.actorSeat else { break }
-            if actor == 0 { try await host.act(.check) }
-            else {
-                let legal = legalActions(state)
-                try await guests[actor - 1].act(legal.canCheck ? .check : .call)
-            }
+            let legal = legalActions(state)
+            let action: PlayerAction = legal.canCheck ? .check : .call
+            if actor == 0 { await host.act(action) }
+            else { await guests[actor - 1].act(action) }
             try? await Task.sleep(nanoseconds: 100_000_000)
         }
         snapshot = try await firstUpdate(guests[0]) {
@@ -2778,7 +2795,7 @@ final class GuestSessionTests: XCTestCase {
         XCTAssertEqual(final.handResult?.awards.isEmpty, false)
 
         // nextHand 透传
-        try await guests[0].requestNextHand()
+        await guests[0].requestNextHand()
         let newHand = try await firstUpdate(guests[0]) {
             if case let .snapshot(s) = $0 { return s.handNumber == 1 && s.street != .handOver }
             return false
@@ -2799,34 +2816,16 @@ final class GuestSessionTests: XCTestCase {
         hub.severLink(between: hostPeer, and: PeerID(rawValue: "device-0"))
         _ = try await firstUpdate(guests[0]) { if case .disconnected = $0 { return true }; return false }
 
-        // 重连循环 1s 起；最长等 8s 应恢复 snapshot 流（host 在 hello 重连路径补发）
-        let resumed = try await firstUpdate(guests[0], timeout: 8) {
-            if case .snapshot = $0 { return true }
+        // 重连循环 1s 起；welcome(.joined) 即确认重连成功。host 重连路径补发的是同 seq 的当前快照，
+        // 客机按 seq 门丢弃——「快照不回退不重复」就是断言点
+        _ = try await firstUpdate(guests[0], timeout: 8) {
+            if case .joined = $0 { return true }
             return false
         }
-        guard case let .snapshot(snap) = resumed else { return XCTFail("重连后应补发快照") }
-        XCTAssertEqual(snap.yourSeat, 1)
-    }
-
-    func testStaleSnapshotBySeqDropped() async throws {
-        try await makeRoom(guestCount: 1)
-        try await guests[0].join()
-        await guests[0].setReady(true)
-        await host.setReady(true)
-        try await host.startGame()
-        _ = try await firstUpdate(guests[0]) { if case .snapshot = $0 { return true }; return false }
-
-        // 直接向客机传输塞一帧伪造的低 seq 快照（绕过 HostSession）
-        let guestTransport = hub.endpoint(PeerID(rawValue: "device-0"))!
-        let stale = TableSnapshot.make(from: host.gameState()!, recipient: 1, seq: 0)
-        let envelope = PokerEnvelope(roomID: host.roomIDValue(), sender: .host, payload: .snapshot(stale))
-        // HostSession 的 send 走 host 侧；这里用 host 的 transport 直接发给 guest 端点
-        try await hostOnlySendForTest(envelope, to: PeerID(rawValue: "device-0"))
-
         try? await Task.sleep(nanoseconds: 300_000_000)
-        // 伪造帧不得覆盖已存快照（seq 0 < 1）
-        let latest = guests[0].latestSnapshot()
-        XCTAssertGreaterThanOrEqual(latest?.seq ?? 0, 1)
+        XCTAssertEqual(guests[0].phaseValue(), .playing, "重连后恢复对局态")
+        XCTAssertEqual(guests[0].latestSnapshot()?.seq, 1, "同 seq 补发被丢弃，快照不回退不重复")
+        XCTAssertEqual(guests[0].latestSnapshot()?.yourSeat, 1, "座位还原")
     }
 
     func testJoinAfterStartRejected() async throws {
@@ -2851,41 +2850,10 @@ final class GuestSessionTests: XCTestCase {
         guard case let .rejected(reason) = rejected else { return XCTFail() }
         XCTAssertEqual(reason, .gameStarted)
     }
-
-    // 测试辅助：借房主传输发一帧原始信封（构造陈旧 seq 用）
-    private func hostOnlySendForTest(_ envelope: PokerEnvelope, to peer: PeerID) async throws {
-        try await hub.endpoint(peer).map { transport in
-            // 不能直接用对端 send（方向反了）——通过 host 侧 hub 端点发
-        }
-        _ = envelope
-        // 见下方说明：本用例改用「重连补发」验证 seq 丢弃更自然，伪造帧路径删除。
-    }
 }
 ```
 
-**重要修正（执行者按此实现，勿按上面伪码）**：`testStaleSnapshotBySeqDropped` 的伪造帧路径在 Loopback 里方向反了（客机端点的 `send` 是「客机→房主」）。改用自然路径验证 seq 丢弃：
-
-```swift
-    func testStaleSnapshotBySeqDropped() async throws {
-        try await makeRoom(guestCount: 1)
-        try await guests[0].join()
-        await guests[0].setReady(true)
-        await host.setReady(true)
-        try await host.startGame()
-        _ = try await firstUpdate(guests[0]) { if case .snapshot = $0 { return true }; return false }
-
-        // 断线重连：host 补发当前快照（seq=1 同值不大于已见），客机不得重复/回退
-        let beforeSeq = guests[0].latestSnapshot()?.seq
-        hub.severLink(between: hostPeer, and: PeerID(rawValue: "device-0"))
-        _ = try await firstUpdate(guests[0]) { if case .disconnected = $0 { return true }; return false }
-        _ = try await firstUpdate(guests[0], timeout: 8) { if case .joined = $0 { return true }; return false }
-        try? await Task.sleep(nanoseconds: 300_000_000)
-        let after = guests[0].latestSnapshot()
-        XCTAssertEqual(after?.seq, beforeSeq, "同 seq 补发被丢弃，快照不回退不重复")
-    }
-```
-
-同时删掉 `hostOnlySendForTest` 辅助与原始版本的 `testStaleSnapshotBySeqDropped`。另外需要 `GuestUpdateLog`（EventLog 的 GuestUpdate 版），追加到 `LoopbackHarness.swift`：
+测试还需要 `GuestUpdateLog`（EventLog 的 GuestUpdate 版），追加到 `LoopbackHarness.swift`：
 
 ```swift
 /// GuestUpdate 收集器（同 EventLog 模式）。
@@ -2905,7 +2873,7 @@ actor GuestUpdateLog {
 }
 ```
 
-注意 `testReconnectAfterSeverResumes` 依赖「重连后 host 补发快照」——若 `firstUpdate` 竞态吃掉了 `.joined` 再等 snapshot，把两个期望分开等待即可。另注意 `hub.endpoint(...)` 是 fileprivate——测试里不需要它了（上述修正后），`makeTransport` 已足够。
+`testReconnectAfterSeverResumes` 的语义：重连成功的信号是 welcome（`.joined`）；host 重连路径调用 `resendCurrentSnapshots()` 补发**同 seq** 的当前快照，客机按 seq 门丢弃——「快照不回退不重复」正是断言点。
 
 - [ ] **Step 2: 跑测试确认失败**
 
@@ -3142,14 +3110,14 @@ actor GuestSession {
 }
 ```
 
-注意：`testStaleSnapshotBySeqDropped` 里等 `.joined` 的重连路径——host 重连 hello 处理会 `fanoutSnapshots()`（补发 seq 同值快照），客机 seq 门丢弃后 `snapshot`/`lastSeq` 不变，正是断言点；`.joined` 更新在 welcome 处理时发出 ✔。
+注意：重连路径里 host 调 `resendCurrentSnapshots()`（同 seq 补发），客机 seq 门丢弃后 `snapshot`/`lastSeq` 不变；`.joined` 在 welcome 处理时发出，是测试判定重连成功的信号。
 
 - [ ] **Step 4: 跑测试确认通过（含前两个会话任务回归）**
 
 ```
 xcodebuild test -project PokerApp.xcodeproj -scheme PokerApp_iOS_Tests -destination 'platform=iOS Simulator,name=iPhone 17' -derivedDataPath /tmp/poker-dd -only-testing:PokerAppTests/GuestSessionTests -only-testing:PokerAppTests/HostSessionGameTests -only-testing:PokerAppTests/HostSessionLobbyTests 2>&1 | tail -30
 ```
-Expected: PASS（4+9+5 用例）。
+Expected: PASS（3+9+5 用例）。
 
 - [ ] **Step 5: Commit**
 
@@ -3342,7 +3310,7 @@ struct GameView<VM: GamePresenting>: View {
 
     private func resultOverlay(surface: any TableSurface) -> some View {
         VStack(spacing: 12) {
-            ForEach(vm.surface?.handResult?.awards ?? [], id: \.potIndex) { award in
+            ForEach(surface.handResult?.awards ?? [], id: \.potIndex) { award in
                 let names = award.winners.compactMap { surface.seatPlayer($0)?.name }.joined(separator: "、")
                 Text("\(names) 赢 \(award.amount)")
             }
@@ -3557,8 +3525,9 @@ cd "$REPO" && git add PokerApp/PokerApp/GamePresenting.swift PokerApp/PokerApp/G
     - `@Published lobby: LobbyState?`、`@Published private(set) var snapshot: TableSnapshot?`、`@Published private(set) var reconnecting: Bool`、`@Published var warning: String?`、`@Published var fatal: String?`
     - `func join() async`、`func setReady(Bool) async`、`func leave() async`；act/nextHand 走 session
   - `@MainActor final class RoomBrowserModel: ObservableObject`：`@Published rooms/searching/issue`，`start()/stop()`
-  - `LobbyView(onHost: (HostGameViewModel) -> Void, onGuest: (GuestGameViewModel) -> Void)`：入口两选；内含建房表单（复用 MenuView 的配置项）、搜房列表（RoomBrowserModel）、大厅名册（ready/开局）
-  - `PokerApp` 根：`@State hostVM/guestVM` + sheet 联机入口 + `@Environment(\.scenePhase)` 调 `applicationDidBecomeActive()`
+  - `LobbyView(onHost: (HostGameViewModel) -> Void, onGuest: (GuestGameViewModel) -> Void)`：入口两选——建房表单（复用 MenuView 的配置项，创建 VM 后回调）与搜房列表（RoomBrowserModel，选房后创建 VM 回调）
+  - `HostRoomOrGameView(vm:onExit:)` / `GuestRoomOrGameView(vm:onExit:)`（LobbyView.swift 内，internal）：按 VM 的 `gameState`/`inGame` 在大厅名册视图与 `GameView` 之间切换；客机牌桌叠「重连中」横幅与动作被拒提示
+  - `PokerApp` 根：`@State hostVM/guestVM` 持有 VM，sheet 呈现 LobbyView，VM 非空时渲染上述包装视图；`@Environment(\.scenePhase)` 为 .active 时调 `applicationDidBecomeActive()`；VM 的 `deinit` 负责断开会话
 
 - [ ] **Step 1: 写失败测试（VM 级端到端：host VM + 2 guest VM 在 Loopback 打完一手）**
 
@@ -3629,11 +3598,11 @@ final class MultiplayerFlowTests: XCTestCase {
             guard let actor = state.actorSeat else { break }
             let legal = legalActions(state)
             let action: PlayerAction = legal.canCheck ? .check : .call
-            if actor == 0 { try await hostVM.act(action) }
-            else { try await guestVMs[actor - 1].act(action) }
+            if actor == 0 { await hostVM.act(action) }
+            else { await guestVMs[actor - 1].act(action) }
             try await Task.sleep(nanoseconds: 80_000_000)
         }
-        try await waitUntil({ guestVMs.allSatisfy { $0.snapshot?.street == .handOver } },
+        try await waitUntil(guestVMs.allSatisfy { $0.snapshot?.street == .handOver },
                             "三端都看到本手结束", timeout: pumpTimeout)
         XCTAssertNotNil(guestVMs[0].snapshot?.handResult)
 
@@ -3644,9 +3613,9 @@ final class MultiplayerFlowTests: XCTestCase {
 
         // 下一手（客机发起）→ 三端 handNumber+1
         let handBefore = hostVM.gameState!.handNumber
-        try await guestVMs[0].nextHand()
-        try await waitUntil({ hostVM.gameState!.handNumber == handBefore + 1
-                              && guestVMs.allSatisfy { $0.snapshot?.handNumber == handBefore + 1 } },
+        await guestVMs[0].nextHand()
+        try await waitUntil(hostVM.gameState!.handNumber == handBefore + 1
+                                && guestVMs.allSatisfy { $0.snapshot?.handNumber == handBefore + 1 },
                             "三端进入下一手", timeout: pumpTimeout)
 
         for vm in guestVMs { await vm.leave() }
@@ -3709,6 +3678,12 @@ final class HostGameViewModel: ObservableObject, GamePresenting {
             ?? HostSession(configuration: configuration)
     }
 
+    /// 任何界面的「退出」只把 VM 置 nil；会话断开统一在这里兜底，避免大厅/对局两处双重清理。
+    deinit {
+        let session = session
+        Task { await session.disconnect() }
+    }
+
     var mySeat: Int { 0 }
     var canStartGame: Bool {
         guard let lobby else { return false }
@@ -3716,10 +3691,13 @@ final class HostGameViewModel: ObservableObject, GamePresenting {
     }
 
     func start() async {
+        beginConsumingUpdates()
         do {
             try await session.startHosting()
+            roomID = await session.roomIDValue()
         } catch {
-            issue = NearbyPreflight.issue(for: error).title + "：" + NearbyPreflight.issue(for: error).recoveryMessage
+            let mapped = NearbyPreflight.issue(for: error)
+            issue = mapped.title + "：" + mapped.recoveryMessage
         }
     }
 
@@ -3765,7 +3743,6 @@ final class HostGameViewModel: ObservableObject, GamePresenting {
         switch update {
         case let .lobby(value):
             lobby = value
-            roomID = roomID ?? lobby.map { _ in sessionRoomIDHint }
         case let .state(value):
             // handOver→新街道的边界捕获上一手结果（对局头「上一手：X 赢 Y」）
             if gameState?.street == .handOver, value.street != .handOver {
@@ -3774,8 +3751,6 @@ final class HostGameViewModel: ObservableObject, GamePresenting {
             gameState = value
         }
     }
-
-    private var sessionRoomIDHint: String { "" }   // roomID 由 lobby 广播携带；见下
 
     // MARK: - GamePresenting
 
@@ -3790,8 +3765,6 @@ final class HostGameViewModel: ObservableObject, GamePresenting {
     var isSessionOver: Bool { gameState?.tournamentOver == true }
 }
 ```
-
-（`roomID` 的取值：`HostSession.roomIDValue()` 是 actor 方法，VM 需要一次 await——在 `start()` 成功后 `roomID = await session.roomIDValue()`。执行时把 `start()` 末尾加 `roomID = await session.roomIDValue()`，并删除 `sessionRoomIDHint` 占位与 `consume` 里那行 `roomID = roomID ?? ...`。**计划以这句话为准**：`start()` 成功路径末尾 `roomID = await session.roomIDValue()`。）
 
 `GuestGameViewModel`：
 
@@ -3815,6 +3788,11 @@ final class GuestGameViewModel: ObservableObject, GamePresenting {
                                                displayName: displayName, transport: $0) }
             ?? GuestSession(roomID: roomID, deviceID: LocalIdentity.deviceID, displayName: displayName)
         beginConsumingUpdates()
+    }
+
+    deinit {
+        let session = session
+        Task { await session.leave() }
     }
 
     func join() async {
@@ -3856,6 +3834,7 @@ final class GuestGameViewModel: ObservableObject, GamePresenting {
         switch update {
         case let .joined(seat):
             mySeat = seat
+            reconnecting = false
         case let .lobby(value):
             lobby = value
         case let .snapshot(value):
@@ -3863,6 +3842,7 @@ final class GuestGameViewModel: ObservableObject, GamePresenting {
                 previousResult = snapshot?.handResult
             }
             snapshot = value
+            reconnecting = false
             warning = nil
         case .disconnected:
             reconnecting = true
@@ -3890,8 +3870,6 @@ final class GuestGameViewModel: ObservableObject, GamePresenting {
     var isSessionOver: Bool { snapshot?.tournamentOver == true }
 }
 ```
-
-注意 `consume(.disconnected)` 后重连成功会再收到 `.joined`/`.snapshot`——在这两个分支里补 `reconnecting = false`（执行时加：`.joined` 与 `.snapshot` 分支各 `reconnecting = false`）。
 
 `RoomBrowserModel`：
 
@@ -3944,32 +3922,22 @@ import PokerEngine
 struct LobbyView: View {
     let onHost: (HostGameViewModel) -> Void
     let onGuest: (GuestGameViewModel) -> Void
-    @Environment(\.dismiss) private var dismiss
     @State private var mode: Mode = .menu
 
-    private enum Mode: Hashable { case menu, hostSetup, hostRoom, joinBrowse }
+    private enum Mode: Hashable { case menu, hostSetup, joinBrowse }
 
     var body: some View {
         NavigationStack {
             Group {
                 switch mode {
                 case .menu: menuScreen
-                case .hostSetup: HostSetupView(onCreate: { vm in
-                    currentHost = vm
-                    mode = .hostRoom
-                })
-                case .hostRoom:
-                    if let vm = currentHost {
-                        HostRoomView(vm: vm, onExit: { dismiss() }, onStarted: { onHost(vm) })
-                    }
+                case .hostSetup: HostSetupView(onCreate: { vm in onHost(vm) })
                 case .joinBrowse: JoinRoomView(onJoin: { vm in onGuest(vm) })
                 }
             }
             .navigationTitle("联机对战")
         }
     }
-
-    @State private var currentHost: HostGameViewModel?
 
     private var menuScreen: some View {
         VStack(spacing: 16) {
@@ -4023,7 +3991,6 @@ private struct HostSetupView: View {
             Button("开始广播房间") {
                 let vm = HostGameViewModel(configuration: HostConfiguration(
                     roomName: roomName, hostName: hostName, tableConfig: config))
-                vm.beginConsumingUpdates()
                 onCreate(vm)
             }
             .frame(maxWidth: .infinity)
@@ -4031,13 +3998,11 @@ private struct HostSetupView: View {
     }
 }
 
-/// 房主大厅：名册/ready/开局。
+/// 房主大厅：名册/ready/开局。开局后由 HostRoomOrGameView 切到 GameView。
 private struct HostRoomView: View {
     @ObservedObject var vm: HostGameViewModel
     let onExit: () -> Void
-    let onStarted: () -> Void
     @State private var ready = false
-    @State private var started = false
 
     var body: some View {
         VStack(spacing: 12) {
@@ -4045,6 +4010,7 @@ private struct HostRoomView: View {
                 Text(issue).font(.footnote).foregroundStyle(.red)
             }
             if let lobby = vm.lobby {
+                Text("房间：\(lobby.roomName)").font(.headline)
                 List {
                     ForEach(lobby.players, id: \.seat) { player in
                         HStack {
@@ -4059,23 +4025,19 @@ private struct HostRoomView: View {
                 }
                 Toggle("我已准备", isOn: $ready)
                     .onChange(of: ready) { _, value in Task { await vm.setReady(value) } }
-                Button(started ? "对局进行中" : (vm.canStartGame ? "开局" : "等待全员准备…")) {
-                    guard !started else { return }
-                    Task {
-                        await vm.startGame()
-                        if vm.gameState != nil { started = true; onStarted() }
-                    }
+                Button(vm.canStartGame ? "开局" : "等待全员准备（至少 2 人）…") {
+                    Task { await vm.startGame() }
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(started || !vm.canStartGame)
+                .disabled(!vm.canStartGame)
             } else {
                 ProgressView("正在创建房间…")
             }
             Spacer()
+            Button("退出房间", role: .destructive) { onExit() }
         }
         .padding()
         .task { await vm.start() }
-        .onDisappear { if !started { Task { await vm.leave() } } }
     }
 }
 
@@ -4113,20 +4075,18 @@ private struct JoinRoomView: View {
     }
 }
 
-/// 客机大厅（名册 + ready）；对局由外层切 GameView。
-struct GuestRoomView: View {
+/// 客机大厅（名册 + ready）；收到首帧快照后由 GuestRoomOrGameView 切到 GameView。
+private struct GuestRoomView: View {
     @ObservedObject var vm: GuestGameViewModel
     let onExit: () -> Void
-    let onStarted: () -> Void
     @State private var ready = false
-    @State private var started = false
 
     var body: some View {
         VStack(spacing: 12) {
             if let fatal = vm.fatal {
                 Text(fatal).font(.footnote).foregroundStyle(.red)
-                Button("返回") { onExit() }.buttonStyle(.bordered)
             } else if let lobby = vm.lobby {
+                Text("房间：\(lobby.roomName)").font(.headline)
                 List {
                     ForEach(lobby.players, id: \.seat) { player in
                         HStack {
@@ -4142,19 +4102,55 @@ struct GuestRoomView: View {
                 if vm.reconnecting { Text("连接断开，重连中…").font(.footnote).foregroundStyle(.red) }
                 Toggle("我已准备", isOn: $ready)
                     .onChange(of: ready) { _, value in Task { await vm.setReady(value) } }
-                if started || vm.inGame { Text("对局进行中").font(.footnote) }
             } else {
                 ProgressView("正在加入…")
             }
             Spacer()
+            Button("返回大厅", role: .destructive) { onExit() }
         }
         .padding()
-        .task {
-            await vm.join()
-            started = vm.inGame
+        .task { await vm.join() }
+    }
+}
+
+/// 大厅↔牌桌切换由 VM 的 @Published 状态驱动（根路由只持有 VM，不直接观察；这里用 @ObservedObject 感知）。
+struct HostRoomOrGameView: View {
+    @ObservedObject var vm: HostGameViewModel
+    let onExit: () -> Void
+
+    var body: some View {
+        if vm.gameState != nil {
+            GameView(vm: vm, onExit: onExit)
+        } else {
+            HostRoomView(vm: vm, onExit: onExit)
         }
-        .onChange(of: vm.inGame) { _, inGame in if inGame { started = true; onStarted() } }
-        .onDisappear { if !started { Task { await vm.leave() } } }
+    }
+}
+
+struct GuestRoomOrGameView: View {
+    @ObservedObject var vm: GuestGameViewModel
+    let onExit: () -> Void
+
+    var body: some View {
+        if vm.inGame {
+            GameView(vm: vm, onExit: onExit)
+                .overlay(alignment: .top) {
+                    // 断线重连横幅 + 动作被拒等瞬态提示（spec §10.2）
+                    VStack(spacing: 4) {
+                        if vm.reconnecting {
+                            Text("连接断开，重连中…").font(.footnote).padding(8)
+                                .background(.red.opacity(0.85), in: Capsule())
+                        }
+                        if let warning = vm.warning {
+                            Text(warning).font(.footnote).padding(8)
+                                .background(.orange.opacity(0.85), in: Capsule())
+                        }
+                    }
+                    .padding(.top, 4)
+                }
+        } else {
+            GuestRoomView(vm: vm, onExit: onExit)
+        }
     }
 }
 ```
@@ -4206,9 +4202,10 @@ struct PokerApp: App {
     @ViewBuilder
     private var root: some View {
         if let hostVM {
-            GameView(vm: hostVM, onExit: { self.hostVM = nil })
+            // 大厅/牌桌切换在包装视图内由 VM 状态驱动；退出只置 nil → VM deinit 断开会话
+            HostRoomOrGameView(vm: hostVM, onExit: { self.hostVM = nil })
         } else if let guestVM {
-            GameView(vm: guestVM, onExit: { self.guestVM = nil })
+            GuestRoomOrGameView(vm: guestVM, onExit: { self.guestVM = nil })
         } else if let localVM {
             GameView(vm: localVM, onExit: { self.localVM = nil })
         } else {
@@ -4230,7 +4227,7 @@ struct GameSession: Identifiable {
 }
 ```
 
-（联机对局中的「退出」即 leave——`GameView.onExit` 把 VM 置 nil；VM 生命周期结束时 `HostRoomView/GuestRoomView.onDisappear` 已处理未开局清理，对局中退出由 `deinit` 兜底调 `leave()`：给两个 VM 各加 `deinit { let session = session; Task { await session.leave() } }`——`session` 是 let，捕获安全。）
+退出语义：任何界面的「退出/返回大厅」只做 `VM = nil`；VM 的 `deinit` 负责断开会话（房主 `session.disconnect()`、客机 `session.leave()` 发 bye），大厅与对局两处退出共用这一条清理路径，不会双重断开。
 
 - [ ] **Step 4: 跑测试确认通过（联机全家桶回归）**
 
