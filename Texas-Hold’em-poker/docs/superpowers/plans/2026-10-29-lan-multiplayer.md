@@ -2266,8 +2266,9 @@ cd "$REPO" && git add PokerApp/PokerApp/Session/HostSession.swift PokerApp/Poker
 ### Task 8: HostSession 对局阶段（校验/扇出/托管/重连）
 
 **Files:**
-- Modify: `PokerApp/PokerApp/Session/HostSession.swift`（填充 Task 7 的四个空方法 + 公开 act/requestNextHand/disconnect/applicationDidBecomeActive）
-- Test: `PokerApp/PokerAppTests/HostSessionGameTests.swift`
+- Modify: `PokerApp/PokerApp/Session/HostSession.swift`（填充 Task 7 的四个空方法 + 公开 act/requestNextHand/applicationDidBecomeActive；并在 startGame 里落昵称）
+- Modify: `PokerEngine/Sources/PokerEngine/Game/GameState.swift`（新增 `renamePlayer(seat:to:)`——`players` 是 internal(set)，App 不能直写昵称；名字是展示元数据，不破坏「只经 apply/nextHand 推进」的不变量）
+- Test: `PokerApp/PokerAppTests/HostSessionGameTests.swift`（新建）、`PokerEngine/Tests/PokerEngineTests/GameStateRenameTests.swift`（新建）
 
 **Interfaces:**
 - Consumes: Task 5 `TableSnapshot.make`、Task 7 HostSession 骨架。
@@ -2276,6 +2277,7 @@ cd "$REPO" && git add PokerApp/PokerApp/Session/HostSession.swift PokerApp/Poker
   - `func requestNextHand() async`
   - `func disconnect() async`
   - `nonisolated func applicationDidBecomeActive() async`（scenePhase 前台自愈入口）
+  - 引擎新增 `GameState.renamePlayer(seat: Int, to name: String)`（public mutating；越界座位安全忽略；昵称截 12 字）——房主直读引擎与客机快照共用其结果
 
 - [ ] **Step 1: 写失败测试**
 
@@ -2384,6 +2386,8 @@ final class HostSessionGameTests: XCTestCase {
         XCTAssertTrue(snap1.players[2].holeCards.isEmpty, "客机 1 不得见客机 2 的牌")
         XCTAssertTrue(snap2.players[1].holeCards.isEmpty)
         XCTAssertEqual(snap1.board, snap2.board)
+        XCTAssertEqual(snap1.players[1].name, "P1", "快照携带大厅昵称")
+        XCTAssertEqual(snap2.players[1].name, "P1")
     }
 
     func testLegalActionFromActorSeatAppliesAndFanouts() async throws {
@@ -2545,6 +2549,28 @@ final class HostSessionGameTests: XCTestCase {
 }
 ```
 
+`PokerEngine/Tests/PokerEngineTests/GameStateRenameTests.swift`（新建，引擎侧配套）：
+
+```swift
+import XCTest
+@testable import PokerEngine
+
+/// 联机昵称覆写：展示元数据的唯一写入口（players 为 internal(set)，App 不能直写）。
+final class GameStateRenameTests: XCTestCase {
+    func testRenamePlayerOverwritesNameAndIgnoresBounds() {
+        var s = GameState.start(config: GameConfig(playerCount: 2, startingStack: 500,
+                                                   format: .cash(sb: 5, bb: 10)), seed: 3)
+        XCTAssertEqual(s.players[1].name, "座位 2")
+        s.renamePlayer(seat: 1, to: "阿明")
+        XCTAssertEqual(s.players[1].name, "阿明")
+        s.renamePlayer(seat: 9, to: "幽灵")   // 越界安全忽略，不得崩溃
+        XCTAssertEqual(s.players.count, 2)
+        s.renamePlayer(seat: 0, to: "名字超过十二个字会被截断掉")
+        XCTAssertEqual(s.players[0].name.count, 12)
+    }
+}
+```
+
 - [ ] **Step 2: 跑测试确认失败**
 
 ```
@@ -2553,9 +2579,28 @@ xcodebuild test -project PokerApp.xcodeproj -scheme PokerApp_iOS_Tests -destinat
 ```
 Expected: 编译过（Task 7 留了空方法）但 FAIL——空 `fanoutSnapshots`/`handleGamePayload` 导致快照收不到/动作不应用。
 
-- [ ] **Step 3: 实现（填充四个空方法 + 公开 API）**
+- [ ] **Step 3: 实现（引擎写入口 + 填充四个空方法 + 公开 API）**
 
-在 `HostSession.swift` 中替换 Task 7 的空方法并追加：
+先加引擎写入口（`PokerEngine/Sources/PokerEngine/Game/GameState.swift` 的 `GameState` 类内，放在 `potTotal` 计算属性之后）：
+
+```swift
+    /// 联机大厅昵称覆写。名字是展示元数据（不参与规则推进）；players 的 setter 是
+    /// internal(set)，故由引擎提供唯一写入口；越界座位安全忽略。
+    public mutating func renamePlayer(seat: Int, to name: String) {
+        guard players.indices.contains(seat) else { return }
+        players[seat].name = String(name.prefix(12))
+    }
+```
+
+再在 `HostSession.startGame()` 的 `state = initialState` 之前（Task 7 已把 `initialState` 留作 var 并注明待办）补上昵称落地：
+
+```swift
+        for seat in seats {
+            initialState.renamePlayer(seat: seat, to: names[seat] ?? "座位 \(seat + 1)")
+        }
+```
+
+然后在 `HostSession.swift` 中替换 Task 7 的空方法并追加：
 
 ```swift
     // MARK: - 对局阶段公开 API（Task 8）
@@ -2674,12 +2719,12 @@ Expected: 编译过（Task 7 留了空方法）但 FAIL——空 `fanoutSnapshot
 ```
 xcodebuild test -project PokerApp.xcodeproj -scheme PokerApp_iOS_Tests -destination 'platform=iOS Simulator,name=iPhone 17' -derivedDataPath /tmp/poker-dd -only-testing:PokerAppTests/HostSessionGameTests -only-testing:PokerAppTests/HostSessionLobbyTests 2>&1 | tail -30
 ```
-Expected: PASS（9+5 用例）。
+Expected: PASS（9+5 用例 + 引擎 rename 1 用例）。
 
 - [ ] **Step 5: Commit**
 
 ```
-cd "$REPO" && git add PokerApp/PokerApp/Session/HostSession.swift PokerApp/PokerAppTests/HostSessionGameTests.swift PokerApp/PokerApp.xcodeproj/project.pbxproj && git commit -m "feat: HostSession 对局——合法性门/脱敏扇出/断线托管/重连补发/nextHand 幂等"
+cd "$REPO" && git add PokerApp/PokerApp/Session/HostSession.swift PokerApp/PokerAppTests/HostSessionGameTests.swift PokerEngine/Sources/PokerEngine/Game/GameState.swift PokerEngine/Tests/PokerEngineTests/GameStateRenameTests.swift PokerApp/PokerApp.xcodeproj/project.pbxproj && git commit -m "feat: HostSession 对局——合法性门/脱敏扇出/断线托管/重连补发/nextHand 幂等 + 引擎昵称写入口"
 ```
 
 ---
