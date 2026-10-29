@@ -7,6 +7,7 @@ final class GuestSessionTests: XCTestCase {
     let hostPeer = PeerID(rawValue: "ROOM-E2E")
     var hub: LoopbackTransportHub!
     var host: HostSession!
+    var hostTransport: LoopbackTransport!
     var guests: [GuestSession] = []
     var guestLogs: [GuestUpdateLog] = []
     var guestPumps: [Task<Void, Never>] = []
@@ -31,7 +32,7 @@ final class GuestSessionTests: XCTestCase {
 
     private func makeRoom(guestCount: Int) async throws {
         hub = LoopbackTransportHub()
-        let hostTransport = hub.makeTransport(peerID: hostPeer)
+        hostTransport = hub.makeTransport(peerID: hostPeer)
         host = HostSession(
             configuration: HostConfiguration(
                 roomName: "E2E", hostName: "host",
@@ -159,6 +160,43 @@ final class GuestSessionTests: XCTestCase {
         XCTAssertEqual(phaseAfterReconnect, .playing, "重连后恢复对局态")
         XCTAssertEqual(snapshotSeq, seqBeforeSever, "同 seq 补发被丢弃，快照不回退不重复")
         XCTAssertEqual(snapshotSeat, 1, "座位还原")
+    }
+
+    /// 重连期间宿主逐客（.bye）：循环必须终止（代际/ended 退出 + bye 取消），
+    /// 不得在 bye 后继续重拨——loopback 上重拨必然成功再入座，静默即证明循环已死。
+    func testByeDuringReconnectingEndsSession() async throws {
+        try await makeRoom(guestCount: 1)
+        try await guests[0].join()
+        await guests[0].setReady(true)
+        await host.setReady(true)
+        try await awaitAllReady()
+        try await host.startGame()
+        _ = try await firstUpdate(guests[0]) { if case .snapshot = $0 { return true }; return false }
+
+        // 断线进入重连循环
+        let roomID = await host.roomIDValue()
+        hub.severLink(between: PeerID(rawValue: roomID), and: PeerID(rawValue: "device-0"))
+        _ = try await firstUpdate(guests[0]) { if case .disconnected = $0 { return true }; return false }
+        let phaseWhileReconnecting = await guests[0].phaseValue()
+        XCTAssertEqual(phaseWhileReconnecting, .reconnecting)
+
+        // 宿主 bye：sever 已断 host→guest 方向，先在传输层重建该方向再投递
+        try await hostTransport.connect(to: PeerID(rawValue: "device-0"))
+        try await sendEnvelope(.bye, roomID: roomID, sender: .host,
+                               from: hostTransport, to: PeerID(rawValue: "device-0"))
+        let endDeadline = Date().addingTimeInterval(2)
+        var phaseAfterBye = await guests[0].phaseValue()
+        while phaseAfterBye != .ended, Date() < endDeadline {
+            try await Task.sleep(nanoseconds: 20_000_000)
+            phaseAfterBye = await guests[0].phaseValue()
+        }
+        XCTAssertEqual(phaseAfterBye, .ended, "bye 到达后进入终态")
+
+        // 若循环仍存活：1s 档重拨会在窗口内成功并再发 .joined——等待超时（静默）即证明终止
+        do {
+            _ = try await firstUpdate(guests[0], timeout: 1.5) { if case .joined = $0 { return true }; return false }
+            XCTFail("bye 后重连循环应终止，不应再出现 .joined（重连成功）")
+        } catch { /* 预期 TestTimeout：静默通过 */ }
     }
 
     func testJoinAfterStartRejected() async throws {

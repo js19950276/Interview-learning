@@ -32,6 +32,9 @@ actor GuestSession {
     private var seenMessageIDs: Set<String> = []
     private var processingTask: Task<Void, Never>?
     private var reconnectTask: Task<Void, Never>?
+    /// 重连循环代际：只有当前代循环可写 reconnectTask——被取消/换代的旧循环
+    /// 在收尾时不得清掉新循环的引用（否则 leave() 会漏杀存活循环）。
+    private var reconnectGeneration = 0
     private var pendingRejection: RejectionReason?
 
     init(roomID: String, deviceID: String, displayName: String,
@@ -173,6 +176,8 @@ actor GuestSession {
             updatesContinuation.yield(.rejected(reason))
         case .bye:
             phase = .ended
+            reconnectTask?.cancel()
+            reconnectTask = nil
             updatesContinuation.finish()
         default:
             break
@@ -188,16 +193,25 @@ actor GuestSession {
 
     // MARK: - 断线自动重连（1s 起指数退避，上限 5s，无限次；用户可随时 leave）
 
-    private func beginReconnectLoop(initialDelayNanos: UInt64 = 1_000_000_000) {
+    /// - announce: true（断线起点）置 .reconnecting 并播报 .disconnected；
+    ///   false（前台重试）不重复播报——横幅已在使用方（VM）挂着。
+    private func beginReconnectLoop(initialDelayNanos: UInt64 = 1_000_000_000, announce: Bool = true) {
         guard reconnectTask == nil else { return }
-        phase = .reconnecting
-        updatesContinuation.yield(.disconnected)
+        reconnectGeneration += 1
+        let generation = reconnectGeneration
+        if announce {
+            phase = .reconnecting
+            updatesContinuation.yield(.disconnected)
+        }
         reconnectTask = Task {
             var delay = initialDelayNanos
             while !Task.isCancelled {
+                // 换代＝前台已另起循环（让位）；.ended＝宿主 bye / 用户离开（终态）——一律终止
+                guard generation == reconnectGeneration, phase != .ended else { break }
                 try? await Task.sleep(nanoseconds: delay)
                 guard !Task.isCancelled else { break }
                 delay = min(delay * 2, 5_000_000_000)
+                guard generation == reconnectGeneration, phase != .ended else { break }
                 if await transport.isConnected(to: hostPeer) { continue }
                 do {
                     try await transport.connect(to: hostPeer)
@@ -207,7 +221,8 @@ actor GuestSession {
                 try? await Task.sleep(for: .milliseconds(300))
                 if phase == .lobby || phase == .playing { break }
             }
-            reconnectTask = nil
+            // 仅当前代可清引用：旧循环收尾时若已被换代，让位不清（防 clobber 新任务句柄）
+            if generation == reconnectGeneration { reconnectTask = nil }
         }
     }
 
@@ -215,6 +230,7 @@ actor GuestSession {
         guard reconnectTask != nil else { return }
         reconnectTask?.cancel()
         reconnectTask = nil
-        beginReconnectLoop(initialDelayNanos: 0)
+        // 前台重试只清零退避、立即重拨；不重复播报 .disconnected
+        beginReconnectLoop(initialDelayNanos: 0, announce: false)
     }
 }
