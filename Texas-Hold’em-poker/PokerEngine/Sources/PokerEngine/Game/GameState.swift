@@ -34,7 +34,7 @@ public struct PotLayer: Equatable, Sendable {
     public init(amount: Int, eligibleSeats: [Int]) { self.amount = amount; self.eligibleSeats = eligibleSeats }
 }
 
-public struct PotAward: Equatable, Sendable {
+public struct PotAward: Equatable, Sendable, Codable {
     public var potIndex: Int
     public var amount: Int
     public var winners: [Int]
@@ -48,12 +48,12 @@ public struct PotAward: Equatable, Sendable {
     }
 }
 
-public struct HandResult: Equatable, Sendable {
+public struct HandResult: Equatable, Sendable, Codable {
     public var awards: [PotAward]
     public init(awards: [PotAward]) { self.awards = awards }
 }
 
-public struct TournamentPayout: Equatable, Sendable {
+public struct TournamentPayout: Equatable, Sendable, Codable {
     public let seat: Int, place: Int, amount: Int
     public init(seat: Int, place: Int, amount: Int) { self.seat = seat; self.place = place; self.amount = amount }
 }

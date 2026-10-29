@@ -1,4 +1,4 @@
-public struct LegalActions: Equatable, Sendable {
+public struct LegalActions: Equatable, Sendable, Codable {
     public let seat: Int
     public let canCheck: Bool
     public let canCall: Bool
