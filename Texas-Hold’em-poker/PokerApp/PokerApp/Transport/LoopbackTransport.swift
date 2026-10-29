@@ -17,6 +17,12 @@ final class LoopbackTransportHub: @unchecked Sendable {
     nonisolated fileprivate func endpoint(_ peerID: PeerID) -> LoopbackTransport? { lock.withLock { endpoints[peerID] } }
     nonisolated fileprivate func remove(_ peerID: PeerID) { lock.withLock { endpoints[peerID] = nil } }
 
+    /// 房间名别名（T9）：房主在 Bonjour 上以 roomID 实例名发布、客机按 roomID 拨号；
+    /// Loopback 等价地令 endpoints[roomID] 指向房主端点（startHosting 时注册）。
+    nonisolated fileprivate func aliasRoom(_ roomID: String, to peerID: PeerID) {
+        lock.withLock { if let endpoint = endpoints[peerID] { endpoints[PeerID(rawValue: roomID)] = endpoint } }
+    }
+
     /// 模拟断链（锁屏/网络抖动）：两端各收 disconnected，端点保留、重拨可达。
     nonisolated func severLink(between a: PeerID, and b: PeerID) {
         let pair = lock.withLock { (endpoints[a], endpoints[b]) }
@@ -43,7 +49,10 @@ actor LoopbackTransport: Transport {
         return (hub.makeTransport(peerID: first), hub.makeTransport(peerID: second))
     }
 
-    func startHosting(roomID: String, port: UInt16?) async throws { hub.host(peerID) }
+    func startHosting(roomID: String, port: UInt16?) async throws {
+        hub.host(peerID)
+        hub.aliasRoom(roomID, to: peerID)
+    }
 
     func browse() async throws {
         if let host = hub.hostPeer() { continuation.yield(.discovered(host)) }

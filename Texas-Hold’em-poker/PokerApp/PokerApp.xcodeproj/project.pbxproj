@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		0D825CE94F26B370947DB70E /* GuestSessionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4ABA2A6D72A2EAC11FDE31DF /* GuestSessionTests.swift */; };
 		0FB94273E8910E8D176527BA /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 50DCA2BD0CFD510E301880C2 /* Assets.xcassets */; };
 		14C1B88C3F8DDEBBFD1AF5E7 /* Transport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0AA8382DAE84DCC62E2ECCBE /* Transport.swift */; };
 		1B47BF47E7ACFB5345FD0831 /* NearbyTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0072D4FF33ABAA7A04B6B03 /* NearbyTransport.swift */; };
@@ -16,6 +17,7 @@
 		31C24AAE77ADFFED62107847 /* NearbyTransportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4439B8EA3D70568EF5ABD01 /* NearbyTransportTests.swift */; };
 		364FEC9BAB537385D556F1C5 /* BonjourRoomBrowser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44DB44A8FC168339FCCE4E6E /* BonjourRoomBrowser.swift */; };
 		3C31FEFC63B7757A420A8E09 /* PokerAppUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2706D96236330D88F4156AA6 /* PokerAppUITests.swift */; };
+		4F4C86720C2C6689B6E77465 /* GuestSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3173D99D68693E4F61410967 /* GuestSession.swift */; };
 		55511447D3B5BB3007DE931D /* PokerMessagesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C33E2139C74DFB114BF1E25 /* PokerMessagesTests.swift */; };
 		58401EC5EB443383F071F970 /* LoopbackTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA578284FEF9C7FD6D8C540E /* LoopbackTransport.swift */; };
 		596380F07434D19F3FA930C2 /* CardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 202DA544DDDD1C0CD9A7E18F /* CardView.swift */; };
@@ -33,6 +35,7 @@
 		873B77A604F72D3E8A061730 /* MenuView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A326930D365C2B1129CE966 /* MenuView.swift */; };
 		8DA010255F4BCE0453584306 /* HostSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D1C8EB3CFFE9A0256B4DBB4 /* HostSession.swift */; };
 		93A3B833EFF68E2B44182230 /* TableView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74F99E8A5230CE8EE9668A55 /* TableView.swift */; };
+		9FC8FAE8C29F9D6AAE275039 /* GuestSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3173D99D68693E4F61410967 /* GuestSession.swift */; };
 		A978002FBD54E8C5F00E4C97 /* CardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 202DA544DDDD1C0CD9A7E18F /* CardView.swift */; };
 		B0400439C4B3007B6C2A153D /* LoopbackTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA578284FEF9C7FD6D8C540E /* LoopbackTransport.swift */; };
 		B381982E162187ACA609B370 /* PokerEngine in Frameworks */ = {isa = PBXBuildFile; productRef = 24BD1382DE49326CD01B3578 /* PokerEngine */; };
@@ -80,9 +83,11 @@
 		2706D96236330D88F4156AA6 /* PokerAppUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PokerAppUITests.swift; sourceTree = "<group>"; };
 		2A326930D365C2B1129CE966 /* MenuView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuView.swift; sourceTree = "<group>"; };
 		2EF74C6DE659D8D053D49CC8 /* LoopbackTransportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoopbackTransportTests.swift; sourceTree = "<group>"; };
+		3173D99D68693E4F61410967 /* GuestSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GuestSession.swift; sourceTree = "<group>"; };
 		3FA87E919AEDB5921E77B652 /* PokerAppTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = PokerAppTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		44DB44A8FC168339FCCE4E6E /* BonjourRoomBrowser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BonjourRoomBrowser.swift; sourceTree = "<group>"; };
 		45BA4C2C7E67BAB7E86F02D6 /* LoopbackHarness.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoopbackHarness.swift; sourceTree = "<group>"; };
+		4ABA2A6D72A2EAC11FDE31DF /* GuestSessionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GuestSessionTests.swift; sourceTree = "<group>"; };
 		50DCA2BD0CFD510E301880C2 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		53386EDACDEC5893A67B6180 /* PokerEngine */ = {isa = PBXFileReference; lastKnownFileType = folder; name = PokerEngine; path = ../PokerEngine; sourceTree = SOURCE_ROOT; };
 		673FF1FA5EC45CA58D180B59 /* PokerMessages.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PokerMessages.swift; sourceTree = "<group>"; };
@@ -145,6 +150,7 @@
 		3459EA1443E549FCA484D3A3 /* Session */ = {
 			isa = PBXGroup;
 			children = (
+				3173D99D68693E4F61410967 /* GuestSession.swift */,
 				9D1C8EB3CFFE9A0256B4DBB4 /* HostSession.swift */,
 				673FF1FA5EC45CA58D180B59 /* PokerMessages.swift */,
 				1D42BCA7CA8095C866D56297 /* TableSnapshot.swift */,
@@ -169,6 +175,7 @@
 			isa = PBXGroup;
 			children = (
 				D5BEDB4717D1A5B16D82FD19 /* GameViewModelTests.swift */,
+				4ABA2A6D72A2EAC11FDE31DF /* GuestSessionTests.swift */,
 				A43677715B0A771419F82B9F /* HostSessionGameTests.swift */,
 				D85CFDAA78DBAB25973591BC /* HostSessionLobbyTests.swift */,
 				45BA4C2C7E67BAB7E86F02D6 /* LoopbackHarness.swift */,
@@ -379,6 +386,7 @@
 				364FEC9BAB537385D556F1C5 /* BonjourRoomBrowser.swift in Sources */,
 				A978002FBD54E8C5F00E4C97 /* CardView.swift in Sources */,
 				E0EEDF225DC457AC8429ADBA /* GameViewModel.swift in Sources */,
+				9FC8FAE8C29F9D6AAE275039 /* GuestSession.swift in Sources */,
 				8DA010255F4BCE0453584306 /* HostSession.swift in Sources */,
 				776BE1AC62E017131B82AA44 /* LengthPrefixedFrameCodec.swift in Sources */,
 				58401EC5EB443383F071F970 /* LoopbackTransport.swift in Sources */,
@@ -398,6 +406,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				7B34A8427766DC86E91E3357 /* GameViewModelTests.swift in Sources */,
+				0D825CE94F26B370947DB70E /* GuestSessionTests.swift in Sources */,
 				BFF28AECD4E55B78ED0D9B5B /* HostSessionGameTests.swift in Sources */,
 				FD7D5C7CD468E53E6E7202E6 /* HostSessionLobbyTests.swift in Sources */,
 				F87018B9E5146602774B7C0D /* LoopbackHarness.swift in Sources */,
@@ -425,6 +434,7 @@
 				1B98798346730FA50947438A /* BonjourRoomBrowser.swift in Sources */,
 				596380F07434D19F3FA930C2 /* CardView.swift in Sources */,
 				DC1F9E1D09CB7ABC675A65D1 /* GameViewModel.swift in Sources */,
+				4F4C86720C2C6689B6E77465 /* GuestSession.swift in Sources */,
 				BB6A3F5A70D95543BECA2F15 /* HostSession.swift in Sources */,
 				6F895224B8700121E280EE76 /* LengthPrefixedFrameCodec.swift in Sources */,
 				B0400439C4B3007B6C2A153D /* LoopbackTransport.swift in Sources */,
