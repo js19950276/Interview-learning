@@ -31,3 +31,11 @@ func attachEvents(of transport: any Transport, to log: EventLog) -> Task<Void, N
         }
     }
 }
+
+/// 以「裸客机」身份向房主发送一条信封（会话级测试用，不经过 GuestSession）。
+func sendEnvelope(_ payload: Payload, roomID: String, sender: Sender,
+                  from transport: any Transport, to host: PeerID) async throws {
+    try await transport.send(try PokerWire.encode(
+        PokerEnvelope(roomID: roomID, sender: sender, payload: payload)
+    ), to: host)
+}

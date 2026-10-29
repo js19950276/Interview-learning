@@ -12,9 +12,11 @@
 		1B47BF47E7ACFB5345FD0831 /* NearbyTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0072D4FF33ABAA7A04B6B03 /* NearbyTransport.swift */; };
 		1B98798346730FA50947438A /* BonjourRoomBrowser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44DB44A8FC168339FCCE4E6E /* BonjourRoomBrowser.swift */; };
 		2B81C9DA1BAD57F0E947FAAD /* TableSnapshotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3734ABEAD1126A6DB376CB5 /* TableSnapshotTests.swift */; };
+		2D9E38E4C6B18EB6F3A4E288 /* PokerMessages.swift in Sources */ = {isa = PBXBuildFile; fileRef = 673FF1FA5EC45CA58D180B59 /* PokerMessages.swift */; };
 		31C24AAE77ADFFED62107847 /* NearbyTransportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4439B8EA3D70568EF5ABD01 /* NearbyTransportTests.swift */; };
 		364FEC9BAB537385D556F1C5 /* BonjourRoomBrowser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44DB44A8FC168339FCCE4E6E /* BonjourRoomBrowser.swift */; };
 		3C31FEFC63B7757A420A8E09 /* PokerAppUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2706D96236330D88F4156AA6 /* PokerAppUITests.swift */; };
+		55511447D3B5BB3007DE931D /* PokerMessagesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C33E2139C74DFB114BF1E25 /* PokerMessagesTests.swift */; };
 		58401EC5EB443383F071F970 /* LoopbackTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA578284FEF9C7FD6D8C540E /* LoopbackTransport.swift */; };
 		596380F07434D19F3FA930C2 /* CardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 202DA544DDDD1C0CD9A7E18F /* CardView.swift */; };
 		5A32C5A8FD7BD45DF8966348 /* TableSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D42BCA7CA8095C866D56297 /* TableSnapshot.swift */; };
@@ -33,6 +35,7 @@
 		A978002FBD54E8C5F00E4C97 /* CardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 202DA544DDDD1C0CD9A7E18F /* CardView.swift */; };
 		B0400439C4B3007B6C2A153D /* LoopbackTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA578284FEF9C7FD6D8C540E /* LoopbackTransport.swift */; };
 		B381982E162187ACA609B370 /* PokerEngine in Frameworks */ = {isa = PBXBuildFile; productRef = 24BD1382DE49326CD01B3578 /* PokerEngine */; };
+		C2CE39D755893568BA76BFAC /* PokerMessages.swift in Sources */ = {isa = PBXBuildFile; fileRef = 673FF1FA5EC45CA58D180B59 /* PokerMessages.swift */; };
 		CBE2550B47EF91B0DF48D358 /* TableSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D42BCA7CA8095C866D56297 /* TableSnapshot.swift */; };
 		D4D274A5518E0BBA4C390E60 /* blueprint-hu.json in Resources */ = {isa = PBXBuildFile; fileRef = D9E19DF746771E9DC5381330 /* blueprint-hu.json */; };
 		D4FA750D3FF586E4586D5489 /* PlaceholderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6FAEE2F41BF4AD281822079 /* PlaceholderTests.swift */; };
@@ -66,6 +69,7 @@
 
 /* Begin PBXFileReference section */
 		0AA8382DAE84DCC62E2ECCBE /* Transport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Transport.swift; sourceTree = "<group>"; };
+		0C33E2139C74DFB114BF1E25 /* PokerMessagesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PokerMessagesTests.swift; sourceTree = "<group>"; };
 		1D42BCA7CA8095C866D56297 /* TableSnapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TableSnapshot.swift; sourceTree = "<group>"; };
 		202DA544DDDD1C0CD9A7E18F /* CardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CardView.swift; sourceTree = "<group>"; };
 		22537883E7B40D71CA61A3D2 /* TransportCodecTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransportCodecTests.swift; sourceTree = "<group>"; };
@@ -77,6 +81,7 @@
 		45BA4C2C7E67BAB7E86F02D6 /* LoopbackHarness.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoopbackHarness.swift; sourceTree = "<group>"; };
 		50DCA2BD0CFD510E301880C2 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		53386EDACDEC5893A67B6180 /* PokerEngine */ = {isa = PBXFileReference; lastKnownFileType = folder; name = PokerEngine; path = ../PokerEngine; sourceTree = SOURCE_ROOT; };
+		673FF1FA5EC45CA58D180B59 /* PokerMessages.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PokerMessages.swift; sourceTree = "<group>"; };
 		74F99E8A5230CE8EE9668A55 /* TableView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TableView.swift; sourceTree = "<group>"; };
 		A1A8F58514908FC0730B220A /* GameViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameViewModel.swift; sourceTree = "<group>"; };
 		A39DF02008A6EF3DB4531DEF /* PokerApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PokerApp.swift; sourceTree = "<group>"; };
@@ -133,6 +138,7 @@
 		3459EA1443E549FCA484D3A3 /* Session */ = {
 			isa = PBXGroup;
 			children = (
+				673FF1FA5EC45CA58D180B59 /* PokerMessages.swift */,
 				1D42BCA7CA8095C866D56297 /* TableSnapshot.swift */,
 			);
 			path = Session;
@@ -159,6 +165,7 @@
 				2EF74C6DE659D8D053D49CC8 /* LoopbackTransportTests.swift */,
 				B4439B8EA3D70568EF5ABD01 /* NearbyTransportTests.swift */,
 				B6FAEE2F41BF4AD281822079 /* PlaceholderTests.swift */,
+				0C33E2139C74DFB114BF1E25 /* PokerMessagesTests.swift */,
 				F3734ABEAD1126A6DB376CB5 /* TableSnapshotTests.swift */,
 				22537883E7B40D71CA61A3D2 /* TransportCodecTests.swift */,
 			);
@@ -368,6 +375,7 @@
 				D6302973F0605749A24293EC /* NearbyPreflight.swift in Sources */,
 				ECB47DED8CA6A1C802C91FC7 /* NearbyTransport.swift in Sources */,
 				FDEDDB12CF2E15960871214A /* PokerApp.swift in Sources */,
+				2D9E38E4C6B18EB6F3A4E288 /* PokerMessages.swift in Sources */,
 				CBE2550B47EF91B0DF48D358 /* TableSnapshot.swift in Sources */,
 				7D7ABA93AE48476F29147C22 /* TableView.swift in Sources */,
 				14C1B88C3F8DDEBBFD1AF5E7 /* Transport.swift in Sources */,
@@ -383,6 +391,7 @@
 				838AAB1B7E869ECEF3ED4EB4 /* LoopbackTransportTests.swift in Sources */,
 				31C24AAE77ADFFED62107847 /* NearbyTransportTests.swift in Sources */,
 				D4FA750D3FF586E4586D5489 /* PlaceholderTests.swift in Sources */,
+				55511447D3B5BB3007DE931D /* PokerMessagesTests.swift in Sources */,
 				2B81C9DA1BAD57F0E947FAAD /* TableSnapshotTests.swift in Sources */,
 				DD508799D0FF27B3C7C9A424 /* TransportCodecTests.swift in Sources */,
 			);
@@ -409,6 +418,7 @@
 				60FCECE964EA74497399CF55 /* NearbyPreflight.swift in Sources */,
 				1B47BF47E7ACFB5345FD0831 /* NearbyTransport.swift in Sources */,
 				83B398BAE3889F822432FF81 /* PokerApp.swift in Sources */,
+				C2CE39D755893568BA76BFAC /* PokerMessages.swift in Sources */,
 				5A32C5A8FD7BD45DF8966348 /* TableSnapshot.swift in Sources */,
 				93A3B833EFF68E2B44182230 /* TableView.swift in Sources */,
 				5BCBAFD5247D33A2F42AE76E /* Transport.swift in Sources */,
