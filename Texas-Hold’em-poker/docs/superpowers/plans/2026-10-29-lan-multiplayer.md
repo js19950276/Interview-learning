@@ -1823,10 +1823,10 @@ cd "$REPO" && git add PokerApp/PokerApp/Session/PokerMessages.swift PokerApp/Pok
   - `actor HostSession`：
     - `init(configuration: HostConfiguration, transport: any Transport = NearbyTransport())`
     - `nonisolated let updates: AsyncStream<HostUpdate>`
-    - `func startHosting() async throws`、`func setReady(_ value: Bool) async`、`func updateTableConfig(_ config: GameConfig) async`、`func startGame() async throws`
+    - `func startHosting() async throws`、`func setReady(_ value: Bool) async`、`func updateTableConfig(_ config: GameConfig) async`、`func startGame() async throws`、`func disconnect() async`
     - `enum HostError: String, Error, Sendable { case alreadyStarted, notEnoughPlayers, notAllReady }`
     - 测试观测：`func gameState() -> GameState?`、`func currentPhase() -> HostPhase`（`enum HostPhase: Equatable, Sendable { case idle, lobby, playing, finished }`）、`func currentLobby() -> LobbyState?`、`func roomIDValue() -> String`、`func peerIDValue(seat: Int) -> PeerID?`
-  - Task 8 将在同文件追加：`func act(_ action: PlayerAction) async`、`func requestNextHand() async`、`func disconnect() async`、`nonisolated func applicationDidBecomeActive() async`
+  - Task 8 将在同文件追加：`func act(_ action: PlayerAction) async`、`func requestNextHand() async`、`nonisolated func applicationDidBecomeActive() async`
 
 - [ ] **Step 1: 写失败测试**
 
@@ -1844,14 +1844,14 @@ final class HostSessionLobbyTests: XCTestCase {
     var hub: LoopbackTransportHub!
     var hostTransport: LoopbackTransport!
     var guestTransport: LoopbackTransport!
-    var hostLog: EventLog!
+    var guestLog: EventLog!
     var pump: Task<Void, Never>!
 
     override func setUp() async throws {
         hub = LoopbackTransportHub()
         hostTransport = hub.makeTransport(peerID: hostPeer)
         guestTransport = hub.makeTransport(peerID: PeerID(rawValue: "guest-raw"))
-        hostLog = EventLog()
+        guestLog = EventLog()
     }
 
     override func tearDown() async throws {
@@ -1870,10 +1870,11 @@ final class HostSessionLobbyTests: XCTestCase {
         return session
     }
 
-    /// 从房主事件流里取下一条可解的信封事件。
+    /// 从客机传输事件流取下一条房主发来的信封。host→guest 方向的消息只出现在客机侧；
+    /// 且 AsyncStream 单消费者——HostSession 消费 hostTransport 的流，测试泵只能挂 guestTransport。
     private func nextEnvelope(timeout: TimeInterval = 3) async throws -> (PokerEnvelope, PeerID) {
         while true {
-            let event = try await hostLog.waitFor(timeout: timeout) { if case .received = $0 { return true }; return false }
+            let event = try await guestLog.waitFor(timeout: timeout) { if case .received = $0 { return true }; return false }
             guard case let .received(data, from) = event,
                   let envelope = try? PokerWire.decode(data) else { continue }
             return (envelope, from)
@@ -1898,7 +1899,7 @@ final class HostSessionLobbyTests: XCTestCase {
     func testJoinAssignsSeatsInOrderAndBroadcastsLobby() async throws {
         let host = makeHost()
         try await host.startHosting()
-        pump = attachEvents(of: hostTransport, to: hostLog)
+        pump = attachEvents(of: guestTransport, to: guestLog)
         try await guestTransport.connect(to: hostPeer)
         try await sendEnvelope(.hello(deviceID: "device-A", name: "阿明"), roomID: host.roomIDValue(),
                                sender: .guest, from: guestTransport, to: hostPeer)
@@ -1915,7 +1916,7 @@ final class HostSessionLobbyTests: XCTestCase {
     func testReadyFlowUpdatesLobby() async throws {
         let host = makeHost()
         try await host.startHosting()
-        pump = attachEvents(of: hostTransport, to: hostLog)
+        pump = attachEvents(of: guestTransport, to: guestLog)
         try await guestTransport.connect(to: hostPeer)
         try await sendEnvelope(.hello(deviceID: "device-A", name: "阿明"), roomID: host.roomIDValue(),
                                sender: .guest, from: guestTransport, to: hostPeer)
@@ -1932,7 +1933,7 @@ final class HostSessionLobbyTests: XCTestCase {
     func testVersionMismatchRejected() async throws {
         let host = makeHost()
         try await host.startHosting()
-        pump = attachEvents(of: hostTransport, to: hostLog)
+        pump = attachEvents(of: guestTransport, to: guestLog)
         try await guestTransport.connect(to: hostPeer)
         let bad = PokerEnvelope(protocolVersion: PokerProtocolVersion.current + 1,
                                 roomID: host.roomIDValue(), sender: .guest,
@@ -1945,7 +1946,7 @@ final class HostSessionLobbyTests: XCTestCase {
     func testLobbyPhaseDisconnectFreesSeat() async throws {
         let host = makeHost()
         try await host.startHosting()
-        pump = attachEvents(of: hostTransport, to: hostLog)
+        pump = attachEvents(of: guestTransport, to: guestLog)
         try await guestTransport.connect(to: hostPeer)
         try await sendEnvelope(.hello(deviceID: "device-A", name: "阿明"), roomID: host.roomIDValue(),
                                sender: .guest, from: guestTransport, to: hostPeer)
@@ -2065,6 +2066,14 @@ actor HostSession {
         phase = .playing
         await publishLobby()          // phase .playing → 客机切牌桌
         await fanoutSnapshots()       // 首帧快照
+    }
+
+    /// 结束会话：停事件处理、结束更新流、断开传输（测试 tearDown 也走这里）。
+    func disconnect() async {
+        processingTask?.cancel()
+        processingTask = nil
+        updatesContinuation.finish()
+        await transport.disconnect()
     }
 
     // MARK: - 测试观测
@@ -2285,13 +2294,10 @@ final class HostSessionGameTests: XCTestCase {
     var guestT: [LoopbackTransport] = []      // seat1/seat2 的裸客机传输
     var guestLogs: [EventLog] = []
     var pumps: [Task<Void, Never>] = []
-    var hostLog: EventLog = EventLog()
-    var hostPump: Task<Void, Never>?
 
     let config = GameConfig(playerCount: 2, startingStack: 500, format: .cash(sb: 5, bb: 10))
 
     override func tearDown() async throws {
-        hostPump?.cancel()
         pumps.forEach { $0.cancel() }
         await host?.disconnect()
     }
@@ -2306,7 +2312,6 @@ final class HostSessionGameTests: XCTestCase {
                                              tableConfig: config),
             transport: hostTransport)
         try await host.startHosting()
-        hostPump = attachEvents(of: hostTransport, to: hostLog)
         for index in 0..<guestCount {
             let transport = hub.makeTransport(peerID: PeerID(rawValue: "raw-guest-\(index)"))
             guestT.append(transport)
@@ -2563,13 +2568,6 @@ Expected: 编译过（Task 7 留了空方法）但 FAIL——空 `fanoutSnapshot
     /// 房主请求下一手（与客机请求等价，引擎幂等只放行一次）。
     func requestNextHand() async {
         await handleNextHand()
-    }
-
-    func disconnect() async {
-        processingTask?.cancel()
-        processingTask = nil
-        updatesContinuation.finish()
-        await transport.disconnect()
     }
 
     /// 前台自愈：App 挂起可能无声杀死监听 socket（scenePhase .active 调用）。
