@@ -8,10 +8,14 @@
 
 /* Begin PBXBuildFile section */
 		0FB94273E8910E8D176527BA /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 50DCA2BD0CFD510E301880C2 /* Assets.xcassets */; };
+		14C1B88C3F8DDEBBFD1AF5E7 /* Transport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0AA8382DAE84DCC62E2ECCBE /* Transport.swift */; };
 		3C31FEFC63B7757A420A8E09 /* PokerAppUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2706D96236330D88F4156AA6 /* PokerAppUITests.swift */; };
 		596380F07434D19F3FA930C2 /* CardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 202DA544DDDD1C0CD9A7E18F /* CardView.swift */; };
+		5BCBAFD5247D33A2F42AE76E /* Transport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0AA8382DAE84DCC62E2ECCBE /* Transport.swift */; };
 		6CF155657730075BF67284DD /* MenuView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A326930D365C2B1129CE966 /* MenuView.swift */; };
+		6F895224B8700121E280EE76 /* LengthPrefixedFrameCodec.swift in Sources */ = {isa = PBXBuildFile; fileRef = A63A0F9622B2F0098648A196 /* LengthPrefixedFrameCodec.swift */; };
 		75E5441C370507E68768F3BC /* PokerEngine in Frameworks */ = {isa = PBXBuildFile; productRef = 16FDDA045490FEBE892ECB19 /* PokerEngine */; };
+		776BE1AC62E017131B82AA44 /* LengthPrefixedFrameCodec.swift in Sources */ = {isa = PBXBuildFile; fileRef = A63A0F9622B2F0098648A196 /* LengthPrefixedFrameCodec.swift */; };
 		7B34A8427766DC86E91E3357 /* GameViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5BEDB4717D1A5B16D82FD19 /* GameViewModelTests.swift */; };
 		7D7ABA93AE48476F29147C22 /* TableView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74F99E8A5230CE8EE9668A55 /* TableView.swift */; };
 		83B398BAE3889F822432FF81 /* PokerApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A39DF02008A6EF3DB4531DEF /* PokerApp.swift */; };
@@ -22,6 +26,7 @@
 		D4D274A5518E0BBA4C390E60 /* blueprint-hu.json in Resources */ = {isa = PBXBuildFile; fileRef = D9E19DF746771E9DC5381330 /* blueprint-hu.json */; };
 		D4FA750D3FF586E4586D5489 /* PlaceholderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6FAEE2F41BF4AD281822079 /* PlaceholderTests.swift */; };
 		DC1F9E1D09CB7ABC675A65D1 /* GameViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1A8F58514908FC0730B220A /* GameViewModel.swift */; };
+		DD508799D0FF27B3C7C9A424 /* TransportCodecTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22537883E7B40D71CA61A3D2 /* TransportCodecTests.swift */; };
 		E0EEDF225DC457AC8429ADBA /* GameViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1A8F58514908FC0730B220A /* GameViewModel.swift */; };
 		E3933185089C6BE05C2CD2AE /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 50DCA2BD0CFD510E301880C2 /* Assets.xcassets */; };
 		E7C3BDAE44E5CAE63D519EED /* blueprint-hu.json in Resources */ = {isa = PBXBuildFile; fileRef = D9E19DF746771E9DC5381330 /* blueprint-hu.json */; };
@@ -46,7 +51,9 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		0AA8382DAE84DCC62E2ECCBE /* Transport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Transport.swift; sourceTree = "<group>"; };
 		202DA544DDDD1C0CD9A7E18F /* CardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CardView.swift; sourceTree = "<group>"; };
+		22537883E7B40D71CA61A3D2 /* TransportCodecTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransportCodecTests.swift; sourceTree = "<group>"; };
 		2706D96236330D88F4156AA6 /* PokerAppUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PokerAppUITests.swift; sourceTree = "<group>"; };
 		2A326930D365C2B1129CE966 /* MenuView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuView.swift; sourceTree = "<group>"; };
 		3FA87E919AEDB5921E77B652 /* PokerAppTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = PokerAppTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -55,6 +62,7 @@
 		74F99E8A5230CE8EE9668A55 /* TableView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TableView.swift; sourceTree = "<group>"; };
 		A1A8F58514908FC0730B220A /* GameViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameViewModel.swift; sourceTree = "<group>"; };
 		A39DF02008A6EF3DB4531DEF /* PokerApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PokerApp.swift; sourceTree = "<group>"; };
+		A63A0F9622B2F0098648A196 /* LengthPrefixedFrameCodec.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LengthPrefixedFrameCodec.swift; sourceTree = "<group>"; };
 		B6FAEE2F41BF4AD281822079 /* PlaceholderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaceholderTests.swift; sourceTree = "<group>"; };
 		BD7575A5A8A84F559F93BEE6 /* PokerApp.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = PokerApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		D01CA6E01F5794C52FE08BA6 /* PokerApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PokerApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -93,8 +101,18 @@
 				A39DF02008A6EF3DB4531DEF /* PokerApp.swift */,
 				74F99E8A5230CE8EE9668A55 /* TableView.swift */,
 				A4657BB7B0472E12B90C3BFB /* Resources */,
+				68BDE72D590C005C54ABAAB3 /* Transport */,
 			);
 			path = PokerApp;
+			sourceTree = "<group>";
+		};
+		68BDE72D590C005C54ABAAB3 /* Transport */ = {
+			isa = PBXGroup;
+			children = (
+				A63A0F9622B2F0098648A196 /* LengthPrefixedFrameCodec.swift */,
+				0AA8382DAE84DCC62E2ECCBE /* Transport.swift */,
+			);
+			path = Transport;
 			sourceTree = "<group>";
 		};
 		8CBB6803BB4E1181C940B0B9 /* PokerAppTests */ = {
@@ -102,6 +120,7 @@
 			children = (
 				D5BEDB4717D1A5B16D82FD19 /* GameViewModelTests.swift */,
 				B6FAEE2F41BF4AD281822079 /* PlaceholderTests.swift */,
+				22537883E7B40D71CA61A3D2 /* TransportCodecTests.swift */,
 			);
 			path = PokerAppTests;
 			sourceTree = "<group>";
@@ -302,9 +321,11 @@
 			files = (
 				A978002FBD54E8C5F00E4C97 /* CardView.swift in Sources */,
 				E0EEDF225DC457AC8429ADBA /* GameViewModel.swift in Sources */,
+				776BE1AC62E017131B82AA44 /* LengthPrefixedFrameCodec.swift in Sources */,
 				873B77A604F72D3E8A061730 /* MenuView.swift in Sources */,
 				FDEDDB12CF2E15960871214A /* PokerApp.swift in Sources */,
 				7D7ABA93AE48476F29147C22 /* TableView.swift in Sources */,
+				14C1B88C3F8DDEBBFD1AF5E7 /* Transport.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -314,6 +335,7 @@
 			files = (
 				7B34A8427766DC86E91E3357 /* GameViewModelTests.swift in Sources */,
 				D4FA750D3FF586E4586D5489 /* PlaceholderTests.swift in Sources */,
+				DD508799D0FF27B3C7C9A424 /* TransportCodecTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -331,9 +353,11 @@
 			files = (
 				596380F07434D19F3FA930C2 /* CardView.swift in Sources */,
 				DC1F9E1D09CB7ABC675A65D1 /* GameViewModel.swift in Sources */,
+				6F895224B8700121E280EE76 /* LengthPrefixedFrameCodec.swift in Sources */,
 				6CF155657730075BF67284DD /* MenuView.swift in Sources */,
 				83B398BAE3889F822432FF81 /* PokerApp.swift in Sources */,
 				93A3B833EFF68E2B44182230 /* TableView.swift in Sources */,
+				5BCBAFD5247D33A2F42AE76E /* Transport.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
