@@ -48,6 +48,9 @@ struct MenuView: View {
                     Stepper("小盲：\(cashSB)", value: $cashSB, in: 1...1000, step: 5)
                     Stepper("初始筹码：\(cashStack)", value: $cashStack, in: 500...100000, step: 500)
                 }
+                Section {
+                    Button("联机对战") { onMultiplayer() }
+                }
                 Button("开始游戏") {
                     onStart(config, UInt64(Date().timeIntervalSince1970 * 1000), difficulty)
                 }
