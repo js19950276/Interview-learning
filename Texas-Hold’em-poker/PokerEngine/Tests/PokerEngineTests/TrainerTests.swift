@@ -35,6 +35,21 @@ final class TrainerTests: XCTestCase {
         XCTAssertTrue(regs.contains { $0 > 0 } && regs.contains { $0 <= 0 })
     }
 
+    /// 100bb（App 实际深度）：config 真正穿线——同种子两训逐字节相同、表非空，
+    /// 且与默认 1000bb 同种子同迭代数结果不同（深度改变策略空间与终局效用基线）。
+    func testTrainAt100bbDeterministic() {
+        let cfg100 = GameConfig(playerCount: 2, startingStack: 2000, format: .cash(sb: 10, bb: 20))
+        var a = Blueprint(); var b = Blueprint()
+        Trainer.train(&a, iterations: 200, seed: 55, config: cfg100)
+        Trainer.train(&b, iterations: 200, seed: 55, config: cfg100)
+        XCTAssertEqual(a.iterations, 200)
+        XCTAssertEqual(a, b)                       // 同种子同 config 逐字节确定
+        XCTAssertFalse(a.entries.isEmpty)
+        var d = Blueprint()
+        Trainer.train(&d, iterations: 200, seed: 55)   // 默认 huConfig（1000bb）
+        XCTAssertNotEqual(a.entries, d.entries)    // config 未穿线则此处失败
+    }
+
     func testProgressCallbackFires() {
         var bp = Blueprint()
         var calls = 0

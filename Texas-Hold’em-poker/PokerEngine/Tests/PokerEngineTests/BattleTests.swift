@@ -14,6 +14,20 @@ final class BattleTests: XCTestCase {
         XCTAssertEqual(report.perSeatCI[0], report.perSeatCI[1], accuracy: 1e-9)
     }
 
+    /// 100bb 自定义深度（App 实际深度）：每手筹码守恒且每席 delta 有界于 ±stacks
+    /// （深度参数穿线；headsUp 单对手 → 单手最大盈亏即整个起始栈 2000）。
+    func testBattleAt100bbConservation() async {
+        let outcomes = await runBattle(a: HeuristicAI(aggression: 0.5), b: HeuristicAI(aggression: 0.5),
+                                       table: .headsUp, hands: 40, seedBase: 3, concurrency: 1,
+                                       stacks: 2000)
+        XCTAssertEqual(outcomes.count, 40)
+        for o in outcomes {
+            XCTAssertEqual(o.seatDeltas.reduce(0, +), 0, "hand \(o.handIndex)")
+            XCTAssertTrue(o.seatDeltas.allSatisfy { abs($0) <= 2000 },
+                          "hand \(o.handIndex): \(o.seatDeltas)")
+        }
+    }
+
     /// Review Focus #4：并发不改变结果（种子与执行顺序解耦）。
     func testConcurrencyDoesNotChangeResults() async {
         let a = HeuristicAI(aggression: 0.5), b = HeuristicAI(aggression: 0.3)

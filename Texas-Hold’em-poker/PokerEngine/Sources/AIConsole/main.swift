@@ -48,6 +48,8 @@ let hands = Int(flag("--hands", default: "1000")) ?? 1000
 let seed = UInt64(flag("--seed", default: "42")) ?? 42
 let concurrency = Int(flag("--concurrency",
                            default: String(ProcessInfo.processInfo.activeProcessorCount))) ?? 1
+// 对战起始栈（bb=20 → 默认 20000＝1000bb；100bb 传 2000）。仅 battle 使用；train 蓝图深度由 Trainer 配置决定。
+let stacks = Int(flag("--stacks", default: "20000")) ?? 20_000
 blueprintPath = flag("--blueprint", default: blueprintPath)
 
 func ci95(_ xs: [Double]) -> Double {
@@ -64,7 +66,7 @@ case "battle":
     }
     let t0 = Date()
     let outcomes = await runBattle(a: a, b: b, table: table, hands: hands,
-                                   seedBase: seed, concurrency: concurrency)
+                                   seedBase: seed, concurrency: concurrency, stacks: stacks)
     let elapsed = Date().timeIntervalSince(t0)
     let aDeltas = sideMeanDeltas(outcomes, forA: true).map { $0 / 20.0 }
     let bDeltas = sideMeanDeltas(outcomes, forA: false).map { $0 / 20.0 }
@@ -144,5 +146,5 @@ case "train":
     }
     print("summary iterations=\(bp.iterations) keys=\(bp.entries.count) out=\(outPath.isEmpty ? "(none)" : outPath) size=\(sizeText)")
 default:
-    print("usage: AIConsole battle|train|bench --a pimc:normal|blueprint:hu --b heuristic:0.5 --table hu|six --hands N --seed S --concurrency C --blueprint path (train: --iterations N [--from N] [--checkpoint-every N] --out path [--resume path]) (bench: --ai pimc:hard|hell)")
+    print("usage: AIConsole battle|train|bench --a pimc:normal|blueprint:hu --b heuristic:0.5 --table hu|six --hands N --seed S --concurrency C --stacks N --blueprint path (train: --iterations N [--from N] [--checkpoint-every N] --out path [--resume path]) (bench: --ai pimc:hard|hell)")
 }

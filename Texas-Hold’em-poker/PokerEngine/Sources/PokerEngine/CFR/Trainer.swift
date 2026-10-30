@@ -4,6 +4,7 @@ import Foundation
 public enum Trainer {
     public static let huConfig = GameConfig(playerCount: 2, startingStack: 20_000,
                                             format: .cash(sb: 10, bb: 20))
+    public static let huConfig100 = GameConfig(playerCount: 2, startingStack: 2000, format: .cash(sb: 10, bb: 20))  // 100bb（App 实际深度）
 
     /// 训练 `iterations` 个迭代（区间 `[from, from + iterations)`）。
     ///
@@ -23,13 +24,17 @@ public enum Trainer {
     ///     1000bb 深手 `walk` 递归溢出（SIGBUS/栈保护页命中），故改用显式 64MB 栈
     ///     的 Foundation Thread（串行路径一直运行在 8MB 主栈上，量级一致才安全）。
     ///   - onProgress: 并行路径结束时回调一次（总迭代数、合并后键数）；分片内部进度不外抛。
+    ///   - config: 本批手牌的游戏配置（默认 `huConfig`＝1000bb；100bb 重训用 `huConfig100`）。
+    ///     每手以 `GameState.start(config:)` 开局，终局效用基线取 `config.startingStack`；
+    ///     深度改变策略空间与基线 → 同种子不同 config 结果不同（串行/并行两路径同样穿线）。
     public static func train(_ bp: inout Blueprint, iterations: UInt64, seed: UInt64,
                              from: UInt64 = 0,
                              concurrency: Int = 1,
-                             onProgress: ((UInt64, Int) -> Void)? = nil) {
+                             onProgress: ((UInt64, Int) -> Void)? = nil,
+                             config: GameConfig = huConfig) {
         guard concurrency > 1, iterations > 0 else {
             for i in from..<(from + iterations) {
-                runIteration(&bp, seed: seed, i: i)
+                runIteration(&bp, seed: seed, i: i, config: config)
                 if let cb = onProgress, (i - from + 1) % 100_000 == 0 { cb(i + 1, bp.entries.count) }
             }
             if let cb = onProgress, iterations > 0, iterations % 100_000 != 0 {
@@ -64,7 +69,7 @@ public enum Trainer {
             let thread = Thread {
                 var worker = Blueprint()
                 for i in chunk.start..<(chunk.start + chunk.count) {
-                    runIteration(&worker, seed: seed, i: i)
+                    runIteration(&worker, seed: seed, i: i, config: config)
                 }
                 box.store(worker)
                 group.leave()
@@ -81,22 +86,24 @@ public enum Trainer {
     }
 
     /// 单迭代（训练方全分支 / 对手采样）。rng 只依赖 (seed, i)：串行与分片 worker 共用同一段走查。
-    private static func runIteration(_ bp: inout Blueprint, seed: UInt64, i: UInt64) {
+    private static func runIteration(_ bp: inout Blueprint, seed: UInt64, i: UInt64,
+                                     config: GameConfig) {
         var iterRng = SeededGenerator(seed: seed &* 0x9E37_79B9_7F4A_7C15 &+ i)
         let traverser = Int(i % 2)
         let handSeed = iterRng.next()
-        let state = GameState.start(config: huConfig, seed: handSeed)
-        _ = walk(state, bp: &bp, traverser: traverser, pi: 1.0, rng: &iterRng)
+        let state = GameState.start(config: config, seed: handSeed)
+        _ = walk(state, bp: &bp, traverser: traverser, pi: 1.0, rng: &iterRng,
+                 baseStack: Double(config.startingStack))
         bp.tickIteration()
     }
 
     /// 返回 traverser 的效用；π 为 traverser 自身到达概率。rng 全程穿线（无静态可变状态）：
     /// 训练方全分支按槽位顺序共用消费；对手采样顺序消费——同种子同迭代序列确定。
+    /// baseStack 为终局效用基线（＝开局起始栈，由 runIteration 依 config 传入）。
     private static func walk(_ state: GameState, bp: inout Blueprint,
                              traverser: Int, pi: Double,
-                             rng: inout SeededGenerator) -> Double {
-        // 终局效用基线派生自配置（原硬编码 20_000 与 huConfig.startingStack 隐式耦合）
-        let baseStack = Double(huConfig.startingStack)
+                             rng: inout SeededGenerator,
+                             baseStack: Double) -> Double {
         if state.street == .handOver {
             return Double(state.players[traverser].stack) - baseStack
         }
@@ -117,7 +124,8 @@ public enum Trainer {
             for (i, s) in slots.enumerated() {
                 var child = state
                 child.apply(s.action)
-                let u = walk(child, bp: &bp, traverser: traverser, pi: pi * sigma[i], rng: &rng)
+                let u = walk(child, bp: &bp, traverser: traverser, pi: pi * sigma[i], rng: &rng,
+                             baseStack: baseStack)
                 utils.append(u)
                 nodeUtil += sigma[i] * u
             }
@@ -127,7 +135,8 @@ public enum Trainer {
             let r = sampleIndex(sigma, rng: &rng)
             var child = state
             child.apply(slots[r].action)
-            return walk(child, bp: &bp, traverser: traverser, pi: pi, rng: &rng)
+            return walk(child, bp: &bp, traverser: traverser, pi: pi, rng: &rng,
+                        baseStack: baseStack)
         }
     }
 
