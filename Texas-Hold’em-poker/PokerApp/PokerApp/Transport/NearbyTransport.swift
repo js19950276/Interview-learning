@@ -1,0 +1,380 @@
+import Foundation
+import Network
+
+nonisolated struct TransportShutdownGate: Sendable {
+    private var didBegin = false
+    mutating func begin() -> Bool {
+        guard !didBegin else { return false }
+        didBegin = true
+        return true
+    }
+}
+
+nonisolated final class NearbyLifecycleGate: @unchecked Sendable {
+    private enum Outcome {
+        case success
+        case failure(NearbyIssue)
+    }
+
+    private let lock = NSLock()
+    private var continuation: CheckedContinuation<Void, any Error>?
+    private var cancelResource: (@Sendable () -> Void)?
+    private var outcome: Outcome?
+
+    func waitUntilReady(
+        start: @escaping @Sendable (@escaping @Sendable (NearbyLifecycleUpdate) -> Void) -> Void,
+        cancel: @escaping @Sendable () -> Void
+    ) async throws {
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                let pendingOutcome: Outcome? = lock.withLock {
+                    if let outcome { return outcome }
+                    self.continuation = continuation
+                    cancelResource = cancel
+                    return nil
+                }
+                if let pendingOutcome {
+                    Self.resume(continuation, with: pendingOutcome)
+                    return
+                }
+                start { [weak self] update in self?.consume(update) }
+                if Task.isCancelled { finish(.failure(.connectionFailed), cancellingResource: true) }
+            }
+        } onCancel: {
+            finish(.failure(.connectionFailed), cancellingResource: true)
+        }
+    }
+
+    private func consume(_ update: NearbyLifecycleUpdate) {
+        switch update {
+        case .ready: finish(.success, cancellingResource: false)
+        case let .waiting(issue), let .failed(issue): finish(.failure(issue), cancellingResource: true)
+        }
+    }
+
+    private func finish(_ outcome: Outcome, cancellingResource: Bool) {
+        let actions: (CheckedContinuation<Void, any Error>?, (@Sendable () -> Void)?) = lock.withLock {
+            guard self.outcome == nil else { return (nil, nil) }
+            self.outcome = outcome
+            let continuation = self.continuation
+            self.continuation = nil
+            let cancel = cancellingResource ? cancelResource : nil
+            cancelResource = nil
+            return (continuation, cancel)
+        }
+        actions.1?()
+        if let continuation = actions.0 { Self.resume(continuation, with: outcome) }
+    }
+
+    private static func resume(_ continuation: CheckedContinuation<Void, any Error>, with outcome: Outcome) {
+        switch outcome {
+        case .success: continuation.resume()
+        case let .failure(issue): continuation.resume(throwing: issue)
+        }
+    }
+}
+
+nonisolated enum NearbyLifecycleUpdate: Equatable, Sendable {
+    case ready
+    case waiting(NearbyIssue)
+    case failed(NearbyIssue)
+}
+
+/// 按连接对象过滤陈旧/重复终止回调：换连接后旧 NW 回调不得再触达状态机。
+nonisolated struct ConnectionTerminationRegistry: Sendable {
+    private struct Entry: @unchecked Sendable { let connection: AnyObject }
+    private var entries: [PeerID: Entry] = [:]
+
+    mutating func register(_ connection: AnyObject, for peer: PeerID) {
+        entries[peer] = .init(connection: connection)
+    }
+
+    func contains(_ connection: AnyObject, for peer: PeerID) -> Bool {
+        entries[peer]?.connection === connection
+    }
+
+    mutating func terminate(_ connection: AnyObject, for peer: PeerID) -> Bool {
+        guard contains(connection, for: peer) else { return false }
+        entries[peer] = nil
+        return true
+    }
+}
+
+actor NearbyTransport: Transport {
+    static let serviceType = "_poker-lan._tcp"
+    nonisolated let events: AsyncStream<TransportEvent>
+    private nonisolated let continuation: AsyncStream<TransportEvent>.Continuation
+    private let queue: DispatchQueue
+    private let serviceName: String?
+    private var listener: NWListener?
+    private var hostingRoomID: String?
+    private var hostingPort: UInt16?
+    private var listenerRestartAttempts = 0
+    private var didShutDown = false
+    private var browser: NWBrowser?
+    private var connections: [PeerID: NWConnection] = [:]
+    private var decoders: [PeerID: LengthPrefixedFrameCodec.Decoder] = [:]
+    private var terminationRegistry = ConnectionTerminationRegistry()
+    private var shutdownGate = TransportShutdownGate()
+
+    init(serviceName: String? = nil, queue: DispatchQueue = .init(label: "PokerApp.NearbyTransport")) {
+        self.serviceName = serviceName.map(RoomName.sanitize)
+        self.queue = queue
+        (events, continuation) = AsyncStream.makeStream(of: TransportEvent.self)
+    }
+
+    nonisolated static func makeParameters() -> NWParameters {
+        let parameters = NWParameters.tcp
+        parameters.includePeerToPeer = true   // 无路由器的点对点 Wi-Fi 也可直连
+        parameters.preferNoProxies = true
+        return parameters
+    }
+
+    nonisolated static func makeService(roomID: String) -> NWListener.Service {
+        var service = NWListener.Service(name: RoomName.sanitize(roomID), type: serviceType)
+        service.noAutoRename = true
+        return service
+    }
+
+    func startHosting(roomID: String, port: UInt16?) async throws {
+        guard !didShutDown else { throw TransportError.connectionFailed }
+        hostingRoomID = roomID
+        hostingPort = port
+        try await startListener()
+    }
+
+    private func startListener() async throws {
+        guard let roomID = hostingRoomID else { throw TransportError.connectionFailed }
+        let port = hostingPort
+        let parameters = Self.makeParameters()
+        let listener: NWListener
+        if let port {
+            guard let nwPort = NWEndpoint.Port(rawValue: port) else { throw TransportError.invalidPort }
+            listener = try NWListener(using: parameters, on: nwPort)
+        } else {
+            listener = try NWListener(using: parameters)
+        }
+        listener.service = Self.makeService(roomID: roomID)
+        listener.newConnectionHandler = { [weak self] connection in Task { await self?.accept(connection) } }
+        self.listener = listener
+        let gate = NearbyLifecycleGate()
+        do {
+            try await gate.waitUntilReady(start: { [queue] update in
+                listener.stateUpdateHandler = { state in
+                    switch state {
+                    case .ready: update(.ready)
+                    case let .waiting(error): update(.waiting(NearbyPreflight.issue(for: error)))
+                    case let .failed(error): update(.failed(NearbyPreflight.issue(for: error)))
+                    case .cancelled: update(.failed(.connectionFailed))
+                    default: break
+                    }
+                }
+                listener.start(queue: queue)
+            }, cancel: {
+                listener.stateUpdateHandler = nil
+                listener.newConnectionHandler = nil
+                listener.cancel()
+            })
+            // 就绪后保留状态回调：监听器死亡（接口切换等）时原地重建，保持房间可被发现
+            listener.stateUpdateHandler = { [weak self] state in
+                guard let self, case .failed = state else { return }
+                Task { await self.restartListenerAfterFailure() }
+            }
+            listenerRestartAttempts = 0
+        } catch {
+            listener.stateUpdateHandler = nil
+            listener.newConnectionHandler = nil
+            if self.listener === listener { self.listener = nil }
+            throw error
+        }
+    }
+
+    private func restartListenerAfterFailure() {
+        guard listenerRestartAttempts < 3, hostingRoomID != nil else { return }
+        listenerRestartAttempts += 1
+        listener?.cancel()
+        listener = nil
+        Task {
+            do { try await self.startListener() } catch { }
+        }
+    }
+
+    func browse() async throws {
+        let browser = NWBrowser(for: .bonjour(type: Self.serviceType, domain: nil),
+                                using: Self.makeParameters())
+        browser.browseResultsChangedHandler = { [weak self] results, _ in
+            for result in results {
+                guard case let .service(name, _, _, _) = result.endpoint else { continue }
+                self?.continuation.yield(.discovered(PeerID(rawValue: name)))
+            }
+        }
+        browser.start(queue: queue)
+        self.browser = browser
+    }
+
+    func connect(to peer: PeerID) async throws {
+        guard !didShutDown else { throw TransportError.notConnected }
+        // 重入防御：同一 peer 的旧连接先终止，避免泄漏与事件串扰
+        if let existing = connections[peer] {
+            _ = terminationRegistry.terminate(existing, for: peer)
+            existing.cancel()
+            connections[peer] = nil
+            decoders[peer] = nil
+        }
+        let name = serviceName ?? RoomName.sanitize(peer.rawValue)
+        let endpoint = NWEndpoint.service(name: name, type: Self.serviceType, domain: "local", interface: nil)
+        let connection = NWConnection(to: endpoint, using: Self.makeParameters())
+        connections[peer] = connection
+        terminationRegistry.register(connection, for: peer)
+        decoders[peer] = .init()
+        receive(on: connection, peer: peer)
+        let gate = NearbyLifecycleGate()
+        do {
+            try await gate.waitUntilReady(start: { [queue] update in
+                connection.stateUpdateHandler = { state in
+                    switch state {
+                    case .ready: update(.ready)
+                    case let .waiting(error): update(.waiting(NearbyPreflight.issue(for: error)))
+                    case let .failed(error): update(.failed(NearbyPreflight.issue(for: error)))
+                    case .cancelled: update(.failed(.connectionFailed))
+                    default: break
+                    }
+                }
+                connection.start(queue: queue)
+            }, cancel: {
+                connection.stateUpdateHandler = nil
+                connection.cancel()
+            })
+        } catch {
+            connection.stateUpdateHandler = nil
+            _ = terminationRegistry.terminate(connection, for: peer)
+            connections[peer] = nil
+            decoders[peer] = nil
+            connection.cancel()
+            throw error
+        }
+        installStateHandler(connection, peer: peer)
+        guard connection.state == .ready else {
+            _ = terminationRegistry.terminate(connection, for: peer)
+            connections[peer] = nil
+            decoders[peer] = nil
+            connection.cancel()
+            throw TransportError.connectionFailed
+        }
+        connectionReady(peer: peer, connection: connection)
+    }
+
+    func isConnected(to peer: PeerID) async -> Bool {
+        connections[peer]?.state == .ready
+    }
+
+    /// 前台自愈：挂起可能无声杀死监听 socket；死亡/缺失时原地重建。
+    func reviveHostingIfNeeded() async {
+        guard !didShutDown, hostingRoomID != nil else { return }
+        let needsRestart: Bool
+        switch listener?.state {
+        case .none, .some(.failed), .some(.cancelled): needsRestart = true
+        default: needsRestart = false
+        }
+        guard needsRestart else { return }
+        listener?.stateUpdateHandler = nil
+        listener?.newConnectionHandler = nil
+        listener?.cancel()
+        listener = nil
+        listenerRestartAttempts = 0
+        do { try await startListener() } catch { }
+    }
+
+    func send(_ data: Data, to peer: PeerID) async throws {
+        guard let connection = connections[peer] else { throw TransportError.notConnected }
+        let framed = try LengthPrefixedFrameCodec.frame(data)
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, any Error>) in
+            connection.send(content: framed, completion: .contentProcessed { error in
+                if let error { continuation.resume(throwing: error) }
+                else { continuation.resume() }
+            })
+        }
+    }
+
+    func disconnect() {
+        guard shutdownGate.begin() else { return }
+        listener?.newConnectionHandler = nil
+        listener?.cancel()
+        listener = nil
+        browser?.browseResultsChangedHandler = nil
+        browser?.cancel()
+        browser = nil
+        connections.values.forEach { $0.stateUpdateHandler = nil; $0.cancel() }
+        connections.removeAll()
+        decoders.removeAll()
+        terminationRegistry = ConnectionTerminationRegistry()
+        didShutDown = true
+        hostingRoomID = nil
+        continuation.finish()
+    }
+
+    private func accept(_ connection: NWConnection) {
+        let peer = PeerID(rawValue: UUID().uuidString)
+        connections[peer] = connection
+        terminationRegistry.register(connection, for: peer)
+        decoders[peer] = .init()
+        installStateHandler(connection, peer: peer)
+        receive(on: connection, peer: peer)
+        connection.start(queue: queue)
+    }
+
+    private func installStateHandler(_ connection: NWConnection, peer: PeerID) {
+        connection.stateUpdateHandler = { [weak self] state in
+            switch state {
+            case .ready: Task { await self?.connectionReady(peer: peer, connection: connection) }
+            case .failed: Task { await self?.terminate(peer: peer, connection: connection, error: .connectionFailed) }
+            case .cancelled: Task { await self?.terminate(peer: peer, connection: connection, error: nil) }
+            default: break
+            }
+        }
+    }
+
+    private func receive(on connection: NWConnection, peer: PeerID) {
+        connection.receive(minimumIncompleteLength: 1, maximumLength: 64 * 1024) { [weak self] data, _, complete, error in
+            Task { await self?.consume(data, complete: complete, error: error, connection: connection, peer: peer) }
+        }
+    }
+
+    private func consume(_ data: Data?, complete: Bool, error: NWError?, connection: NWConnection, peer: PeerID) {
+        guard terminationRegistry.contains(connection, for: peer) else { return }
+        do {
+            if let data {
+                var decoder = decoders[peer] ?? .init()
+                for frame in try decoder.append(data) { continuation.yield(.received(frame, from: peer)) }
+                guard terminationRegistry.contains(connection, for: peer) else { return }
+                decoders[peer] = decoder
+            }
+        } catch let transportError as TransportError {
+            terminate(peer: peer, connection: connection, error: transportError)
+            return
+        } catch {
+            terminate(peer: peer, connection: connection, error: .connectionFailed)
+            return
+        }
+        if complete || error != nil {
+            terminate(peer: peer, connection: connection, error: error == nil ? nil : .connectionFailed)
+        } else {
+            guard terminationRegistry.contains(connection, for: peer) else { return }
+            receive(on: connection, peer: peer)
+        }
+    }
+
+    private func connectionReady(peer: PeerID, connection: NWConnection) {
+        guard terminationRegistry.contains(connection, for: peer) else { return }
+        continuation.yield(.connected(peer))
+    }
+
+    private func terminate(peer: PeerID, connection: NWConnection, error: TransportError?) {
+        guard terminationRegistry.terminate(connection, for: peer) else { return }
+        connection.stateUpdateHandler = nil
+        connections[peer] = nil
+        decoders[peer] = nil
+        continuation.yield(.disconnected(peer, error))
+        connection.cancel()
+    }
+}

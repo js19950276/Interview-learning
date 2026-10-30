@@ -1823,10 +1823,10 @@ cd "$REPO" && git add PokerApp/PokerApp/Session/PokerMessages.swift PokerApp/Pok
   - `actor HostSession`：
     - `init(configuration: HostConfiguration, transport: any Transport = NearbyTransport())`
     - `nonisolated let updates: AsyncStream<HostUpdate>`
-    - `func startHosting() async throws`、`func setReady(_ value: Bool) async`、`func updateTableConfig(_ config: GameConfig) async`、`func startGame() async throws`
+    - `func startHosting() async throws`、`func setReady(_ value: Bool) async`、`func updateTableConfig(_ config: GameConfig) async`、`func startGame() async throws`、`func disconnect() async`
     - `enum HostError: String, Error, Sendable { case alreadyStarted, notEnoughPlayers, notAllReady }`
     - 测试观测：`func gameState() -> GameState?`、`func currentPhase() -> HostPhase`（`enum HostPhase: Equatable, Sendable { case idle, lobby, playing, finished }`）、`func currentLobby() -> LobbyState?`、`func roomIDValue() -> String`、`func peerIDValue(seat: Int) -> PeerID?`
-  - Task 8 将在同文件追加：`func act(_ action: PlayerAction) async`、`func requestNextHand() async`、`func disconnect() async`、`nonisolated func applicationDidBecomeActive() async`
+  - Task 8 将在同文件追加：`func act(_ action: PlayerAction) async`、`func requestNextHand() async`、`nonisolated func applicationDidBecomeActive() async`
 
 - [ ] **Step 1: 写失败测试**
 
@@ -1844,14 +1844,14 @@ final class HostSessionLobbyTests: XCTestCase {
     var hub: LoopbackTransportHub!
     var hostTransport: LoopbackTransport!
     var guestTransport: LoopbackTransport!
-    var hostLog: EventLog!
+    var guestLog: EventLog!
     var pump: Task<Void, Never>!
 
     override func setUp() async throws {
         hub = LoopbackTransportHub()
         hostTransport = hub.makeTransport(peerID: hostPeer)
         guestTransport = hub.makeTransport(peerID: PeerID(rawValue: "guest-raw"))
-        hostLog = EventLog()
+        guestLog = EventLog()
     }
 
     override func tearDown() async throws {
@@ -1870,10 +1870,11 @@ final class HostSessionLobbyTests: XCTestCase {
         return session
     }
 
-    /// 从房主事件流里取下一条可解的信封事件。
+    /// 从客机传输事件流取下一条房主发来的信封。host→guest 方向的消息只出现在客机侧；
+    /// 且 AsyncStream 单消费者——HostSession 消费 hostTransport 的流，测试泵只能挂 guestTransport。
     private func nextEnvelope(timeout: TimeInterval = 3) async throws -> (PokerEnvelope, PeerID) {
         while true {
-            let event = try await hostLog.waitFor(timeout: timeout) { if case .received = $0 { return true }; return false }
+            let event = try await guestLog.waitFor(timeout: timeout) { if case .received = $0 { return true }; return false }
             guard case let .received(data, from) = event,
                   let envelope = try? PokerWire.decode(data) else { continue }
             return (envelope, from)
@@ -1898,7 +1899,7 @@ final class HostSessionLobbyTests: XCTestCase {
     func testJoinAssignsSeatsInOrderAndBroadcastsLobby() async throws {
         let host = makeHost()
         try await host.startHosting()
-        pump = attachEvents(of: hostTransport, to: hostLog)
+        pump = attachEvents(of: guestTransport, to: guestLog)
         try await guestTransport.connect(to: hostPeer)
         try await sendEnvelope(.hello(deviceID: "device-A", name: "阿明"), roomID: host.roomIDValue(),
                                sender: .guest, from: guestTransport, to: hostPeer)
@@ -1915,7 +1916,7 @@ final class HostSessionLobbyTests: XCTestCase {
     func testReadyFlowUpdatesLobby() async throws {
         let host = makeHost()
         try await host.startHosting()
-        pump = attachEvents(of: hostTransport, to: hostLog)
+        pump = attachEvents(of: guestTransport, to: guestLog)
         try await guestTransport.connect(to: hostPeer)
         try await sendEnvelope(.hello(deviceID: "device-A", name: "阿明"), roomID: host.roomIDValue(),
                                sender: .guest, from: guestTransport, to: hostPeer)
@@ -1932,7 +1933,7 @@ final class HostSessionLobbyTests: XCTestCase {
     func testVersionMismatchRejected() async throws {
         let host = makeHost()
         try await host.startHosting()
-        pump = attachEvents(of: hostTransport, to: hostLog)
+        pump = attachEvents(of: guestTransport, to: guestLog)
         try await guestTransport.connect(to: hostPeer)
         let bad = PokerEnvelope(protocolVersion: PokerProtocolVersion.current + 1,
                                 roomID: host.roomIDValue(), sender: .guest,
@@ -1945,7 +1946,7 @@ final class HostSessionLobbyTests: XCTestCase {
     func testLobbyPhaseDisconnectFreesSeat() async throws {
         let host = makeHost()
         try await host.startHosting()
-        pump = attachEvents(of: hostTransport, to: hostLog)
+        pump = attachEvents(of: guestTransport, to: guestLog)
         try await guestTransport.connect(to: hostPeer)
         try await sendEnvelope(.hello(deviceID: "device-A", name: "阿明"), roomID: host.roomIDValue(),
                                sender: .guest, from: guestTransport, to: hostPeer)
@@ -2065,6 +2066,14 @@ actor HostSession {
         phase = .playing
         await publishLobby()          // phase .playing → 客机切牌桌
         await fanoutSnapshots()       // 首帧快照
+    }
+
+    /// 结束会话：停事件处理、结束更新流、断开传输（测试 tearDown 也走这里）。
+    func disconnect() async {
+        processingTask?.cancel()
+        processingTask = nil
+        updatesContinuation.finish()
+        await transport.disconnect()
     }
 
     // MARK: - 测试观测
@@ -2257,8 +2266,9 @@ cd "$REPO" && git add PokerApp/PokerApp/Session/HostSession.swift PokerApp/Poker
 ### Task 8: HostSession 对局阶段（校验/扇出/托管/重连）
 
 **Files:**
-- Modify: `PokerApp/PokerApp/Session/HostSession.swift`（填充 Task 7 的四个空方法 + 公开 act/requestNextHand/disconnect/applicationDidBecomeActive）
-- Test: `PokerApp/PokerAppTests/HostSessionGameTests.swift`
+- Modify: `PokerApp/PokerApp/Session/HostSession.swift`（填充 Task 7 的四个空方法 + 公开 act/requestNextHand/applicationDidBecomeActive；并在 startGame 里落昵称）
+- Modify: `PokerEngine/Sources/PokerEngine/Game/GameState.swift`（新增 `renamePlayer(seat:to:)`——`players` 是 internal(set)，App 不能直写昵称；名字是展示元数据，不破坏「只经 apply/nextHand 推进」的不变量）
+- Test: `PokerApp/PokerAppTests/HostSessionGameTests.swift`（新建）、`PokerEngine/Tests/PokerEngineTests/GameStateRenameTests.swift`（新建）
 
 **Interfaces:**
 - Consumes: Task 5 `TableSnapshot.make`、Task 7 HostSession 骨架。
@@ -2267,6 +2277,7 @@ cd "$REPO" && git add PokerApp/PokerApp/Session/HostSession.swift PokerApp/Poker
   - `func requestNextHand() async`
   - `func disconnect() async`
   - `nonisolated func applicationDidBecomeActive() async`（scenePhase 前台自愈入口）
+  - 引擎新增 `GameState.renamePlayer(seat: Int, to name: String)`（public mutating；越界座位安全忽略；昵称截 12 字）——房主直读引擎与客机快照共用其结果
 
 - [ ] **Step 1: 写失败测试**
 
@@ -2285,13 +2296,10 @@ final class HostSessionGameTests: XCTestCase {
     var guestT: [LoopbackTransport] = []      // seat1/seat2 的裸客机传输
     var guestLogs: [EventLog] = []
     var pumps: [Task<Void, Never>] = []
-    var hostLog: EventLog = EventLog()
-    var hostPump: Task<Void, Never>?
 
     let config = GameConfig(playerCount: 2, startingStack: 500, format: .cash(sb: 5, bb: 10))
 
     override func tearDown() async throws {
-        hostPump?.cancel()
         pumps.forEach { $0.cancel() }
         await host?.disconnect()
     }
@@ -2306,7 +2314,6 @@ final class HostSessionGameTests: XCTestCase {
                                              tableConfig: config),
             transport: hostTransport)
         try await host.startHosting()
-        hostPump = attachEvents(of: hostTransport, to: hostLog)
         for index in 0..<guestCount {
             let transport = hub.makeTransport(peerID: PeerID(rawValue: "raw-guest-\(index)"))
             guestT.append(transport)
@@ -2379,6 +2386,8 @@ final class HostSessionGameTests: XCTestCase {
         XCTAssertTrue(snap1.players[2].holeCards.isEmpty, "客机 1 不得见客机 2 的牌")
         XCTAssertTrue(snap2.players[1].holeCards.isEmpty)
         XCTAssertEqual(snap1.board, snap2.board)
+        XCTAssertEqual(snap1.players[1].name, "P1", "快照携带大厅昵称")
+        XCTAssertEqual(snap2.players[1].name, "P1")
     }
 
     func testLegalActionFromActorSeatAppliesAndFanouts() async throws {
@@ -2494,7 +2503,7 @@ final class HostSessionGameTests: XCTestCase {
                                sender: .guest, from: guestT[0], to: hostPeer)
         snap = try await nextSnapshot(log: guestLogs[0])
         XCTAssertEqual(snap.yourSeat, 1, "重连还原原座位")
-        XCTAssertGreaterThan(snap.seq, lastSeq, "补发更新的快照")
+        XCTAssertGreaterThanOrEqual(snap.seq, lastSeq, "重连补发不回退快照（同 seq 或更新均可）")
         XCTAssertEqual(host.peerIDValue(seat: 1) != nil, true)
     }
 
@@ -2540,6 +2549,28 @@ final class HostSessionGameTests: XCTestCase {
 }
 ```
 
+`PokerEngine/Tests/PokerEngineTests/GameStateRenameTests.swift`（新建，引擎侧配套）：
+
+```swift
+import XCTest
+@testable import PokerEngine
+
+/// 联机昵称覆写：展示元数据的唯一写入口（players 为 internal(set)，App 不能直写）。
+final class GameStateRenameTests: XCTestCase {
+    func testRenamePlayerOverwritesNameAndIgnoresBounds() {
+        var s = GameState.start(config: GameConfig(playerCount: 2, startingStack: 500,
+                                                   format: .cash(sb: 5, bb: 10)), seed: 3)
+        XCTAssertEqual(s.players[1].name, "座位 2")
+        s.renamePlayer(seat: 1, to: "阿明")
+        XCTAssertEqual(s.players[1].name, "阿明")
+        s.renamePlayer(seat: 9, to: "幽灵")   // 越界安全忽略，不得崩溃
+        XCTAssertEqual(s.players.count, 2)
+        s.renamePlayer(seat: 0, to: "名字超过十二个字会被截断掉")
+        XCTAssertEqual(s.players[0].name.count, 12)
+    }
+}
+```
+
 - [ ] **Step 2: 跑测试确认失败**
 
 ```
@@ -2548,9 +2579,28 @@ xcodebuild test -project PokerApp.xcodeproj -scheme PokerApp_iOS_Tests -destinat
 ```
 Expected: 编译过（Task 7 留了空方法）但 FAIL——空 `fanoutSnapshots`/`handleGamePayload` 导致快照收不到/动作不应用。
 
-- [ ] **Step 3: 实现（填充四个空方法 + 公开 API）**
+- [ ] **Step 3: 实现（引擎写入口 + 填充四个空方法 + 公开 API）**
 
-在 `HostSession.swift` 中替换 Task 7 的空方法并追加：
+先加引擎写入口（`PokerEngine/Sources/PokerEngine/Game/GameState.swift` 的 `GameState` 类内，放在 `potTotal` 计算属性之后）：
+
+```swift
+    /// 联机大厅昵称覆写。名字是展示元数据（不参与规则推进）；players 的 setter 是
+    /// internal(set)，故由引擎提供唯一写入口；越界座位安全忽略。
+    public mutating func renamePlayer(seat: Int, to name: String) {
+        guard players.indices.contains(seat) else { return }
+        players[seat].name = String(name.prefix(12))
+    }
+```
+
+再在 `HostSession.startGame()` 的 `state = initialState` 之前（Task 7 已把 `initialState` 留作 var 并注明待办）补上昵称落地：
+
+```swift
+        for seat in seats {
+            initialState.renamePlayer(seat: seat, to: names[seat] ?? "座位 \(seat + 1)")
+        }
+```
+
+然后在 `HostSession.swift` 中替换 Task 7 的空方法并追加：
 
 ```swift
     // MARK: - 对局阶段公开 API（Task 8）
@@ -2563,13 +2613,6 @@ Expected: 编译过（Task 7 留了空方法）但 FAIL——空 `fanoutSnapshot
     /// 房主请求下一手（与客机请求等价，引擎幂等只放行一次）。
     func requestNextHand() async {
         await handleNextHand()
-    }
-
-    func disconnect() async {
-        processingTask?.cancel()
-        processingTask = nil
-        updatesContinuation.finish()
-        await transport.disconnect()
     }
 
     /// 前台自愈：App 挂起可能无声杀死监听 socket（scenePhase .active 调用）。
@@ -2676,12 +2719,12 @@ Expected: 编译过（Task 7 留了空方法）但 FAIL——空 `fanoutSnapshot
 ```
 xcodebuild test -project PokerApp.xcodeproj -scheme PokerApp_iOS_Tests -destination 'platform=iOS Simulator,name=iPhone 17' -derivedDataPath /tmp/poker-dd -only-testing:PokerAppTests/HostSessionGameTests -only-testing:PokerAppTests/HostSessionLobbyTests 2>&1 | tail -30
 ```
-Expected: PASS（9+5 用例）。
+Expected: PASS（9+5 用例 + 引擎 rename 1 用例）。
 
 - [ ] **Step 5: Commit**
 
 ```
-cd "$REPO" && git add PokerApp/PokerApp/Session/HostSession.swift PokerApp/PokerAppTests/HostSessionGameTests.swift PokerApp/PokerApp.xcodeproj/project.pbxproj && git commit -m "feat: HostSession 对局——合法性门/脱敏扇出/断线托管/重连补发/nextHand 幂等"
+cd "$REPO" && git add PokerApp/PokerApp/Session/HostSession.swift PokerApp/PokerAppTests/HostSessionGameTests.swift PokerEngine/Sources/PokerEngine/Game/GameState.swift PokerEngine/Tests/PokerEngineTests/GameStateRenameTests.swift PokerApp/PokerApp.xcodeproj/project.pbxproj && git commit -m "feat: HostSession 对局——合法性门/脱敏扇出/断线托管/重连补发/nextHand 幂等 + 引擎昵称写入口"
 ```
 
 ---

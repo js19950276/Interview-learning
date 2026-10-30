@@ -120,3 +120,8 @@ final class GameViewModel: ObservableObject {
         }
     }
 }
+
+// 联机改造（spec §10.1）：本地单机 VM 满足统一驱动面；既有成员与行为零变化。
+extension GameViewModel: GamePresenting {
+    var surface: (any TableSurface)? { state }
+}
