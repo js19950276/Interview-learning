@@ -1,0 +1,7 @@
+.build/
+DerivedData/
+*.xcodeproj/xcuserdata/
+.xcode.env
+.DS_Store
+node_modules/
+Apps/Bridge/ClaudeHost/package-lock.json

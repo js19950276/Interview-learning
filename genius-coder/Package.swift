@@ -21,6 +21,10 @@ let package = Package(
         .target(
             name: "BridgeCore",
             dependencies: ["PhoneProtocol"],
+            resources: [
+                .copy("Resources/ClaudeHost.mjs"),
+                .copy("Resources/ClaudeHost.package.json"),
+            ],
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),
         .executableTarget(

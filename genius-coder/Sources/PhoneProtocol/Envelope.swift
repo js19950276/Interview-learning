@@ -52,9 +52,8 @@ public struct WireEnvelope: Codable, Equatable, Sendable {
     }
 
     public static func response(id: String, ok: Bool, body: JSONValue? = nil) -> WireEnvelope {
-        WireEnvelope(type: .res, id: id, ok: ok, body: body)
+        WireEnvelope(type: .res, id: id, body: body, ok: ok)
     }
-
     public static func event(method: String, body: JSONValue?) -> WireEnvelope {
         WireEnvelope(type: .event, method: method, body: body)
     }

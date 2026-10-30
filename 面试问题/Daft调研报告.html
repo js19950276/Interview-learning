@@ -1,0 +1,1717 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Daft 开源数据处理框架调研报告</title>
+<style>:root {
+  color-scheme: light dark;
+  background-color: var(
+    --background,
+    var(--color-background-primary, light-dark(rgb(255 255 255), rgb(24 24 24)))
+  ) !important;
+
+  /* Agent-facing contract; keep in sync with SKILL.md. */
+  --background: var(
+    --color-background-primary,
+    light-dark(rgb(255 255 255), rgb(24 24 24))
+  );
+  --foreground: var(
+    --color-text-primary,
+    light-dark(rgb(26 28 31), rgb(255 255 255))
+  );
+  --card: var(--gen-ui-card, light-dark(#ffffff, #2b2b2b));
+  --card-border: var(--gen-ui-card-border, var(--border));
+  --card-foreground: var(
+    --color-text-primary,
+    light-dark(rgb(26 28 31), rgb(255 255 255))
+  );
+  --popover: var(
+    --color-background-secondary,
+    light-dark(rgb(255 255 255), rgb(45 45 45))
+  );
+  --popover-foreground: var(
+    --color-text-primary,
+    light-dark(rgb(26 28 31), rgb(255 255 255))
+  );
+  --primary: var(
+    --gen-ui-primary, light-dark(#000000, #ffffff)
+  );
+  --content-accent: var(
+    --color-text-info,
+    light-dark(rgb(51 156 255), rgb(131 195 255))
+  );
+  --primary-foreground: var(
+    --gen-ui-primary-foreground,
+    light-dark(rgb(255 255 255), rgb(0 0 0))
+  );
+  --secondary: var(
+    --gen-ui-secondary,
+    light-dark(rgb(230 230 230), rgb(54 54 54))
+  );
+  --secondary-foreground: var(
+    --color-text-primary,
+    light-dark(rgb(26 28 31), rgb(255 255 255))
+  );
+  --muted: color-mix(in srgb, var(--foreground) 10%, transparent);
+  --muted-foreground: var(
+    --color-text-secondary,
+    light-dark(rgb(26 28 31 / 49.4%), rgb(255 255 255 / 49.8%))
+  );
+  --accent: var(
+    --color-background-info,
+    light-dark(rgb(229 242 255), rgb(13 39 63))
+  );
+  --accent-foreground: var(
+    --color-text-info,
+    light-dark(rgb(51 156 255), rgb(131 195 255))
+  );
+  --destructive: var(
+    --color-text-warning,
+    light-dark(rgb(226 85 7), rgb(255 133 73))
+  );
+  --border: var(
+    --color-border-secondary,
+    light-dark(rgb(26 28 31 / 8%), rgb(255 255 255 / 8.2%))
+  );
+  --input: var(
+    --color-border-primary,
+    light-dark(
+      rgb(26 28 31 / 11.8%),
+      color-mix(in oklab, rgb(0 0 0) 10%, transparent)
+    )
+  );
+  --ring: var(
+    --gen-ui-input-border-focused,
+    light-dark(rgb(51 156 255), rgb(131 195 255 / 76%))
+  );
+  --font-size-base: var(--font-text-md-size, 14px);
+  --blue: light-dark(rgb(51 156 255), rgb(51 156 255));
+  --orange: light-dark(rgb(226 85 7), rgb(251 106 34));
+  --green: light-dark(rgb(0 162 64), rgb(64 201 119));
+  --red: light-dark(rgb(224 46 42), rgb(255 103 100));
+  --purple: light-dark(rgb(146 79 247), rgb(173 123 249));
+  --yellow: light-dark(rgb(255 195 0), rgb(255 210 64));
+  --viz-series-1: var(--content-accent);
+  --viz-series-2: light-dark(rgb(243 136 59), rgb(245 154 86));
+  --viz-series-3: light-dark(rgb(93 201 119), rgb(116 213 139));
+  --viz-series-4: light-dark(rgb(235 119 177), rgb(240 143 192));
+  --viz-series-5: light-dark(rgb(155 121 236), rgb(170 145 239));
+  --viz-series-6: light-dark(rgb(58 185 177), rgb(90 203 194));
+
+  /* Internal implementation variables; not part of the agent contract. */
+  --font-sans: -apple-system, system-ui, "Segoe UI", sans-serif;
+  --font-mono:
+    ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono",
+    monospace;
+  --font-size-normal: var(--font-size-base);
+  --font-size-tooltip: calc(var(--font-size-base) - 1px);
+  --font-size-small: var(--font-text-sm-size, calc(var(--font-size-base) - 2px));
+  --font-size-h1: var(--font-heading-md-size, calc(var(--font-size-base) + 4px));
+  --font-size-h2: var(--font-heading-sm-size, calc(var(--font-size-base) + 2px));
+  --font-size-h3: var(--font-heading-xs-size, var(--font-size-base));
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --icon-size: 16px;
+  --line-height-normal: calc(var(--font-size-normal) * 1.5);
+  --line-height-tooltip: calc(var(--font-size-tooltip) * 1.4285714286);
+  --line-height-small: calc(var(--font-size-small) + 4px);
+  --corner-shape: round;
+  /* 旧比例圆角会产生非标准档位；独立 token 与 App 层级保持一致。 */
+  --radius-sm: var(--border-radius-sm, 4px);
+  --radius-md: var(--border-radius-md, 6px);
+  --radius-lg: var(--border-radius-lg, 8px);
+  --radius-xl: var(--border-radius-xl, 12px);
+  --radius-2xl: var(--radius-xl);
+  --control-radius: var(--radius-lg);
+  --input-bg: var(--gen-ui-input, light-dark(#ffffff, #2b2b2b));
+  --input-bg-focused: var(--gen-ui-input-focused, var(--input-bg));
+  --input-border: var(--gen-ui-input-border, var(--input));
+  --input-border-hover: var(--gen-ui-input-border-hover, var(--border));
+  /* 独立导出没有宿主 focused token，仍需保留可辨认的键盘焦点。 */
+  --input-border-focused: var(--gen-ui-input-border-focused, var(--ring));
+  --placeholder: var(--gen-ui-foreground-subtlest, var(--muted-foreground));
+  --hover: var(--gen-ui-hover, var(--muted));
+  --selected: var(--gen-ui-selected, var(--muted));
+  --radius-full: 9999px;
+  --shadow-sm: 0 1px 2px -1px rgb(0 0 0 / 8%);
+  --checkmark-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 17 17'%3E%3Cpath d='M12.8961 3.64101C13.1297 3.41418 13.4984 3.37523 13.7779 3.56581C14.0571 3.75635 14.1554 4.11331 14.0299 4.41347L13.9615 4.53847L7.71151 13.7045C7.59411 13.8767 7.4063 13.9877 7.19881 14.0072C6.99136 14.0267 6.78564 13.9533 6.63826 13.806L2.88826 10.056L2.79842 9.9457C2.6192 9.67407 2.64927 9.30496 2.88826 9.06581C3.12738 8.82669 3.49647 8.79676 3.76815 8.97597L3.8785 9.06581L7.03084 12.2182L12.8053 3.74941L12.8961 3.64101Z'/%3E%3C/svg%3E");
+
+  /* Legacy aliases; not part of the current agent contract. */
+  --viz-bg: transparent;
+  --viz-panel: var(--card);
+  --viz-border: var(--border);
+  --viz-text: var(--foreground);
+  --viz-muted: var(--muted-foreground);
+  --viz-accent: var(--content-accent);
+  --viz-accent-text: var(--primary-foreground);
+  --viz-accent-bg: var(--accent);
+  --viz-font-size: var(--font-size-base);
+  --viz-warning: var(--destructive);
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html > body {
+  /* Preserve MCP aliases for older inline renderers without creating :root cycles. */
+  --color-background-primary: var(
+    --background,
+    light-dark(rgb(255 255 255), rgb(24 24 24))
+  );
+  --color-text-primary: var(
+    --foreground,
+    light-dark(rgb(26 28 31), rgb(255 255 255))
+  );
+  --color-border-secondary: var(
+    --border,
+    light-dark(rgb(26 28 31 / 8%), rgb(255 255 255 / 8.2%))
+  );
+
+  margin: 0;
+  padding: var(--visualize-paint-gutter, 0px);
+  color: var(--foreground);
+  background: transparent !important;
+  font-family: var(--font-sans) !important;
+  font-size: var(--font-size-normal);
+  font-weight: var(--font-weight-normal);
+  line-height: var(--line-height-normal);
+}
+
+.cursor-interaction {
+  cursor: var(--cursor-interaction, pointer);
+}
+
+a {
+  color: color-mix(in srgb, var(--viz-accent) 80%, var(--viz-text) 20%);
+  cursor: var(--cursor-interaction, pointer);
+  font-weight: var(--font-weight-medium, 500);
+  text-decoration: none;
+  text-underline-offset: 2px;
+}
+
+a:is(:hover, :focus-visible) {
+  text-decoration-line: underline;
+  text-decoration-style: dashed;
+  text-decoration-thickness: 0.5px;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+p {
+  margin-block: 0;
+}
+
+h1 {
+  font-size: var(--font-size-h1);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.25;
+}
+
+h2 {
+  font-size: var(--font-size-h2);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.25;
+}
+
+h3,
+h4,
+h5,
+h6 {
+  font-size: var(--font-size-h3);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.3;
+}
+
+b,
+strong,
+th {
+  font-weight: var(--font-weight-medium);
+}
+
+code:not(pre code) {
+  display: inline;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  corner-shape: var(--corner-shape);
+  background: var(--muted);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-small);
+  overflow-wrap: anywhere;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+  word-break: break-word;
+}
+
+.table-responsive {
+  width: 100%;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  color: var(--foreground);
+  font: inherit;
+  text-align: start;
+}
+
+.table :is(th, td) {
+  padding-block: 10px;
+  padding-inline: 0 24px;
+  overflow-wrap: anywhere;
+  border-bottom: 1px solid var(--border);
+  text-align: start;
+  vertical-align: top;
+}
+
+.table-responsive > .table :is(th, td) {
+  overflow-wrap: break-word;
+}
+
+.table :is(th, td):last-child {
+  padding-inline-end: 0;
+}
+
+.table :is(caption, thead th) {
+  font-weight: 600;
+}
+
+.table thead th {
+  padding-block: 8px;
+  border-bottom-color: color-mix(in srgb, var(--foreground) 16%, transparent);
+}
+
+.table tbody tr:last-child :is(th, td) {
+  border-bottom: 0;
+}
+
+.table.table-sm :is(th, td) {
+  padding-block: 6px;
+}
+
+.table.table-sm :is(th, td):not(:last-child) {
+  padding-inline-end: 16px;
+}
+
+.table :is(.text-end, [align="right"]) {
+  text-align: end;
+  font-variant-numeric: tabular-nums;
+}
+
+.table :is(.text-center, [align="center"]) {
+  text-align: center;
+}
+
+.table .text-nowrap {
+  white-space: nowrap;
+}
+
+#widget {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  padding: 0;
+  background: transparent !important;
+}
+
+.card {
+  min-width: 0;
+  padding: 12px;
+  overflow: hidden;
+  overflow-wrap: break-word;
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-xl);
+  corner-shape: var(--corner-shape);
+  color: var(--card-foreground);
+  background: var(--card);
+}
+
+.widget {
+  min-width: 0;
+  overflow: hidden;
+  border: 0;
+  border-radius: var(--radius-xl);
+  corner-shape: var(--corner-shape);
+  box-shadow: 0 0 0 0.5px var(--border-strong, var(--border));
+  color: var(--foreground);
+  background: var(--background);
+}
+
+/* 只计算可见圆角容器，任意布局 wrapper 不增加层级。 */
+:is(.card, .widget) {
+  --control-radius: var(--radius-lg);
+}
+:is(.card, .widget) :is(.card, .widget) {
+  border-radius: var(--radius-lg);
+  --control-radius: var(--radius-md);
+}
+:is(.card, .widget) :is(.card, .widget) :is(.card, .widget) {
+  border-radius: var(--radius-md);
+  --control-radius: var(--radius-sm);
+}
+:is(.card, .widget) :is(.card, .widget) :is(.card, .widget) :is(.card, .widget) {
+  border-radius: var(--radius-sm);
+}
+
+#widget > :not(.card, .widget, .progress) {
+  width: 100% !important;
+  max-width: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.tooltip {
+  position: fixed;
+  z-index: 50;
+  top: 0;
+  left: 0;
+  width: max-content;
+  max-width: min(
+    20rem,
+    var(--tooltip-available-width, calc(100vw - 10px)),
+    calc(100vw - 10px)
+  );
+  max-height: min(
+    var(--tooltip-available-height, calc(100vh - 10px)),
+    calc(100vh - 10px)
+  );
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  corner-shape: var(--corner-shape);
+  color: var(--popover-foreground);
+  background: var(--popover);
+  box-shadow: none;
+  font-size: var(--font-size-tooltip);
+  line-height: var(--line-height-tooltip);
+  overflow-wrap: break-word;
+  white-space: normal;
+  pointer-events: none;
+  user-select: none;
+}
+
+.viz-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(max(180px, 24%), 1fr));
+  gap: 10px;
+}
+
+.viz-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.viz-stat-value {
+  font-size: var(--font-size-h2);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.25;
+}
+
+.viz-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+hr {
+  width: 100%;
+  height: 1px;
+  margin-block: 6px;
+  border: 0;
+  background: var(--border);
+}
+
+.nav {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 4px;
+}
+
+.progress {
+  display: flex;
+  height: 8px;
+  margin-block: calc((var(--line-height-normal, 1.5em) - 8px) / 2);
+  overflow: hidden;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: var(--muted);
+}
+
+.progress-bar:only-child {
+  border-radius: var(--radius-full);
+}
+
+.progress-bar {
+  height: 100%;
+  flex-shrink: 0;
+  border: 0;
+  background: var(--viz-series-1);
+}
+
+.viz-badge {
+  padding: 3px 8px;
+  border-radius: var(--radius-full);
+  color: var(--accent-foreground);
+  background: var(--accent);
+  font-weight: var(--font-weight-medium);
+}
+
+small,
+.text-small,
+.viz-badge {
+  font-size: var(--font-size-small);
+  line-height: var(--line-height-small);
+}
+
+.text-muted {
+  color: var(--muted-foreground);
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.viz-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.viz-controls > .form-label {
+  display: grid;
+  min-width: min(100%, 260px);
+  flex: 1 1 280px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 2px 12px;
+  margin-bottom: 0;
+}
+
+.viz-controls > .form-label > :is(.form-control, .form-range, .form-select) {
+  grid-column: 1 / -1;
+}
+
+.btn,
+.nav-link,
+.form-check-input,
+.form-control,
+.form-range,
+.form-select {
+  font-family: var(--font-sans);
+  font-size: var(--font-size-normal);
+  font-weight: var(--font-weight-normal);
+  line-height: var(--line-height-normal);
+}
+
+.btn,
+.nav-link {
+  appearance: button;
+  display: inline-flex;
+  inline-size: fit-content;
+  max-inline-size: 100%;
+  min-height: 28px;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  margin: 0;
+  padding: 0 8px;
+  -webkit-app-region: no-drag;
+  border: 1px solid var(--gen-ui-border, var(--input));
+  border-radius: var(--control-radius);
+  corner-shape: var(--corner-shape);
+  color: var(--foreground);
+  background: transparent;
+  cursor: var(--cursor-interaction, pointer);
+  text-align: center;
+  text-decoration: none;
+  white-space: nowrap;
+  user-select: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+.btn:is(.btn-block, .viz-tile) {
+  inline-size: 100%;
+}
+
+.btn.viz-tile {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+a.btn {
+  cursor: var(--cursor-interaction, pointer);
+  text-decoration: none;
+}
+
+.btn:not(:disabled):hover,
+.nav-link:not(:disabled):not([aria-disabled="true"]):hover {
+  border-color: var(--gen-ui-border-hover, var(--border));
+  background: color-mix(in srgb, var(--input-bg) 50%, transparent);
+}
+
+.btn-primary {
+  border-color: transparent;
+  color: var(--primary-foreground);
+  background: var(--primary);
+  background-clip: padding-box;
+}
+
+.btn-primary .text-muted {
+  color: color-mix(in srgb, var(--primary-foreground) 50%, transparent);
+}
+
+.btn-primary:not(:disabled):hover {
+  border-color: transparent;
+  background: color-mix(in srgb, var(--primary) 80%, transparent);
+  background-clip: padding-box;
+}
+
+.btn-ghost {
+  border-color: transparent;
+  color: var(--foreground);
+  background: transparent;
+}
+
+.btn-ghost:not(:disabled):hover {
+  border-color: transparent;
+  color: var(--foreground);
+  background: var(--hover);
+}
+
+.nav-pills .nav-link {
+  min-width: 0;
+  border-color: transparent;
+  color: var(--muted-foreground);
+  background: transparent;
+}
+
+.nav-justified .nav-link {
+  flex: 1 1 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.nav-pills .nav-link.active {
+  color: var(--foreground);
+  background: var(--muted);
+}
+
+.btn-secondary {
+  border-color: transparent;
+  background: var(--secondary);
+}
+.btn-secondary:not(:disabled):hover {
+  border-color: transparent;
+  background: color-mix(in srgb, var(--secondary) 80%, transparent);
+}
+/* 固定高度叠加正文行高会让放大字号溢出；变体仅约束最小高度，保留内容增长。 */
+.btn:is(.btn-xs, .btn-sm, .btn-lg) {
+  line-height: 1;
+  padding-block: 2px;
+}
+.btn-xs {
+  min-height: 20px;
+}
+.btn-sm {
+  min-height: 24px;
+}
+.btn-lg {
+  min-height: 32px;
+  padding-inline: 10px;
+}
+.btn svg.lucide {
+  --icon-size: 14px;
+}
+.btn-xs svg.lucide {
+  --icon-size: 10px;
+}
+.btn-sm svg.lucide {
+  --icon-size: 12px;
+}
+.btn-lg svg.lucide {
+  --icon-size: 16px;
+}
+
+/* Shared preview chrome; product styles stay inside each variant. */
+.viz-dotted-background {
+  background-image: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--foreground) 14%, transparent) 0.8px,
+    transparent 0.8px
+  );
+  background-position: center;
+  background-size: 16px 16px;
+}
+
+.viz-carousel {
+  position: relative;
+  min-width: 0;
+}
+
+.viz-carousel:has(> .viz-carousel-controls) {
+  min-height: calc(60px + var(--viz-carousel-picker-height, 0px));
+  padding-bottom: 60px;
+}
+
+.viz-carousel > [data-variant][hidden] {
+  display: none !important;
+}
+
+.viz-carousel > [data-variant] {
+  isolation: isolate;
+}
+
+.viz-carousel-controls {
+  --viz-carousel-hover: light-dark(
+    color-mix(in srgb, var(--foreground) 5.4%, transparent),
+    color-mix(in srgb, var(--foreground) 7.8%, transparent)
+  );
+  position: absolute;
+  z-index: 2;
+  bottom: 8px;
+  left: 50%;
+  display: flex;
+  width: max-content;
+  /* Leave room for the host's design-controls launcher at the trailing edge. */
+  max-width: calc(100% - 96px);
+  align-items: center;
+  gap: 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  color: var(--foreground);
+  background: var(--background);
+  font-family: var(--font-sans);
+  /* Match the settings dropdown chrome independently of the content font size. */
+  font-size: 13px;
+  font-weight: var(--font-weight-normal);
+  line-height: 18px;
+  transform: translateX(-50%);
+  user-select: none;
+}
+
+.viz-carousel-controls button,
+.viz-carousel-picker > summary {
+  display: flex;
+  min-height: 30px;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 0 6px;
+  -webkit-app-region: no-drag;
+  border: 0;
+  border-radius: 14px;
+  color: inherit;
+  background: transparent;
+  font: inherit;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.viz-carousel-controls > button,
+.viz-carousel-picker > summary {
+  position: relative;
+  isolation: isolate;
+}
+
+.viz-carousel-controls > button {
+  --icon-size: 16px;
+  width: 30px;
+  padding: 0;
+}
+
+.viz-carousel-picker > summary {
+  padding-inline: 12px;
+}
+
+.viz-carousel-controls .viz-carousel-caret {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  margin: 0;
+  color: inherit;
+  transform: rotate(180deg);
+}
+
+.viz-carousel-controls > button > svg,
+.viz-carousel-controls .viz-carousel-caret,
+.viz-carousel-count {
+  opacity: 0.5;
+}
+
+.viz-carousel-controls > button::before,
+.viz-carousel-picker > summary::before {
+  position: absolute;
+  z-index: -1;
+  inset: 3px;
+  border-radius: 12px;
+  content: "";
+  pointer-events: none;
+}
+
+.viz-carousel-controls > button:hover::before,
+.viz-carousel-picker > summary:hover::before {
+  background: var(--viz-carousel-hover);
+}
+
+.viz-carousel-controls > button,
+.viz-carousel-controls [data-lucide],
+.viz-carousel-controls .lucide {
+  flex-shrink: 0;
+}
+
+.viz-carousel-picker {
+  min-width: 0;
+}
+
+.viz-carousel-picker > summary {
+  min-width: 0;
+  list-style: none;
+}
+
+.viz-carousel-picker > summary::-webkit-details-marker {
+  display: none;
+}
+
+.viz-carousel-count {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.viz-carousel-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.viz-carousel-options {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 4px);
+  left: 0;
+  display: flex;
+  max-height: 240px;
+  flex-direction: column;
+  gap: 2px;
+  overflow: auto;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--background);
+  box-shadow: 0 4px 12px light-dark(rgb(0 0 0 / 6%), rgb(0 0 0 / 25%));
+}
+
+.viz-carousel-options > button {
+  width: 100%;
+  min-height: 28px;
+  justify-content: flex-start;
+  padding: 4px 8px;
+  font-size: var(--font-size-small);
+  text-align: start;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.viz-carousel-options > [aria-current="true"],
+.viz-carousel-options > button:hover {
+  background: var(--viz-carousel-hover);
+}
+
+.btn:disabled,
+.nav-link:disabled,
+.nav-link[aria-disabled="true"] {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+[data-lucide] {
+  stroke-width: 1.6;
+}
+
+.form-label {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--foreground);
+}
+
+.form-control {
+  display: block;
+  width: 100%;
+  min-height: 36px;
+  padding: 0 8px;
+  outline: none;
+  border: 1px solid var(--input-border);
+  border-radius: var(--control-radius);
+  corner-shape: var(--corner-shape);
+  color: var(--foreground);
+  background: var(--input-bg);
+}
+
+.form-control::placeholder {
+  color: var(--placeholder);
+}
+
+.form-control[type="file"] {
+  padding: 0;
+  overflow: hidden;
+  cursor: var(--cursor-interaction, pointer);
+}
+
+.form-control[type="file"]::file-selector-button {
+  min-height: 26px;
+  margin-right: 8px;
+  padding: 0 8px;
+  border: 0;
+  border-right: 1px solid var(--input);
+  color: var(--secondary-foreground);
+  background: var(--input-bg);
+  cursor: inherit;
+  font: inherit;
+}
+
+.form-control[type="file"]:not(:disabled):hover::file-selector-button {
+  background: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.form-control-color[type="color"] {
+  width: 40px;
+  height: 28px;
+  padding: 3px;
+  cursor: var(--cursor-interaction, pointer);
+}
+
+.form-control-color[type="color"]::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.form-control-color[type="color"]::-webkit-color-swatch {
+  border: 0;
+  border-radius: calc(var(--radius-lg) - 4px);
+  corner-shape: var(--corner-shape);
+}
+
+textarea.form-control {
+  height: auto;
+  min-height: 64px;
+  padding: 8px;
+  resize: vertical;
+}
+
+.form-control:focus-visible {
+  border-color: var(--input-border-focused);
+  background-color: var(--input-bg-focused);
+}
+
+.form-control:disabled,
+.form-select:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.form-select {
+  appearance: none;
+  display: block;
+  width: 100%;
+  min-height: 36px;
+  margin: 0;
+  padding: 0 32px 0 8px;
+  outline: none;
+  border: 1px solid var(--input-border);
+  border-radius: var(--control-radius);
+  corner-shape: var(--corner-shape);
+  color: var(--foreground);
+  background-color: var(--input-bg);
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--muted-foreground) 50%),
+    linear-gradient(135deg, var(--muted-foreground) 50%, transparent 50%);
+  background-position:
+    calc(100% - 14px) 50%,
+    calc(100% - 10px) 50%;
+  background-repeat: no-repeat;
+  background-size: 4px 4px;
+  cursor: var(--cursor-interaction, default);
+}
+
+.form-select:not(:disabled):not(:focus-visible):hover {
+  border-color: var(--input-border-hover);
+}
+
+.form-select:focus-visible {
+  border-color: var(--input-border-focused);
+  background-color: var(--input-bg-focused);
+}
+
+.form-control:not(:disabled):not(:focus-visible):hover {
+  border-color: var(--input-border-hover);
+}
+.form-control.form-control-sm, .form-select.form-select-sm {
+  min-height: 28px;
+}
+.form-control.form-control-xs, .form-select.form-select-xs {
+  min-height: 24px;
+}
+
+.form-check {
+  display: flex;
+  min-height: 20px;
+  align-items: center;
+  gap: 6px;
+}
+
+.form-check-input {
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  margin: 0;
+  border: 1px solid var(--input-border);
+  color: var(--primary-foreground);
+  background-color: transparent;
+  cursor: var(--cursor-interaction, default);
+  transition:
+    background-color 150ms,
+    border-color 150ms,
+    box-shadow 150ms;
+}
+
+.form-check:not(.form-switch) .form-check-input[type="checkbox"] {
+  border-color: var(--input-border);
+  border-radius: var(--radius-sm);
+  corner-shape: var(--corner-shape);
+  background-color: var(--input-bg);
+  box-shadow: none;
+}
+
+.form-check:not(.form-switch)
+  .form-check-input:not(:disabled):not(:checked):not(:indeterminate):hover {
+  /* 半选不是未选中；避免 hover 覆盖 primary 背景导致横线失去对比。 */
+  background-color: var(--card);
+}
+
+.form-check:not(.form-switch) .form-check-input[type="checkbox"]:checked {
+  border-color: var(--primary);
+  background-color: var(--primary);
+}
+
+.form-check:not(.form-switch)
+  .form-check-input[type="checkbox"]:checked::before {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: var(--primary-foreground);
+  content: "";
+  mask: var(--checkmark-image) center / 12px 12px no-repeat;
+}
+
+.form-check-input[type="radio"] {
+  width: 16px;
+  height: 16px;
+  border-radius: var(--radius-full);
+}
+
+.form-check-input[type="radio"]:checked {
+  border: 2px solid var(--primary);
+  background:
+    radial-gradient(circle, var(--primary-foreground) 0 2.5px, transparent 3px),
+    var(--primary);
+}
+
+.form-check:not(.form-switch) .form-check-input:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.form-check:not(.form-switch) .form-check-input:disabled {
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.form-check:not(.form-switch) .form-check-input:disabled + .form-check-label {
+  cursor: not-allowed;
+}
+
+.form-switch .form-check-input:disabled,
+.form-switch .form-check-input:disabled + .form-check-label {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.form-check-label {
+  color: var(--foreground);
+  cursor: var(--cursor-interaction, default);
+}
+
+.form-switch .form-check-input {
+  position: relative;
+  width: 32px;
+  height: 18px;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: color-mix(in srgb, var(--primary) 30%, transparent);
+  box-shadow: none;
+  transition: background-color 200ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+.form-switch .form-check-input::before {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 16px;
+  height: 16px;
+  box-sizing: border-box;
+  border: 1px solid var(--primary-foreground);
+  border-radius: var(--radius-full);
+  background: var(--primary-foreground);
+  box-shadow: none;
+  content: "";
+  transform: translate(1px, -50%);
+  transition: transform 200ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+.form-switch .form-check-input:checked {
+  background: var(--primary);
+}
+
+.form-switch .form-check-input:checked::before {
+  transform: translate(15px, -50%);
+}
+
+.form-switch .form-check-input:focus-visible {
+  box-shadow: 0 0 0 2px var(--ring);
+}
+
+.form-check:not(.form-switch) .form-check-input[type="checkbox"]:indeterminate {
+  border-color: var(--primary);
+  background: var(--primary);
+}
+.form-check:not(.form-switch) .form-check-input[type="checkbox"]:indeterminate::before {
+  display: block;
+  width: 8px;
+  height: 2px;
+  margin: 6px 3px;
+  background: var(--primary-foreground);
+  content: "";
+}
+.form-check-input:disabled {
+  opacity: 0.5;
+}
+
+.form-range {
+  appearance: none;
+  display: block;
+  width: 100%;
+  height: 28px;
+  flex: 1;
+  margin: 0;
+  padding: 0;
+  outline: none;
+  border: 0;
+  accent-color: var(--primary);
+  background: linear-gradient(
+      color-mix(in srgb, var(--foreground) 7%, transparent),
+      color-mix(in srgb, var(--foreground) 7%, transparent)
+    )
+    center / 100% 2px no-repeat;
+}
+
+.form-range::-webkit-slider-runnable-track {
+  height: 28px;
+  background: transparent;
+}
+
+.form-range::-webkit-slider-thumb {
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  margin-top: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: var(--primary-foreground);
+}
+
+.form-range:focus-visible::-webkit-slider-thumb {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-range::-moz-range-track {
+  height: 28px;
+  background: transparent;
+}
+
+.form-range::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: var(--primary-foreground);
+}
+
+.form-range:focus-visible::-moz-range-thumb {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-range:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.btn:not(.btn-primary, .viz-tile):is(
+  [aria-pressed="true"],
+  [aria-selected="true"],
+  .is-selected
+) {
+  border-color: var(--gen-ui-border, var(--border));
+  color: var(--foreground);
+  background: var(--selected);
+}
+
+.btn.viz-tile:is([aria-pressed="true"], [aria-selected="true"], .is-selected) {
+  border-color: var(--primary);
+  box-shadow: inset 0 0 0 1px var(--primary);
+}
+
+.btn:focus-visible,
+.nav-link:focus-visible,
+.viz-carousel-controls :is(button, summary):focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+@media (pointer: coarse) {
+  .viz-carousel:has(> .viz-carousel-controls) {
+    min-height: calc(76px + var(--viz-carousel-picker-height, 0px));
+    padding-bottom: 76px;
+  }
+
+  .btn,
+  .nav-link,
+  .viz-carousel-controls button,
+  .viz-carousel-picker > summary,
+  .form-control,
+  .form-select,
+  .form-control.form-control-sm,
+  .form-control.form-control-xs,
+  .form-select.form-select-sm,
+  .form-select.form-select-xs,
+  .btn.btn-xs,
+  .btn.btn-sm,
+  .btn.btn-lg {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  /* Keep small-screen WebKit from zooming when a text field receives focus. */
+  .form-control,
+  .form-select {
+    font-size: max(16px, var(--font-size-normal));
+  }
+
+  .form-control[type="file"]::file-selector-button {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .form-control-color[type="color"] {
+    width: 44px;
+    height: 44px;
+  }
+
+  .form-control:is(
+    [type="date"],
+    [type="datetime-local"],
+    [type="month"],
+    [type="time"],
+    [type="week"]
+  ) {
+    min-width: 0;
+    max-width: 100%;
+    padding-block: 8px;
+  }
+
+  .form-check {
+    min-height: 44px;
+    padding-inline: 15px;
+  }
+
+  .form-check-input {
+    position: relative;
+  }
+
+  .form-check-input::after {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 44px;
+    height: 44px;
+    content: "";
+    transform: translate(-50%, -50%);
+  }
+
+  .form-check-label {
+    display: inline-flex;
+    min-width: 44px;
+    min-height: 44px;
+    align-items: center;
+  }
+
+  .form-range {
+    height: 44px;
+    touch-action: pan-y;
+  }
+
+  .form-range::-webkit-slider-runnable-track {
+    height: 44px;
+  }
+
+  .form-range::-moz-range-track {
+    height: 44px;
+  }
+
+  .form-range::-webkit-slider-thumb {
+    margin-top: 12px;
+  }
+}
+
+svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+#widget > svg {
+  width: 100%;
+}
+
+/* Model-authored chart rules can otherwise stretch icons after these styles load. */
+svg.lucide {
+  display: block;
+  width: var(--icon-size) !important;
+  height: var(--icon-size) !important;
+  flex: none;
+  margin: 0 !important;
+  stroke-width: 1.6;
+}
+
+.text-warning,
+.text-destructive {
+  color: var(--destructive);
+}
+
+html > body { margin: 0; padding: 2rem 1rem 5rem; }
+#daft-report { max-width: 900px; margin: 0 auto; }
+</style>
+</head>
+<body>
+<div id="daft-report">
+<style>
+  #daft-report h2 { margin-top: 2.4em; }
+  #daft-report h3 { margin-top: 1.4em; }
+  #daft-report pre {
+    background: var(--muted);
+    color: var(--foreground);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 16px;
+    overflow-x: auto;
+    margin: 10px 0 4px;
+    line-height: 1.55;
+  }
+  #daft-report pre code { background: transparent; padding: 0; border: 0; font-size: 13px; }
+  #daft-report .cmt { color: var(--muted-foreground); }
+  #daft-report .daft-timeline { list-style: none; padding: 0; margin: 0; }
+  #daft-report .daft-timeline li {
+    display: grid;
+    grid-template-columns: 104px 1fr;
+    gap: 14px;
+    padding: 9px 0;
+    border-top: 1px solid var(--border);
+  }
+  #daft-report .daft-timeline li:first-child { border-top: 0; }
+  #daft-report .daft-timeline .when { font-weight: 500; }
+  #daft-report .arch-layer { display: grid; grid-template-columns: 104px 1fr; gap: 12px; align-items: center; }
+  #daft-report .arch-label { text-align: right; color: var(--muted-foreground); }
+  #daft-report .arch-box {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 14px;
+  }
+  #daft-report .arch-arrow { text-align: center; color: var(--muted-foreground); padding: 2px 0; }
+  #daft-report .runner-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  #daft-report .runner-box { border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; }
+  #daft-report .runner-box b { display: flex; align-items: center; gap: 7px; font-weight: 500; }
+  #daft-report .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; flex: none; }
+  #daft-report .scene-yes li::marker { color: var(--green); content: "✔  "; }
+  #daft-report .scene-warn li::marker { color: var(--yellow); content: "▲  "; }
+  @media (max-width: 620px) {
+    #daft-report .daft-timeline li { grid-template-columns: 1fr; gap: 2px; }
+    #daft-report .arch-layer { grid-template-columns: 1fr; gap: 4px; }
+    #daft-report .arch-label { text-align: left; }
+    #daft-report .runner-grid { grid-template-columns: 1fr; }
+  }
+</style>
+
+<h1>Daft：面向 AI 的多模态数据引擎</h1>
+<p class="text-small text-muted">开源调研报告 · 2026-10-29 · 信息来源：GitHub 仓库、docs.daft.ai 官方文档、daft.ai 官网、Eventual 官方博客与社区资料</p>
+
+<p><strong>一句话定位：</strong>Daft 是一个用 Rust 编写内核、提供 Python DataFrame 与 SQL 双接口的开源数据引擎——让你用熟悉的 <code>filter / transform / aggregate / write</code> 语法，在笔记本到数千节点集群上<strong>统一处理表格数据与图片、视频、音频、PDF、嵌入向量等多模态数据</strong>，还能把 LLM 调用、embedding 生成、模型推理直接写进同一条数据管道。它由 Eventual 公司开发，Apache-2.0 协议开源，2024 年起是 LF AI &amp; Data 基金会沙盒项目。</p>
+
+<div class="viz-grid">
+  <div class="card viz-stat">
+    <div class="text-small text-muted">GitHub Stars</div>
+    <div class="viz-stat-value">5.8k+</div>
+    <div class="text-small">Eventual-Inc/Daft · 4600+ commits</div>
+  </div>
+  <div class="card viz-stat">
+    <div class="text-small text-muted">开源协议</div>
+    <div class="viz-stat-value">Apache-2.0</div>
+    <div class="text-small">可免费商用与二次开发</div>
+  </div>
+  <div class="card viz-stat">
+    <div class="text-small text-muted">最新版本</div>
+    <div class="viz-stat-value">v0.7.26</div>
+    <div class="text-small">2026-10-06 发布 · v0.8.0 开发中</div>
+  </div>
+  <div class="card viz-stat">
+    <div class="text-small text-muted">技术栈</div>
+    <div class="viz-stat-value">Rust 内核</div>
+    <div class="text-small">Python / SQL API · 无 JVM</div>
+  </div>
+  <div class="card viz-stat">
+    <div class="text-small text-muted">安装</div>
+    <div class="viz-stat-value">pip install daft</div>
+    <div class="text-small">要求 Python ≥ 3.10</div>
+  </div>
+  <div class="card viz-stat">
+    <div class="text-small text-muted">治理归属</div>
+    <div class="viz-stat-value">LF AI &amp; Data</div>
+    <div class="text-small">2024-05 加入 · Sandbox 阶段</div>
+  </div>
+</div>
+
+<h2> 一、Daft 是什么，从哪来</h2>
+<p>Daft 由初创公司 <strong>Eventual</strong> 开发。公司 2022 年创立，两位创始人 Sammy Sidhu 和 Jay Chia 是前 Lyft 数据平台工程师，亲历过“机器学习数据管道既不是纯表格、又大到单机装不下”的困境，于是从零写了一个 Rust 内核的分布式查询引擎。团队约 18 人，成员背景包括 Databricks Photon（Databricks 自研的 C++ 引擎）、GitHub Copilot、Pinecone、Render 和 AWS PartiQL。2025 年 6 月公司宣布累计融资 3000 万美元（A 轮由 Felicis 领投，M12、Citi 参投，此前种子轮由 CRV 领投、Y Combinator 参投）。</p>
+<p>它与常见框架最大的差异是<strong>把“非结构化数据”当成一等公民</strong>：图片、视频、音频、张量、embedding 在 Daft 里是原生列类型，可以直接 <code>download → decode → resize → 推理</code>，在 Jupyter 里图片列甚至直接显示缩略图。同时它是惰性执行的声明式引擎，自带查询优化器，这一点像 Spark SQL；但内核是 Rust + Apache Arrow，没有 JVM，启动和 UDF 开销都小得多。</p>
+
+<h2> 二、它解决什么问题</h2>
+<p>AI 时代的数据工程现实是：一条训练数据 = 结构化元数据 + 一堆图片/视频/PDF 文件。传统工具链处理这种数据都要“缝”：</p>
+<div class="table-responsive">
+<table class="table">
+  <thead>
+    <tr><th>传统方案</th><th>痛点</th><th>Daft 的回应</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>pandas / Polars</td>
+      <td>单机内存受限；图片、视频是“大对象”，处理笨拙</td>
+      <td>分布式 + 超内存溢写（out-of-core）；图片/张量/embedding 是原生列类型</td>
+    </tr>
+    <tr>
+      <td>PySpark</td>
+      <td>JVM 启动慢，Python UDF 序列化开销大，无原生多模态类型</td>
+      <td>Rust 内核无 JVM；Arrow 零拷贝 UDF；声明式多模态表达式</td>
+    </tr>
+    <tr>
+      <td>Ray Data</td>
+      <td>偏底层算子（map_batches），内存与批处理要自己管</td>
+      <td>查询优化器 + 流式执行引擎，自动背压、自适应批大小</td>
+    </tr>
+    <tr>
+      <td>自写胶水脚本</td>
+      <td>下载 → 解码 → 推理 → 写库，各环节手工拼接、难扩展</td>
+      <td>一条 DataFrame 管道全包，本地到集群代码不变</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<h2> 三、发展时间线</h2>
+<ul class="daft-timeline">
+  <li><span class="when">2022</span><span>Eventual 创立（前 Lyft 工程师 Sammy Sidhu / Jay Chia，YC 孵化）</span></li>
+  <li><span class="when">2023-06</span><span>Daft 开源发布。首发的 TPC-H 基准：100GB 规模比 Spark 快 3.3×、比 Dask 快 7.7×；1TB 规模仅 Daft 与 Spark 跑完全部查询，Daft 快 3.5×；单台 61GB 内存机器跑完 1TB 数据</span></li>
+  <li><span class="when">2024-05</span><span>加入 LF AI &amp; Data 基金会（Sandbox 沙盒阶段项目）</span></li>
+  <li><span class="when">2025-06</span><span>累计融资 3000 万美元；宣布 Eventual Cloud（自管云上运行多模态工作负载）早期访问</span></li>
+  <li><span class="when">2025-10</span><span>发布分布式引擎 v1.5：自研 Flotilla 分布式运行器 + Swordfish 流式执行引擎；官方基准在 AI 工作负载上比 Spark 快 4–18×、比 Ray Data 快 2–7×</span></li>
+  <li><span class="when">2026-06</span><span>Flight Shuffle：基于 Arrow Flight + 本地磁盘 + 流式的分布式 shuffle，支撑多 TB 级数据交换</span></li>
+  <li><span class="when">2026-07/08</span><span>LeRobot 视频读取器提速至 15×；用 Daft 不解码视频即可剪掉 DROID 数据集 500 小时机器人录像中的冗余帧，仅花 32 秒</span></li>
+  <li><span class="when">2026-10</span><span>v0.7.26 发布（当前最新），v0.8.0 开发中；约 5.8k stars</span></li>
+</ul>
+
+<h2> 四、核心特性</h2>
+
+<h3>1. 多模态一等类型</h3>
+<p>Image、Video、Audio、Tensor、Embedding、URL、JSON、嵌套 List/Struct 都是原生列类型。表达式可以直接链式操作：<code>url.download()</code>、<code>image.decode()</code>、<code>image.resize()</code>、视频抽帧、<code>cosine_distance()</code> 等，Jupyter 中图片列直接渲染缩略图。</p>
+
+<h3>2. 内置 AI 算子</h3>
+<p><code>prompt()</code> 用 Pydantic 模型定义输出结构，让 LLM 返回强类型字段（接 OpenAI 等托管模型或自托管模型）；<code>embed_text()</code> / <code>embed_image()</code> 生成嵌入；<code>classify()</code> 做批量分类。CPU 解码与 GPU 推理可在同一条管道里混合调度，Daft 负责批处理、重试与容错（如 <code>on_error="null"</code>）。</p>
+
+<h3>3. Rust 内核 + Arrow 零拷贝</h3>
+<p>SIMD 向量化执行、无 JVM。官网口径：启动快 20×、内存占用低 5×、文件下载器快 40×（厂商数字，仅供量级参考）。超出内存的数据自动溢写磁盘，小集群也能跑大数据。</p>
+
+<h3>4. 惰性执行 + 查询优化器</h3>
+<p>所有操作先构建逻辑计划，优化器做谓词下推、投影裁剪、limit 下推（甚至穿过保留行数的 join 侧）后再生成物理计划；<code>explain()</code> 可查看执行计划。这是它区别于“能分布式的 pandas 封装”的根本点。</p>
+
+<h3>5. 三种运行器，本地到集群代码不变</h3>
+<p>默认本地多进程（pip 装完即用）；自研 <strong>Flotilla</strong> 分布式运行器跑在 Kubernetes 上（每节点一个 worker，内置背压与自适应批大小）；也支持接入 <strong>Ray</strong> 集群。同一份 DataFrame 代码，开发在笔记本、生产在集群。</p>
+
+<h3>6. 连接器生态</h3>
+<p>读取：S3 / GCS / Azure / R2 / HDFS、Parquet / CSV / JSON / HDF5 / WebDataset、Iceberg / Delta Lake / Hudi（可读写）、HuggingFace 数据集、Kafka、Unity Catalog、Gravitino 目录。写出：Parquet、Iceberg、Delta、Turbopuffer 向量库等。甚至支持机器人领域的 LeRobot 数据集格式。</p>
+
+<h2> 五、架构解析</h2>
+<p>Daft 是典型的“查询引擎分层”，但每层都为多模态与流式执行重新设计：</p>
+
+<div class="arch-layer">
+  <div class="arch-label">接口层</div>
+  <div class="arch-box"><b>Python DataFrame API · SQL API</b>（<code>daft.sql()</code> 可直接查询已定义的 DataFrame）</div>
+</div>
+<div class="arch-arrow">↓</div>
+<div class="arch-layer">
+  <div class="arch-label">计划层</div>
+  <div class="arch-box">逻辑计划 → <b>查询优化</b>（谓词下推 / 投影裁剪 / limit 下推）→ 物理计划</div>
+</div>
+<div class="arch-arrow">↓</div>
+<div class="arch-layer">
+  <div class="arch-label">执行层</div>
+  <div class="arch-box"><b>Swordfish 流式执行引擎</b>：数据“在途”不落地整分区 · 背压（GPU 慢则上游自动减速）· 自适应批大小 · 超内存溢写</div>
+</div>
+<div class="arch-arrow">↓</div>
+<div class="arch-layer">
+  <div class="arch-label">运行器层</div>
+  <div class="runner-grid">
+    <div class="runner-box"><b><span class="dot" style="background: var(--viz-series-1)"></span>本地多进程</b><span class="text-small">默认，笔记本即用</span></div>
+    <div class="runner-box"><b><span class="dot" style="background: var(--viz-series-2)"></span>Flotilla</b><span class="text-small">自研分布式 · Kubernetes</span></div>
+    <div class="runner-box"><b><span class="dot" style="background: var(--viz-series-3)"></span>Ray</b><span class="text-small">接入现有 Ray 集群</span></div>
+  </div>
+</div>
+<div class="arch-arrow">↓</div>
+<div class="arch-layer">
+  <div class="arch-label">数据层</div>
+  <div class="arch-box text-small">读：S3/GCS/Azure/R2/HDFS · Iceberg/Delta/Hudi · HuggingFace · Kafka · Unity Catalog &nbsp;｜&nbsp; 写：Parquet/Iceberg/Delta · Turbopuffer · 数据库 &nbsp;｜&nbsp; 跨节点交换：Flight Shuffle（Arrow Flight + 本地盘 + 流式）</div>
+</div>
+
+<h2> 六、代码实战（示例均取自官方文档 / 官网，注释为中文注释）</h2>
+
+<h3>示例 1 · 十分钟上手：图片处理 + LLM 结构化推理</h3>
+<p>来自官方 Quickstart：读 HuggingFace 电商数据集，下载商品图，用 GPT 判断“是否木制品”——整条管道并行执行。</p>
+<pre><code>import daft
+from pydantic import BaseModel, Field
+from daft.functions import prompt, download, decode_image, regexp_extract
+
+<span class="cmt"># 1. 直接读 HuggingFace / S3 / Iceberg / Delta —— 惰性执行，此刻只解析 schema</span>
+df = daft.read_huggingface("calmgoose/amazon-product-data-2020")
+
+<span class="cmt"># 2. 表达式加工：正则抽出第一张商品图 URL</span>
+df = df.select("Product Name", "About Product", "Image").limit(100)
+df = df.with_column("image_url", regexp_extract(df["Image"], r"^([^|]+)", 1))
+
+<span class="cmt"># 3. 多模态算子：下载 + 解码图片，失败置空不中断整个作业</span>
+df = df.with_column(
+    "image",
+    decode_image(download(df["image_url"], on_error="null"), on_error="null"),
+)
+
+<span class="cmt"># 4. LLM 批量结构化推理：用 Pydantic 定义输出 schema</span>
+class WoodAnalysis(BaseModel):
+    is_wooden: bool = Field(description="该商品是否为木制品")
+
+df = df.with_column("analysis", prompt(
+    ["这个商品是木制的吗？请看图判断。", df["image"]],
+    return_format=WoodAnalysis, model="gpt-4o-mini", provider="openai",
+))
+df = df.with_column("is_wooden", df["analysis"]["is_wooden"])
+
+<span class="cmt"># 5. 触发执行并落盘 Parquet</span>
+df = df.collect()
+df.write_parquet("product_analysis", write_mode="overwrite")</code></pre>
+<p class="text-small text-muted">依赖：pip install -U "daft[openai]" numpy pillow</p>
+
+<h3>示例 2 · SQL 查 DataFrame</h3>
+<p>SQL 表名自动绑定到当前作用域里的同名 DataFrame（官方文档 I/O 篇示例）：</p>
+<pre><code>import daft
+
+df1 = daft.from_pydict({"a": [1, 2, 3]})
+df2 = daft.from_pydict({"b": [2, 3, 4]})
+
+result = daft.sql("SELECT df1.a, df2.b FROM df1 JOIN df2 ON df1.a = df2.b")
+result.show()</code></pre>
+
+<h3>示例 3 · 语义检索管道：PDF → LLM 摘要 → 向量库</h3>
+<p>改编自官网「AI Search」示例：从 S3 读 PDF，让 LLM 抽结构化字段，生成 embedding，直写向量库。</p>
+<pre><code>import daft
+from pydantic import BaseModel, Field
+from daft.functions import prompt, embed_text
+
+class Paper(BaseModel):
+    title: str = Field(description="论文标题")
+    summary: str = Field(description="一句话摘要")
+
+df = daft.from_glob_path("s3://bucket/papers/*.pdf")
+
+df = df.with_column("paper", prompt(
+    ["请总结这篇论文：", df["path"]],
+    return_format=Paper, model="gpt-5-mini", provider="openai",
+))
+df = df.with_column("title", df["paper"]["title"])
+df = df.with_column("embedding", embed_text(df["title"]))
+
+df.write_turbopuffer("papers-index")   <span class="cmt"># 写入向量库，语义检索就绪</span></code></pre>
+
+<h3>示例 4 · 扩展到集群</h3>
+<p>Daft 默认本地多进程执行即可跑满多核；需要更大规模时安装 Ray 扩展 <code>pip install "daft[ray]"</code> 接入 Ray 集群，或用自研 Flotilla 运行器跑在 Kubernetes 上（Flight Shuffle 负责多 TB 级跨节点数据交换）。<strong>核心卖点：从笔记本切到集群，DataFrame 代码一行不改。</strong>具体 runner 配置以官方文档 <a href="https://docs.daft.ai/en/stable/">Distributed</a> 章节为准。</p>
+
+<h2> 七、性能：几组公开基准</h2>
+
+<h3>AI 多模态工作负载（2025，v1.5 时代）</h3>
+<p class="text-small text-muted">出自 Daft 团队成员的技术对比文章（8 × g6.xlarge，L4 GPU），非中立第三方，量级供参考：</p>
+<div class="table-responsive">
+<table class="table">
+  <thead>
+    <tr><th>工作负载</th><th class="text-end">Daft</th><th class="text-end">Ray Data</th><th class="text-end">Spark</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>音频转写 · 113,800 个文件</td><td class="text-end tabular-nums">6m 22s</td><td class="text-end tabular-nums">29m 20s（4.6×）</td><td class="text-end tabular-nums">25m 46s（4.0×）</td></tr>
+    <tr><td>文档嵌入 · 10,000 个 PDF</td><td class="text-end tabular-nums">1m 54s</td><td class="text-end tabular-nums">14m 32s（7.6×）</td><td class="text-end tabular-nums">8m 04s（4.2×）</td></tr>
+    <tr><td>图像分类 · 803,580 张图片</td><td class="text-end tabular-nums">4m 23s</td><td class="text-end tabular-nums">23m 30s（5.4×）</td><td class="text-end tabular-nums">45m 07s（10.3×）</td></tr>
+    <tr><td>视频目标检测 · 1,000 段视频</td><td class="text-end tabular-nums">11m 46s</td><td class="text-end tabular-nums">25m 54s（2.2×）</td><td class="text-end tabular-nums">3h 36m（18.4×）</td></tr>
+  </tbody>
+</table>
+</div>
+<p>另有第三方从业者报告：字节跳动工程师在 128 万张 ImageNet 图片上测得 Daft 比 Ray Data 快约 20%。</p>
+
+<h3>经典 TPC-H（2023 开源首发基准）</h3>
+<p>100GB 规模（4 节点）：比 Spark 快 3.3×、比 Dask 快 7.7×、比 Modin 快 44.4×；1TB 规模仅 Daft 与 Spark 完赛，Daft 快 3.5×；单机 61GB 内存完成 1TB+ 处理（数据量约为内存 16 倍），且随节点数近线性扩展。</p>
+
+<h2> 八、横向对比</h2>
+<p class="text-small text-muted">整理自 Daft README 的对比口径与社区资料；✘ 表示无原生支持（仍可借助 Python 对象间接实现），选型请自行验证：</p>
+<div class="table-responsive">
+<table class="table table-sm">
+  <thead>
+    <tr><th>能力</th><th>Daft</th><th>pandas</th><th>Polars</th><th>PySpark</th><th>Dask</th><th>Ray Data</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>查询优化器</td><td>✔</td><td>✘</td><td>✘</td><td>✔</td><td>部分</td><td>✘</td></tr>
+    <tr><td>分布式执行</td><td>✔ 自研 + Ray</td><td>✘</td><td>✘</td><td>✔</td><td>✔</td><td>✔（Ray）</td></tr>
+    <tr><td>原生多模态类型</td><td>✔</td><td>✘</td><td>✘</td><td>✘</td><td>✘</td><td>✘</td></tr>
+    <tr><td>向量化执行</td><td>✔ Arrow</td><td>部分</td><td>✔ Arrow</td><td>✔（JVM 内）</td><td>部分</td><td>部分</td></tr>
+    <tr><td>超内存处理</td><td>✔ 自动溢写</td><td>✘</td><td>✔ 流式</td><td>✔</td><td>✔</td><td>部分</td></tr>
+    <tr><td>底层实现</td><td>Rust</td><td>C / Python</td><td>Rust</td><td>JVM + Python</td><td>Python</td><td>C++ / Python</td></tr>
+    <tr><td>内置 LLM / 模型算子</td><td>✔</td><td>✘</td><td>✘</td><td>✘</td><td>✘</td><td>✘</td></tr>
+  </tbody>
+</table>
+</div>
+<p>按 Daft README 的说法，它是唯一同时具备「查询优化器 + 多模态 + 分布式 + Arrow 向量化」四个维度的框架——这张表自然对自家有利，但维度划分本身是公允的。</p>
+
+<h2> 九、谁在生产环境用它</h2>
+<p><strong>旗舰案例：Essential AI 用 Daft 构建 Essential Web v1.0</strong>（基于 CommonCrawl 的全标注 LLM 训练语料，按学科分类）：</p>
+<div class="viz-grid">
+  <div class="card viz-stat">
+    <div class="text-small text-muted">处理规模</div>
+    <div class="viz-stat-value">24 万亿 tokens</div>
+    <div class="text-small">236 亿个网页文档</div>
+  </div>
+  <div class="card viz-stat">
+    <div class="text-small text-muted">LLM 推理量</div>
+    <div class="viz-stat-value">236 亿次</div>
+    <div class="text-small">vLLM 管道 · 每台 VM 3.2 万 req/s</div>
+  </div>
+  <div class="card viz-stat">
+    <div class="text-small text-muted">算力消耗</div>
+    <div class="viz-stat-value">90,000 GPU 时</div>
+    <div class="text-small">AMD MI300X · 7 天跑完</div>
+  </div>
+  <div class="card viz-stat">
+    <div class="text-small text-muted">稳定性</div>
+    <div class="viz-stat-value">0 次崩溃</div>
+    <div class="text-small">本地到分布式代码零改动</div>
+  </div>
+</div>
+<p>其他公开用户与场景（官方及投资方口径）：Amazon（每天处理约 2PB 多模态数据）、Anthropic、Together AI、CloudKitchens（与 Ray 混用的 DREAM 栈）、Mobileye（自动驾驶）；国内火山引擎的 Lake AI 服务文档也将 Daft 列为其视频数据并行处理的引擎之一。</p>
+
+<h2> 十、适合你吗</h2>
+<div class="viz-grid">
+  <div>
+    <h3>很适合</h3>
+    <ul class="scene-yes">
+      <li>LLM / VLM / 机器人<strong>训练数据准备</strong>：清洗、去重、标注、结构化抽取</li>
+      <li>大规模 <strong>embedding 生成</strong>、向量库构建与语义检索管道</li>
+      <li>lakehouse（Iceberg / Delta / Hudi）上的 ETL 与分析</li>
+      <li><strong>GPU 批推理</strong>（分类/检测/转写）与 CPU 预处理混合管道</li>
+      <li>替换「pandas + 多进程 + 自写 S3 脚本」的胶水代码</li>
+    </ul>
+  </div>
+  <div>
+    <h3>要注意</h3>
+    <ul class="scene-warn">
+      <li>仍在 <strong>0.x 版本</strong>：API 会演进（v0.8 即将发布），升级前看 changelog</li>
+      <li>深度绑定 Ray Train / Serve 全家桶的场景，Ray Data 集成更顺</li>
+      <li>纯单机小数据：pandas / Polars 更轻、第三方生态更全</li>
+      <li>复杂数仓 SQL / BI 场景：Spark / Trino / DuckDB 生态更成熟</li>
+      <li>中文资料少，主要靠英文文档、GitHub Discussions 和 Slack 社区</li>
+    </ul>
+  </div>
+</div>
+
+<h2> 十一、建议学习路径</h2>
+<ol>
+  <li><strong>跑 Quickstart</strong>：pip install daft，10 分钟完成「电商图片 + LLM 判断木制品」的完整管道（即示例 1）。</li>
+  <li><strong>读官方文档核心章节</strong>：docs.daft.ai 的 Quickstart → Expressions（表达式思维是 Daft 的核心）→ I/O → Distributed。</li>
+  <li><strong>跑仓库 examples/</strong>：MNIST 图像分类、窗口函数、Red Pajamas 上跑 LLM、图片去重等现成 notebook。</li>
+  <li><strong>读深水区博客</strong>：Essential Web v1 案例、Flight Shuffle 架构文、LeRobot 视频读取优化——理解一个现代查询引擎如何为 AI 负载设计。</li>
+  <li><strong>进社区</strong>：GitHub Discussions 与 Slack 提问响应很快；示例仓库 Eventual-Inc/AiAiAi 有完整 AI 应用 demo。</li>
+</ol>
+
+<h3>资源链接</h3>
+<ul>
+  <li>官网：<a href="https://www.daft.ai">daft.ai</a>（旧域名 getdaft.io 已重定向）</li>
+  <li>源码：<a href="https://github.com/Eventual-Inc/Daft">github.com/Eventual-Inc/Daft</a></li>
+  <li>文档：<a href="https://docs.daft.ai/en/stable/">docs.daft.ai</a>（Quickstart / Examples / API）</li>
+  <li>官方博客：<a href="https://www.eventual.ai/blog">eventual.ai/blog</a>（Essential AI 案例、Flight Shuffle 等）</li>
+  <li>示例应用仓库：<a href="https://github.com/Eventual-Inc/AiAiAi">Eventual-Inc/AiAiAi</a></li>
+  <li>分布式引擎 v1.5 发布讨论：<a href="https://www.reddit.com/r/dataengineering/comments/1nzp92t/we_just_launched_dafts_distributed_engine_v15_an/">Reddit r/dataengineering</a></li>
+  <li>Daft vs Ray Data 对比文（Daft 员工视角）：<a href="https://dev.to/yks/daft-vs-ray-data-a-comprehensive-comparison-for-multimodal-data-processing-3686">dev.to</a></li>
+  <li>Felicis 投资分析（背景与愿景）：<a href="https://www.felicis.com/blog/investing-in-eventual">felicis.com</a></li>
+</ul>
+
+<hr>
+<p class="text-small text-muted">调研完成于 2026-10-29。stars、版本号等快照数据以当日为准；性能数字多为官方或厂商口径，实际选型建议自行复测。报告中的代码示例均整理自官方文档与官网，运行前请以最新文档核对 API。本报告由 ZCode 自动调研生成，仅供学习参考。</p>
+</div>
+
+</body>
+</html>

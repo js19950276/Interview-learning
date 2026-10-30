@@ -1,0 +1,14 @@
+{
+  "name": "genius-coder-claude-host",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Node helper bridging genius-coder to the pinned Claude Agent SDK (streaming input + resume).",
+  "main": "ClaudeHost.mjs",
+  "scripts": {
+    "start": "node ClaudeHost.mjs"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "PIN-ME-TO-THE-VERSION-MATCHING-CLAUDE-2.1.239"
+  }
+}

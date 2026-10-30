@@ -1,0 +1,1001 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>开源 RAG 框架调研报告 · 2026</title>
+<style>
+  :root {
+    --bg: #f6f7fb;
+    --card: #ffffff;
+    --card-alt: #f1f3f9;
+    --text: #171c28;
+    --muted: #5b6478;
+    --border: #e3e6ef;
+    --accent: #4f46e5;
+    --accent-soft: #eef0fe;
+    --accent-2: #7c3aed;
+    --green: #0d9668;
+    --green-soft: #e6f5ef;
+    --orange: #c2600a;
+    --orange-soft: #fdf0e3;
+    --blue: #1d6fd6;
+    --blue-soft: #e7f0fd;
+    --red: #dc2626;
+    --code-bg: #0f1629;
+    --code-text: #dbe4ff;
+    --shadow: 0 1px 3px rgba(23, 28, 40, .07), 0 8px 24px rgba(23, 28, 40, .05);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0b0f1a;
+      --card: #131a2b;
+      --card-alt: #1a2338;
+      --text: #e6e9f2;
+      --muted: #98a2ba;
+      --border: #273147;
+      --accent: #8b8cf7;
+      --accent-soft: #232848;
+      --accent-2: #a78bfa;
+      --green: #4ade9d;
+      --green-soft: #14322a;
+      --orange: #f7b26f;
+      --orange-soft: #38290f;
+      --blue: #7cb3f5;
+      --blue-soft: #14263f;
+      --red: #f87171;
+      --code-bg: #0a0f1e;
+      --code-text: #c9d5ff;
+      --shadow: 0 1px 3px rgba(0, 0, 0, .4), 0 8px 24px rgba(0, 0, 0, .25);
+    }
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Segoe UI", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    line-height: 1.7;
+    font-size: 15.5px;
+  }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 0 20px 80px; }
+
+  /* ===== Header ===== */
+  header.hero { padding: 48px 0 28px; }
+  .hero .kicker {
+    display: inline-block; font-size: 12.5px; letter-spacing: .12em;
+    color: var(--accent); background: var(--accent-soft);
+    padding: 3px 12px; border-radius: 999px; font-weight: 600; margin-bottom: 14px;
+  }
+  .hero h1 { font-size: 34px; line-height: 1.25; margin: 0 0 12px; letter-spacing: -.5px; }
+  .hero p.sub { color: var(--muted); max-width: 760px; margin: 0; }
+  .hero .meta { margin-top: 14px; font-size: 13px; color: var(--muted); }
+  .hero .meta span { display: inline-block; margin-right: 18px; }
+
+  /* ===== Tabs ===== */
+  nav.tabs {
+    position: sticky; top: 0; z-index: 50;
+    background: color-mix(in srgb, var(--bg) 88%, transparent);
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--border);
+    margin: 10px -20px 0; padding: 10px 20px 0;
+  }
+  .tab-row { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; }
+  .tab-row::-webkit-scrollbar { display: none; }
+  .tab-btn {
+    appearance: none; border: none; cursor: pointer;
+    background: transparent; color: var(--muted);
+    font: inherit; font-size: 14.5px; font-weight: 500;
+    padding: 8px 16px; border-radius: 10px 10px 0 0;
+    border-bottom: 2.5px solid transparent; white-space: nowrap;
+  }
+  .tab-btn:hover { color: var(--text); background: var(--card-alt); }
+  .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+
+  section.panel { display: none; padding-top: 28px; animation: fadein .25s ease; }
+  section.panel.active { display: block; }
+  @keyframes fadein { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+  h2 { font-size: 23px; margin: 34px 0 6px; letter-spacing: -.3px; }
+  h2:first-child { margin-top: 8px; }
+  h3 { font-size: 17px; margin: 26px 0 10px; }
+  .section-sub { color: var(--muted); margin: 0 0 18px; max-width: 820px; }
+  p.lead { font-size: 16.5px; }
+
+  .card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 14px; padding: 20px 22px; box-shadow: var(--shadow);
+  }
+
+  /* ===== Stat cards ===== */
+  .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; margin: 18px 0; }
+  .stat { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 16px 18px; box-shadow: var(--shadow); }
+  .stat .label { font-size: 13px; color: var(--muted); font-weight: 600; margin-bottom: 6px; }
+  .stat .value { font-size: 15px; font-weight: 600; line-height: 1.55; }
+  .stat .note { font-size: 13px; color: var(--muted); margin-top: 6px; line-height: 1.55; }
+
+  /* ===== Pipeline ===== */
+  .lane {
+    background: var(--card); border: 1px solid var(--border); border-radius: 14px;
+    padding: 18px 20px; margin-bottom: 14px; box-shadow: var(--shadow);
+  }
+  .lane-title { font-size: 13.5px; font-weight: 700; color: var(--muted); letter-spacing: .06em; margin-bottom: 14px; }
+  .lane-title b { color: var(--text); font-size: 15px; letter-spacing: 0; }
+  .flow { display: flex; align-items: stretch; gap: 0; flex-wrap: wrap; }
+  .flow-node {
+    flex: 1 1 130px; min-width: 124px; cursor: pointer; text-align: center;
+    background: var(--card-alt); border: 2px solid transparent;
+    border-radius: 12px; padding: 12px 8px; position: relative;
+    transition: border-color .15s, transform .15s, background .15s;
+  }
+  .flow-node:hover { transform: translateY(-2px); }
+  .flow-node.active { border-color: var(--accent); background: var(--accent-soft); }
+  .flow-node .num { font-size: 11.5px; font-weight: 700; color: var(--accent); }
+  .flow-node .name { font-weight: 600; font-size: 14.5px; margin: 2px 0; }
+  .flow-node .en { font-size: 11.5px; color: var(--muted); }
+  .flow-arrow {
+    display: flex; align-items: center; justify-content: center;
+    color: var(--muted); padding: 0 6px; font-size: 18px; flex: 0 0 auto; min-width: 24px;
+  }
+  #stage-detail {
+    border-left: 4px solid var(--accent);
+    margin-top: 16px; display: grid; grid-template-columns: 1fr 240px; gap: 18px;
+  }
+  #stage-detail .desc { font-size: 14.5px; }
+  #stage-detail .desc p { margin: 0 0 10px; }
+  #stage-detail .tools h4 { font-size: 13px; color: var(--muted); margin: 0 0 8px; font-weight: 600; }
+  .tool-chip {
+    display: inline-block; font-size: 12.5px; background: var(--accent-soft); color: var(--accent);
+    border-radius: 999px; padding: 2px 10px; margin: 0 6px 6px 0; font-weight: 500;
+  }
+  @media (max-width: 720px) { #stage-detail { grid-template-columns: 1fr; } }
+
+  /* ===== Category grid ===== */
+  .cat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; }
+  .cat {
+    background: var(--card); border: 1px solid var(--border); border-radius: 14px;
+    padding: 18px 20px; box-shadow: var(--shadow); cursor: pointer;
+    transition: border-color .15s;
+  }
+  .cat:hover { border-color: var(--accent); }
+  .cat .cat-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .cat h4 { margin: 0; font-size: 16px; }
+  .cat .cat-desc { font-size: 13.5px; color: var(--muted); margin: 6px 0 0; }
+  .cat .toggle { color: var(--accent); font-weight: 700; transition: transform .2s; }
+  .cat.open .toggle { transform: rotate(90deg); }
+  .cat ul.members { display: none; margin: 14px 0 0; padding: 14px 0 0 0; border-top: 1px dashed var(--border); list-style: none; }
+  .cat.open ul.members { display: block; }
+  .cat ul.members li { padding: 7px 0; font-size: 14px; display: flex; gap: 10px; align-items: baseline; border-bottom: 1px solid var(--border); }
+  .cat ul.members li:last-child { border-bottom: none; }
+  .cat ul.members b { white-space: nowrap; }
+  .cat ul.members span { color: var(--muted); font-size: 13.5px; }
+
+  /* ===== Bar chart ===== */
+  .chart-card { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 22px; box-shadow: var(--shadow); }
+  .bar-row { display: grid; grid-template-columns: 130px 1fr 64px; align-items: center; gap: 12px; margin: 10px 0; }
+  .bar-label { font-size: 14px; font-weight: 600; text-align: right; }
+  .bar-track { background: var(--card-alt); border-radius: 7px; height: 26px; overflow: hidden; }
+  .bar-fill {
+    height: 100%; border-radius: 7px; width: 0;
+    background: linear-gradient(90deg, var(--accent), var(--accent-2));
+    transition: width 1s cubic-bezier(.22, .8, .3, 1);
+  }
+  .bar-value { font-size: 13.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .chart-note { font-size: 12.5px; color: var(--muted); margin-top: 14px; }
+
+  /* ===== Tables ===== */
+  .table-wrap { overflow-x: auto; background: var(--card); border: 1px solid var(--border); border-radius: 14px; box-shadow: var(--shadow); }
+  table { width: 100%; border-collapse: collapse; font-size: 13.8px; min-width: 720px; }
+  th { text-align: left; font-size: 12.5px; color: var(--muted); letter-spacing: .04em; padding: 12px 14px; border-bottom: 2px solid var(--border); white-space: nowrap; }
+  td { padding: 10px 14px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  tbody tr:hover { background: var(--card-alt); }
+  td b { font-weight: 600; }
+  td .dim { color: var(--muted); font-size: 13px; }
+  .num-cell { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .badge { display: inline-block; font-size: 12px; font-weight: 600; border-radius: 999px; padding: 1px 10px; white-space: nowrap; }
+  .badge.cat-orch { background: var(--accent-soft); color: var(--accent); }
+  .badge.cat-platform { background: var(--green-soft); color: var(--green); }
+  .badge.cat-light { background: var(--orange-soft); color: var(--orange); }
+  .badge.cat-parse { background: var(--blue-soft); color: var(--blue); }
+  .badge.cat-eval { background: var(--accent-soft); color: var(--accent-2); }
+  .badge.cat-vdb { background: var(--card-alt); color: var(--text); }
+  .diff-easy { color: var(--green); font-weight: 600; }
+  .diff-mid { color: var(--orange); font-weight: 600; }
+  .diff-hard { color: var(--red); font-weight: 600; }
+
+  /* ===== Framework deep dive ===== */
+  .fw-layout { display: grid; grid-template-columns: 250px 1fr; gap: 18px; align-items: start; }
+  @media (max-width: 780px) { .fw-layout { grid-template-columns: 1fr; } }
+  .fw-list { display: flex; flex-direction: column; gap: 6px; position: sticky; top: 70px; }
+  .fw-btn {
+    appearance: none; font: inherit; font-size: 14px; text-align: left; cursor: pointer;
+    background: var(--card); color: var(--text); border: 1.5px solid var(--border);
+    border-radius: 11px; padding: 10px 14px; transition: border-color .12s, background .12s;
+    display: flex; justify-content: space-between; align-items: center; gap: 8px;
+  }
+  .fw-btn:hover { border-color: var(--accent); }
+  .fw-btn.active { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+  .fw-btn .stars { font-size: 12px; color: var(--muted); font-weight: 500; white-space: nowrap; }
+  .fw-btn.active .stars { color: var(--accent); }
+  .fw-detail { display: none; }
+  .fw-detail.active { display: block; }
+  .fw-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px; margin-bottom: 4px; }
+  .fw-head h3 { margin: 0; font-size: 21px; }
+  .fw-head .repo { font-size: 13.5px; color: var(--muted); }
+  .fw-tags { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 14px; }
+  .fw-tag { font-size: 12.5px; background: var(--card-alt); border-radius: 999px; padding: 2px 11px; color: var(--muted); font-weight: 500; }
+  .fw-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 14px 0; }
+  @media (max-width: 680px) { .fw-cols { grid-template-columns: 1fr; } }
+  .fw-pros, .fw-cons {
+    border-radius: 12px; padding: 14px 16px; font-size: 14px;
+  }
+  .fw-pros { background: var(--green-soft); }
+  .fw-cons { background: var(--orange-soft); }
+  .fw-pros h4, .fw-cons h4 { margin: 0 0 8px; font-size: 13.5px; letter-spacing: .05em; }
+  .fw-pros h4 { color: var(--green); }
+  .fw-cons h4 { color: var(--orange); }
+  .fw-pros ul, .fw-cons ul { margin: 0; padding-left: 18px; }
+  .fw-pros li, .fw-cons li { margin: 4px 0; }
+  .fw-fit { font-size: 14px; background: var(--accent-soft); border-radius: 12px; padding: 12px 16px; margin: 14px 0; }
+  .fw-fit b { color: var(--accent); }
+  pre.code {
+    background: var(--code-bg); color: var(--code-text); border-radius: 12px;
+    padding: 16px 18px; overflow-x: auto; font-size: 13px; line-height: 1.65;
+    font-family: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+  }
+  pre.code .c { color: #7e8bb8; }
+  pre.code .s { color: #9ce6a8; }
+  pre.code .k { color: #c4b5fd; }
+
+  /* ===== Choosing / path ===== */
+  .scene { border-left: 4px solid var(--accent); margin-bottom: 14px; }
+  .scene h4 { margin: 0 0 4px; font-size: 15.5px; }
+  .scene p { margin: 0; font-size: 14px; color: var(--muted); }
+  .scene p b { color: var(--text); }
+  .path { border-left: 2px dashed var(--border); margin-left: 10px; padding-left: 26px; }
+  .step { position: relative; margin-bottom: 26px; }
+  .step::before {
+    content: ""; position: absolute; left: -35px; top: 4px;
+    width: 16px; height: 16px; border-radius: 50%;
+    background: var(--accent); border: 3px solid var(--bg);
+  }
+  .step h4 { margin: 0 0 4px; font-size: 15.5px; }
+  .step .when { font-size: 12.5px; color: var(--accent); font-weight: 700; letter-spacing: .05em; }
+  .step p { margin: 4px 0 0; font-size: 14px; color: var(--muted); }
+  .step p b { color: var(--text); }
+
+  .glossary { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 10px; }
+  .term { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 12px 16px; font-size: 14px; }
+  .term b { color: var(--accent); }
+  .term span { color: var(--muted); font-size: 13.5px; }
+
+  footer { margin-top: 60px; padding-top: 24px; border-top: 1px solid var(--border); font-size: 13px; color: var(--muted); }
+  footer h4 { font-size: 14px; color: var(--text); margin: 0 0 10px; }
+  footer ul { margin: 0 0 18px; padding-left: 18px; }
+  footer li { margin: 4px 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="hero">
+  <span class="kicker">GITHUB 开源调研 · AI 数据处理</span>
+  <h1>开源 RAG 框架全景调研报告</h1>
+  <p class="sub">RAG（Retrieval-Augmented Generation，检索增强生成）是大模型落地的核心架构：把私有知识"检索"出来再"喂"给 LLM 生成答案。本报告梳理 2026 年 GitHub 上主流的开源 RAG 框架与配套生态，按「原理 → 全景 → 数据 → 详解 → 选型与学习路径」组织，供系统学习与选型参考。</p>
+  <div class="meta">
+    <span>📅 调研时间：2026-10</span>
+    <span>⭐ 星标为约数（2026 年初口径，† 为估计值），以仓库实时为准</span>
+    <span>🔗 所有项目均附 GitHub 地址</span>
+  </div>
+</header>
+
+<nav class="tabs" aria-label="报告章节">
+  <div class="tab-row">
+    <button class="tab-btn active" data-tab="t1">① 认识 RAG</button>
+    <button class="tab-btn" data-tab="t2">② 框架全景</button>
+    <button class="tab-btn" data-tab="t3">③ 数据对比</button>
+    <button class="tab-btn" data-tab="t4">④ 核心框架详解</button>
+    <button class="tab-btn" data-tab="t5">⑤ 选型与学习路径</button>
+  </div>
+</nav>
+
+<!-- ============ TAB 1 ============ -->
+<section class="panel active" id="t1">
+  <h2>RAG 是什么？为什么需要它</h2>
+  <p class="section-sub">LLM 的训练数据有截止日期、看不到你的私有文档、还会"一本正经地胡说八道"（幻觉）。RAG 的思路：<b>先从你的知识库里检索相关内容，再让 LLM 基于检索结果作答</b>——相当于开卷考试。它比微调更便宜、知识可随时更新、答案可溯源到原文。</p>
+
+  <div class="stat-grid">
+    <div class="stat">
+      <div class="label">解决 · 知识时效</div>
+      <div class="value">知识库即改即生效</div>
+      <div class="note">更新文档重新索引即可，无需重训模型</div>
+    </div>
+    <div class="stat">
+      <div class="label">解决 · 私有数据</div>
+      <div class="value">企业文档 / 个人笔记可问答</div>
+      <div class="note">数据不出本地，检索后才进模型上下文</div>
+    </div>
+    <div class="stat">
+      <div class="label">解决 · 幻觉</div>
+      <div class="value">答案带引用、可溯源</div>
+      <div class="note">生成被约束在检索到的证据上（grounding）</div>
+    </div>
+  </div>
+
+  <h2>标准 RAG 流水线（点击每个阶段看详解）</h2>
+  <p class="section-sub">一条完整的 RAG 链路分离线、在线两部分。生产级 RAG 的功夫全在这些阶段的质量上——业界共识："embedding → 向量库 → LLM" 三行代码只是 demo，不是生产 RAG。</p>
+
+  <div class="lane">
+    <div class="lane-title"><b>离线 · 索引阶段（Indexing）</b> · 文档进库前的一次性/增量处理</div>
+    <div class="flow">
+      <div class="flow-node active" data-stage="parse" role="button" tabindex="0">
+        <div class="num">1</div><div class="name">文档解析</div><div class="en">Parsing</div>
+      </div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-node" data-stage="chunk" role="button" tabindex="0">
+        <div class="num">2</div><div class="name">分块</div><div class="en">Chunking</div>
+      </div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-node" data-stage="embed" role="button" tabindex="0">
+        <div class="num">3</div><div class="name">向量化</div><div class="en">Embedding</div>
+      </div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-node" data-stage="index" role="button" tabindex="0">
+        <div class="num">4</div><div class="name">入库索引</div><div class="en">Indexing</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="lane">
+    <div class="lane-title"><b>在线 · 查询阶段（Retrieval & Generation）</b> · 用户每次提问时执行</div>
+    <div class="flow">
+      <div class="flow-node" data-stage="rewrite" role="button" tabindex="0">
+        <div class="num">5</div><div class="name">查询改写</div><div class="en">Query Transform</div>
+      </div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-node" data-stage="retrieve" role="button" tabindex="0">
+        <div class="num">6</div><div class="name">混合检索</div><div class="en">Hybrid Retrieval</div>
+      </div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-node" data-stage="rerank" role="button" tabindex="0">
+        <div class="num">7</div><div class="name">重排</div><div class="en">Rerank</div>
+      </div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-node" data-stage="generate" role="button" tabindex="0">
+        <div class="num">8</div><div class="name">生成</div><div class="en">Generation</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" id="stage-detail">
+    <div class="desc" id="stage-desc"></div>
+    <div class="tools"><h4>代表工具</h4><div id="stage-tools"></div></div>
+  </div>
+
+  <h2>2026 年的四个关键认知</h2>
+  <div class="stat-grid">
+    <div class="stat">
+      <div class="label">趋势 · 检索基线</div>
+      <div class="value">混合检索 + 重排 = 生产标配</div>
+      <div class="note">向量（语义）+ BM25（关键词）并行召回，再用 cross-encoder 精排——被评测为"RAG 中性价比最高的升级"</div>
+    </div>
+    <div class="stat">
+      <div class="label">趋势 · 架构演进</div>
+      <div class="value">Agentic RAG 成为主流叙事</div>
+      <div class="note">检索从"单步查询"变成 Agent 的规划-执行-反思循环：先想清楚查什么、要不要再查、查到的够不够</div>
+    </div>
+    <div class="stat">
+      <div class="label">趋势 · 图谱检索</div>
+      <div class="value">GraphRAG 补足多跳问题</div>
+      <div class="note">微软 GraphRAG / LightRAG 用知识图谱回答"A 和 B 什么关系"这类向量检索搞不定的全局性问题</div>
+    </div>
+    <div class="stat">
+      <div class="label">趋势 · 工程方法</div>
+      <div class="value">评估先行（Eval-Driven）</div>
+      <div class="note">用 RAGAS 等指标（忠实度、上下文召回率）量化每次改动，而不是"凭感觉调 prompt"</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ TAB 2 ============ -->
+<section class="panel" id="t2">
+  <h2>开源生态全景：六大类工具</h2>
+  <p class="section-sub">"RAG 框架"在 GitHub 上实际是一个生态：从文档解析到评估监控，每一环都有专门的开源项目。点击卡片展开该类目的代表项目。<b>不要试图一个框架解决所有环节</b>——常见做法是"编排框架 + 专项工具"组合。</p>
+
+  <div class="cat-grid">
+    <div class="cat" role="button" tabindex="0">
+      <div class="cat-head"><h4>🧩 编排 / 开发框架</h4><span class="toggle">›</span></div>
+      <p class="cat-desc">代码优先，提供 Pipeline 抽象，自己组装每个环节。灵活性最高。</p>
+      <ul class="members">
+        <li><b>LangChain</b><span>≈125k⭐ · 生态最大的通用 LLM 应用框架，RAG 是其能力之一，配 LangGraph 做 Agent 编排</span></li>
+        <li><b>LlamaIndex</b><span>≈46.5k⭐ · RAG 专精框架，数据连接器最全，索引结构最丰富</span></li>
+        <li><b>Haystack</b><span>≈24k⭐ · deepset 出品，显式 Pipeline + 内置评估，生产级稳定</span></li>
+        <li><b>DSPy</b><span>≈20k⭐† · 斯坦福出品，声明式编程 + 自动优化 prompt，把提示词当可训练参数</span></li>
+      </ul>
+    </div>
+    <div class="cat" role="button" tabindex="0">
+      <div class="cat-head"><h4>🚀 端到端平台（带 UI）</h4><span class="toggle">›</span></div>
+      <p class="cat-desc">Docker 一键起、Web 界面操作，开箱即用的知识库问答产品。</p>
+      <ul class="members">
+        <li><b>Dify</b><span>≈114k⭐ · 可视化工作流 + 内置 RAG 知识库的低代码 LLM 平台</span></li>
+        <li><b>RAGFlow</b><span>≈70k⭐ · 深度文档理解的企业级 RAG 引擎，中文复杂文档强项</span></li>
+        <li><b>Kotaemon</b><span>≈20k⭐† · Cinnamon 出品的 RAG UI，支持本地模型与 GraphRAG</span></li>
+        <li><b>QAnything</b><span>≈13k⭐† · 网易有道出品，两阶段检索（粗排+精排）知识库问答</span></li>
+        <li><b>Verba</b><span>≈7k⭐† · Weaviate 出品的个人 AI 助手，向 Weaviate 生态亲和</span></li>
+        <li><b>Cognita</b><span>≈3k⭐† · TrueFoundry 出品，MLOps 风格的模块化生产 RAG</span></li>
+      </ul>
+    </div>
+    <div class="cat" role="button" tabindex="0">
+      <div class="cat-head"><h4>🪶 轻量 / 图谱引擎</h4><span class="toggle">›</span></div>
+      <p class="cat-desc">单一检索策略做到极致：知识图谱检索或极简嵌入库。</p>
+      <ul class="members">
+        <li><b>LightRAG</b><span>≈27.4k⭐ · 港大 HKUDS 出品，图 + 向量双层检索，索引开销远低于微软 GraphRAG</span></li>
+        <li><b>GraphRAG</b><span>≈30k⭐† · 微软出品，LLM 抽取知识图谱 + 社区摘要，擅长全局性问题</span></li>
+        <li><b>txtai</b><span>≈12k⭐† · 嵌入数据库 + RAG 工作流一体，API 极简，适合嵌入现有应用</span></li>
+      </ul>
+    </div>
+    <div class="cat" role="button" tabindex="0">
+      <div class="cat-head"><h4>📄 文档解析（数据摄入）</h4><span class="toggle">›</span></div>
+      <p class="cat-desc">RAG 质量的第一道关口：把 PDF / Office / 网页转成干净的结构化文本。</p>
+      <ul class="members">
+        <li><b>MinerU</b><span>≈45k⭐† · 上海 AI Lab（OpenDataLab）出品，PDF→Markdown/JSON，中文与扫描件表现突出</span></li>
+        <li><b>Docling</b><span>≈40k⭐† · IBM 出品，格式支持最广（PDF/DOCX/PPTX/XLSX/HTML/EPUB），基准评测领先</span></li>
+        <li><b>MarkItDown</b><span>≈60k⭐† · 微软出品，各类 Office 文档转 Markdown，轻量通用</span></li>
+        <li><b>Unstructured</b><span>≈11k⭐† · 复杂版面解析老牌选手，v0.18 重做了 RAG 分块 API</span></li>
+        <li><b>LlamaParse</b><span>LlamaIndex 官方解析 API，与 LlamaIndex 无缝集成（闭源服务）</span></li>
+      </ul>
+    </div>
+    <div class="cat" role="button" tabindex="0">
+      <div class="cat-head"><h4>🗄️ 向量数据库</h4><span class="toggle">›</span></div>
+      <p class="cat-desc">存储与检索向量的专门数据库，多数框架都支持插拔替换。</p>
+      <ul class="members">
+        <li><b>pgvector</b><span>≈15k⭐† · Postgres 扩展，业界共识的"默认起步选项"，量大再迁移</span></li>
+        <li><b>Milvus</b><span>≈35k⭐† · 分布式架构，十亿级向量大规模场景首选</span></li>
+        <li><b>Qdrant</b><span>≈24k⭐† · Rust 编写，高性能，元数据过滤检索强</span></li>
+        <li><b>Chroma</b><span>≈20k⭐† · 嵌入式向量库，原型开发最简单</span></li>
+        <li><b>Weaviate</b><span>≈14k⭐† · 混合搜索 + 模块化集成见长</span></li>
+        <li><b>FAISS</b><span>≈40k⭐† · Meta 出品的检索算法库（无服务化），研究常用</span></li>
+      </ul>
+    </div>
+    <div class="cat" role="button" tabindex="0">
+      <div class="cat-head"><h4>📊 评估与观测</h4><span class="toggle">›</span></div>
+      <p class="cat-desc">量化 RAG 效果：检索准不准、答案忠不忠实，让迭代有据可依。</p>
+      <ul class="members">
+        <li><b>RAGAS</b><span>≈8k⭐† · 采用最广的 RAG 评估库：忠实度 / 上下文召回 / 答案相关性 + 合成测试集</span></li>
+        <li><b>DeepEval</b><span>≈8k⭐† · pytest 风格的 LLM 单元测试，天然适合 CI/CD</span></li>
+        <li><b>TruLens</b><span>≈2.5k⭐† · tracing + 反馈函数，定位 RAG 链路哪一环出错</span></li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ============ TAB 3 ============ -->
+<section class="panel" id="t3">
+  <h2>社区热度：GitHub 星标对比</h2>
+  <p class="section-sub">星标反映社区关注度（不完全等于工程质量）。Top 3 是 LangChain（≈125k）、Dify（≈114k）、RAGFlow（≈70k）——注意 Dify 和 RAGFlow 是"平台型"项目，涨星速度快于"库型"框架，侧面说明市场更需要开箱即用的产品。</p>
+
+  <div class="chart-card" id="stars-chart">
+    <!-- bars injected by JS -->
+    <div class="chart-note">数据口径：2026 年 1 月行业排名（florinelchis / Olostep），为约数；实时数据以 GitHub 仓库为准。</div>
+  </div>
+
+  <h2>主流 RAG 框架 / 平台横向对比</h2>
+  <p class="section-sub">12 个最值得关注的项目。带 † 的星标为估计值；Dify 许可为 Apache-2.0 附加多租户与品牌条款。</p>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>项目</th><th>类型</th><th>语言</th><th>许可</th><th>星标</th><th>上手难度</th><th>一句话定位</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><b>LangChain</b><div class="dim">langchain-ai/langchain</div></td><td><span class="badge cat-orch">编排框架</span></td><td>Python / JS</td><td>MIT</td><td class="num-cell">≈125k</td><td class="diff-mid">中</td><td>生态最大的通用 LLM 应用框架，适合把 RAG 嵌入更大的 Agent 应用</td></tr>
+        <tr><td><b>Dify</b><div class="dim">langgenius/dify</div></td><td><span class="badge cat-platform">端到端平台</span></td><td>Python + TS</td><td>Apache-2.0*</td><td class="num-cell">≈114k</td><td class="diff-easy">低</td><td>可视化编排 + 内置知识库，非纯代码团队的低代码首选</td></tr>
+        <tr><td><b>RAGFlow</b><div class="dim">infiniflow/ragflow</div></td><td><span class="badge cat-platform">端到端平台</span></td><td>Python</td><td>Apache-2.0</td><td class="num-cell">≈70k</td><td class="diff-easy">低-中</td><td>深度文档理解（DeepDoc）+ 引用溯源，中文复杂文档场景口碑极好</td></tr>
+        <tr><td><b>LlamaIndex</b><div class="dim">run-llama/llama_index</div></td><td><span class="badge cat-orch">编排框架</span></td><td>Python</td><td>MIT</td><td class="num-cell">≈46.5k</td><td class="diff-mid">中</td><td>RAG 专精框架，数据连接器与索引结构最全，学 RAG 原理首选</td></tr>
+        <tr><td><b>GraphRAG</b><div class="dim">microsoft/graphrag</div></td><td><span class="badge cat-light">图谱引擎</span></td><td>Python</td><td>MIT</td><td class="num-cell">≈30k†</td><td class="diff-hard">高</td><td>微软知识图谱 RAG：全局性问题（"这批文档的主旨？"）表现突出，索引成本高</td></tr>
+        <tr><td><b>LightRAG</b><div class="dim">HKUDS/LightRAG</div></td><td><span class="badge cat-light">图谱引擎</span></td><td>Python</td><td>MIT</td><td class="num-cell">≈27.4k</td><td class="diff-mid">中</td><td>图 + 向量双层检索，索引 token 开销比 GraphRAG 低一个量级</td></tr>
+        <tr><td><b>Haystack</b><div class="dim">deepset-ai/haystack</div></td><td><span class="badge cat-orch">编排框架</span></td><td>Python</td><td>Apache-2.0</td><td class="num-cell">≈24k</td><td class="diff-hard">中-高</td><td>显式 Pipeline 组件模型 + 类型检查 + 内置评估，企业生产级稳定</td></tr>
+        <tr><td><b>Kotaemon</b><div class="dim">Cinnamon/kotaemon</div></td><td><span class="badge cat-platform">端到端应用</span></td><td>Python + TS</td><td>Apache-2.0</td><td class="num-cell">≈20k†</td><td class="diff-easy">低</td><td>开箱即用 RAG UI，支持 Ollama 本地模型，可切换简单/GraphRAG 模式</td></tr>
+        <tr><td><b>DSPy</b><div class="dim">stanfordnlp/dspy</div></td><td><span class="badge cat-orch">编排框架</span></td><td>Python</td><td>MIT</td><td class="num-cell">≈20k†</td><td class="diff-hard">高</td><td>声明式编程范式，用优化器自动调 prompt / 微调检索，学术味浓</td></tr>
+        <tr><td><b>QAnything</b><div class="dim">netease-youdao/QAnything</div></td><td><span class="badge cat-platform">端到端平台</span></td><td>Python</td><td>Apache-2.0</td><td class="num-cell">≈13k†</td><td class="diff-easy">低</td><td>网易有道两阶段检索方案；2026 年社区热度已被 RAGFlow 拉开</td></tr>
+        <tr><td><b>txtai</b><div class="dim">neuml/txtai</div></td><td><span class="badge cat-light">轻量引擎</span></td><td>Python</td><td>Apache-2.0</td><td class="num-cell">≈12k†</td><td class="diff-easy">低</td><td>嵌入数据库 + 全文 + LLM 工作流一体，几行代码跑通 RAG</td></tr>
+        <tr><td><b>Cognita</b><div class="dim">truefoundry/cognita</div></td><td><span class="badge cat-platform">端到端平台</span></td><td>Python</td><td>MIT</td><td class="num-cell">≈3k†</td><td class="diff-mid">中</td><td>TrueFoundry 的模块化生产 RAG，MLOps 实践（实验/评估/上线一体）</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>配套生态速查</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>项目</th><th>环节</th><th>推荐场景 / 备注</th></tr></thead>
+      <tbody>
+        <tr><td><b>Docling</b>（IBM）</td><td><span class="badge cat-parse">文档解析</span></td><td>格式支持最广（PDF/Office/HTML/EPUB），基准评测领先，MIT 许可</td></tr>
+        <tr><td><b>MinerU</b>（OpenDataLab）</td><td><span class="badge cat-parse">文档解析</span></td><td>中文 PDF / 扫描件最强档；注意 AGPL-3.0 许可对商用集成的影响</td></tr>
+        <tr><td><b>MarkItDown</b>（微软）</td><td><span class="badge cat-parse">文档解析</span></td><td>轻量通用转换器，简单格式量大管饱</td></tr>
+        <tr><td><b>RAGAS</b></td><td><span class="badge cat-eval">评估</span></td><td>忠实度 / 上下文召回 / 答案相关性三大指标 + 合成测试数据生成</td></tr>
+        <tr><td><b>DeepEval</b></td><td><span class="badge cat-eval">评估</span></td><td>pytest 风格断言，直接进 CI 流水线</td></tr>
+        <tr><td><b>pgvector</b></td><td><span class="badge cat-vdb">向量库</span></td><td>起步默认项：已有 Postgres 就零新增组件，量大再迁专用库</td></tr>
+        <tr><td><b>Milvus / Qdrant</b></td><td><span class="badge cat-vdb">向量库</span></td><td>大规模（Milvus 分布式）/ 高性能过滤检索（Qdrant，Rust）</td></tr>
+        <tr><td><b>Chroma / Weaviate</b></td><td><span class="badge cat-vdb">向量库</span></td><td>原型最快（Chroma）/ 混合搜索 + 模块化（Weaviate）</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ============ TAB 4 ============ -->
+<section class="panel" id="t4">
+  <h2>核心框架深度评测</h2>
+  <p class="section-sub">左侧选择框架查看：定位、优劣势、最小代码示例与适用判断。示例代码均基于各框架当前主流 API（2026）。</p>
+
+  <div class="fw-layout">
+    <div class="fw-list" id="fw-list">
+      <button class="fw-btn active" data-fw="llamaindex">LlamaIndex <span class="stars">≈46.5k</span></button>
+      <button class="fw-btn" data-fw="langchain">LangChain <span class="stars">≈125k</span></button>
+      <button class="fw-btn" data-fw="haystack">Haystack <span class="stars">≈24k</span></button>
+      <button class="fw-btn" data-fw="dify">Dify <span class="stars">≈114k</span></button>
+      <button class="fw-btn" data-fw="ragflow">RAGFlow <span class="stars">≈70k</span></button>
+      <button class="fw-btn" data-fw="lightrag">LightRAG <span class="stars">≈27.4k</span></button>
+      <button class="fw-btn" data-fw="txtai">txtai <span class="stars">≈12k</span></button>
+      <button class="fw-btn" data-fw="kotaemon">Kotaemon <span class="stars">≈20k</span></button>
+    </div>
+
+    <div>
+      <!-- LlamaIndex -->
+      <div class="fw-detail card active" data-fw="llamaindex">
+        <div class="fw-head"><h3>LlamaIndex</h3><span class="repo">github.com/run-llama/llama_index</span></div>
+        <div class="fw-tags"><span class="fw-tag">Python</span><span class="fw-tag">MIT</span><span class="fw-tag">编排框架</span><span class="fw-tag">RAG 专精</span></div>
+        <p><b>定位</b>：以"数据"为中心的 RAG 框架——从数据摄入、索引到查询的完整抽象层，被普遍认为是学习 RAG 与构建 RAG 专精项目的第一选择。</p>
+        <div class="fw-cols">
+          <div class="fw-pros"><h4>优势</h4><ul>
+            <li>数据连接器最全：LlamaHub 160+ 数据源（PDF/数据库/Notion/Slack…）</li>
+            <li>索引结构丰富：向量 / 树 / 知识图谱 / 递归 / 自动合并（auto-merging）</li>
+            <li>Workflows 事件驱动编排，高级检索（COLBERT、句子窗口）开箱可用</li>
+            <li>MIT 许可 + 文档教程质量高，社区以 RAG 场景为主</li>
+          </ul></div>
+          <div class="fw-cons"><h4>局限</h4><ul>
+            <li>抽象层次多，概念量大（Index/Retriever/QueryEngine/Node/Postprocessor）</li>
+            <li>迭代快，旧 API 弃用频繁，教程代码容易过时</li>
+            <li>深度定制仍需读源码</li>
+          </ul></div>
+        </div>
+        <div class="fw-fit"><b>适合</b>：RAG 是项目核心、数据源复杂、想在代码层精细控制检索策略。学 RAG 原理的最好入口。</div>
+        <pre class="code"><span class="c"># pip install llama-index</span>
+<span class="k">from</span> llama_index.core <span class="k">import</span> VectorStoreIndex, SimpleDirectoryReader
+
+docs = SimpleDirectoryReader(<span class="s">"data"</span>).load_data()      <span class="c"># 摄入文档</span>
+index = VectorStoreIndex.from_documents(docs)              <span class="c"># 分块+向量化+建索引</span>
+
+engine = index.as_query_engine(similarity_top_k=4)          <span class="c"># 组装查询引擎</span>
+<span class="k">print</span>(engine.query(<span class="s">"这份文档讲了什么？"</span>))                  <span class="c"># 检索+生成</span></pre>
+      </div>
+
+      <!-- LangChain -->
+      <div class="fw-detail card" data-fw="langchain">
+        <div class="fw-head"><h3>LangChain</h3><span class="repo">github.com/langchain-ai/langchain</span></div>
+        <div class="fw-tags"><span class="fw-tag">Python / JS</span><span class="fw-tag">MIT</span><span class="fw-tag">编排框架</span><span class="fw-tag">生态最大</span></div>
+        <p><b>定位</b>：星标最高的通用 LLM 应用开发框架，RAG 只是它能力版图的一块。复杂有状态应用建议搭配其兄弟项目 LangGraph（图结构 Agent 编排）。</p>
+        <div class="fw-cols">
+          <div class="fw-pros"><h4>优势</h4><ul>
+            <li>生态与社区最大：模型 / 向量库 / 工具集成 800+，遇到问题几乎都有人踩过坑</li>
+            <li>LCEL 声明式链式组装，LangGraph 表达"检索→判断→再检索"的 Agentic 循环</li>
+            <li>LangSmith 提供全链路可观测（追踪/评估/监控）</li>
+          </ul></div>
+          <div class="fw-cons"><h4>局限</h4><ul>
+            <li>抽象重、包拆分多（langchain-core / community / partner 包），版本迁移成本高</li>
+            <li>API 迭代激进，弃用警告常见，老教程大量失效</li>
+            <li>RAG 专精度不如 LlamaIndex</li>
+          </ul></div>
+        </div>
+        <div class="fw-fit"><b>适合</b>：RAG 要嵌入更大的 LLM 应用（Agent + 工具调用 + 多步推理），或团队想要最全的集成生态。</div>
+        <pre class="code"><span class="c"># pip install langchain langchain-chroma langchain-openai</span>
+<span class="k">from</span> langchain_core.prompts <span class="k">import</span> ChatPromptTemplate
+<span class="k">from</span> langchain_core.runnables <span class="k">import</span> RunnablePassthrough
+<span class="k">from</span> langchain_chroma <span class="k">import</span> Chroma
+<span class="k">from</span> langchain_openai <span class="k">import</span> ChatOpenAI, OpenAIEmbeddings
+
+vectorstore = Chroma(embedding_function=OpenAIEmbeddings())
+retriever = vectorstore.as_retriever(search_kwargs={<span class="s">"k"</span>: 4})
+
+prompt = ChatPromptTemplate.from_template(
+    <span class="s">"仅根据以下上下文回答：\n{context}\n\n问题：{question}"</span>)
+
+chain = ({<span class="s">"context"</span>: retriever, <span class="s">"question"</span>: RunnablePassthrough()}
+         | prompt | ChatOpenAI())          <span class="c"># LCEL 管道</span>
+<span class="k">print</span>(chain.invoke(<span class="s">"什么是混合检索？"</span>).content)</pre>
+      </div>
+
+      <!-- Haystack -->
+      <div class="fw-detail card" data-fw="haystack">
+        <div class="fw-head"><h3>Haystack 2.x</h3><span class="repo">github.com/deepset-ai/haystack</span></div>
+        <div class="fw-tags"><span class="fw-tag">Python</span><span class="fw-tag">Apache-2.0</span><span class="fw-tag">编排框架</span><span class="fw-tag">生产级</span></div>
+        <p><b>定位</b>：deepset 出品的 AI 编排框架，2.x 采用显式组件模型——每个组件输入输出强类型，Pipeline 连接关系一目了然，天然适合企业级维护与测试。</p>
+        <div class="fw-cols">
+          <div class="fw-pros"><h4>优势</h4><ul>
+            <li>显式 Pipeline：组件像搭积木一样 connect，类型检查避免接线错误</li>
+            <li>内置评估组件，Pipeline 可序列化为 YAML，方便版本管理与审计</li>
+            <li>API 稳定政策友好，欧洲企业合规场景采用多</li>
+          </ul></div>
+          <div class="fw-cons"><h4>局限</h4><ul>
+            <li>社区规模小于 LangChain / LlamaIndex，中文资料少</li>
+            <li>工程味重，快速原型不如 LlamaIndex 简洁</li>
+            <li>前沿玩法（新检索论文复现）跟进稍慢</li>
+          </ul></div>
+        </div>
+        <div class="fw-fit"><b>适合</b>：企业生产系统、可维护性与可测试性优先、需要审计与合规的场景。</div>
+        <pre class="code"><span class="c"># pip install haystack-ai</span>
+<span class="k">from</span> haystack <span class="k">import</span> Pipeline
+<span class="k">from</span> haystack.components.retrievers.in_memory <span class="k">import</span> InMemoryEmbeddingRetriever
+<span class="k">from</span> haystack.components.generators <span class="k">import</span> OpenAIGenerator
+<span class="k">from</span> haystack.components.builders <span class="k">import</span> PromptBuilder
+
+prompt = PromptBuilder(
+    <span class="s">"根据以下文档回答：\n{% for d in documents %}{{ d.content }}\n{% endfor %}问题：{{ question }}"</span>)
+
+pipe = Pipeline()
+pipe.add_component(<span class="s">"retriever"</span>, InMemoryEmbeddingRetriever(document_store))
+pipe.add_component(<span class="s">"prompt"</span>, prompt)
+pipe.add_component(<span class="s">"llm"</span>, OpenAIGenerator())
+
+pipe.connect(<span class="s">"retriever.documents"</span>, <span class="s">"prompt.documents"</span>)  <span class="c"># 显式接线</span>
+pipe.connect(<span class="s">"prompt"</span>, <span class="s">"llm"</span>)
+<span class="k">print</span>(pipe.run({<span class="s">"retriever"</span>: {<span class="s">"query"</span>: <span class="s">"什么是混合检索？"</span>},
+                  <span class="s">"prompt"</span>: {<span class="s">"question"</span>: <span class="s">"什么是混合检索？"</span>}}))</pre>
+      </div>
+
+      <!-- Dify -->
+      <div class="fw-detail card" data-fw="dify">
+        <div class="fw-head"><h3>Dify</h3><span class="repo">github.com/langgenius/dify</span></div>
+        <div class="fw-tags"><span class="fw-tag">Python + TS</span><span class="fw-tag">Apache-2.0*</span><span class="fw-tag">低代码平台</span><span class="fw-tag">带 Web UI</span></div>
+        <p><b>定位</b>：星标第二高的开源 LLM 平台。可视化拖拽编排工作流 + 内置 RAG 知识库，让非开发者也能搭出"上传文档 → 知识库问答机器人"。</p>
+        <div class="fw-cols">
+          <div class="fw-pros"><h4>优势</h4><ul>
+            <li>知识库全图形化配置：分段策略、检索方式（向量/全文/混合）、top-k、重排模型都是下拉框</li>
+            <li>100+ 模型供应商接入，团队协作 / 权限 / API 发布齐备</li>
+            <li>RAG 只是入口：工作流、Agent、文本生成应用同平台搞定</li>
+          </ul></div>
+          <div class="fw-cons"><h4>局限</h4><ul>
+            <li>平台约束：深度定制检索逻辑要绕路（API / 插件），不如代码灵活</li>
+            <li>许可含附加条款（多租户 SaaS、品牌展示限制），商用需读协议</li>
+            <li>Docker 全家桶部署，资源占用不小</li>
+          </ul></div>
+        </div>
+        <div class="fw-fit"><b>适合</b>：快速交付企业知识库问答、团队里有非开发成员参与、需要低代码 + 可视化运维。</div>
+        <pre class="code"><span class="c"># 安装（Docker Compose 一键起全栈服务）</span>
+git clone https://github.com/langgenius/dify.git
+cd dify/docker
+cp .env.example .env
+docker compose up -d
+
+<span class="c"># 浏览器打开 http://localhost/install 初始化后：
+# 1. 「知识库」→ 创建 → 上传文档 → 选分段与检索策略（可开混合检索+重排）
+# 2. 「工作室」→ 创建聊天助手 → 关联知识库 → 发布为 WebApp / API</span></pre>
+      </div>
+
+      <!-- RAGFlow -->
+      <div class="fw-detail card" data-fw="ragflow">
+        <div class="fw-head"><h3>RAGFlow</h3><span class="repo">github.com/infiniflow/ragflow</span></div>
+        <div class="fw-tags"><span class="fw-tag">Python</span><span class="fw-tag">Apache-2.0</span><span class="fw-tag">端到端引擎</span><span class="fw-tag">深度文档理解</span></div>
+        <p><b>定位</b>：infiniFlow 出品的 RAG 引擎，招牌是 DeepDoc 深度文档理解——把 PDF 里的表格、图片、版面结构真正解析出来，并提供带溯源高亮的答案。</p>
+        <div class="fw-cols">
+          <div class="fw-pros"><h4>优势</h4><ul>
+            <li>文档理解是同类最强档：版面分析 / 表格结构识别 / OCR，中文 PDF 表现尤其好</li>
+            <li>引用溯源（grounded citation）：答案高亮原文出处，可点回原文位置</li>
+            <li>模板化分块（问答 / 论文 / 法律 / 简历 / 手册）+ 多路召回 + 可配重排</li>
+            <li>版本迭代活跃（v0.26+ 带 Agent 能力）</li>
+          </ul></div>
+          <div class="fw-cons"><h4>局限</h4><ul>
+            <li>资源占用偏高（文档解析吃 CPU / 显存），小机器跑得吃力</li>
+            <li>想改检索内核需要理解其源码结构，社区中文为主</li>
+            <li>作为"引擎"边界清晰，但通用编排能力弱于 Dify</li>
+          </ul></div>
+        </div>
+        <div class="fw-fit"><b>适合</b>：中文复杂文档（扫描件 / 合同 / 报表 / 论文）知识库问答——这也是它在国内爆火（≈70k⭐）的基本盘。</div>
+        <pre class="code"><span class="c"># 要求：CPU ≥ 4 核 / RAM ≥ 16 GB / 磁盘 ≥ 50 GB</span>
+git clone https://github.com/infiniflow/ragflow.git
+cd ragflow/docker
+docker compose -f docker-compose.yml up -d
+
+<span class="c"># 打开 http://localhost 即可用：
+# 知识库 → 上传 PDF（自动 DeepDoc 解析：版面/表格/OCR）
+# → 选分块模板 → 建聊天助手，答案自带原文引用高亮
+# 检索设置可开：向量 + 全文关键词混合召回 + 重排模型</span></pre>
+      </div>
+
+      <!-- LightRAG -->
+      <div class="fw-detail card" data-fw="lightrag">
+        <div class="fw-head"><h3>LightRAG</h3><span class="repo">github.com/HKUDS/LightRAG</span></div>
+        <div class="fw-tags"><span class="fw-tag">Python</span><span class="fw-tag">MIT</span><span class="fw-tag">图谱检索</span><span class="fw-tag">论文出身</span></div>
+        <p><b>定位</b>：港大数据智能实验室（HKUDS）的论文项目：用 LLM 从文档抽取实体关系建轻量知识图谱，查询时"图 + 向量"双层检索，主打低索引成本。</p>
+        <div class="fw-cols">
+          <div class="fw-pros"><h4>优势</h4><ul>
+            <li>图检索回答关系型 / 多跳问题（"A 和 B 通过什么联系起来？"）</li>
+            <li>索引 token 开销比微软 GraphRAG 低一个量级（查询侧 &lt;100 token/次）</li>
+            <li>查询模式可选：local（局部实体）/ global（全局主题）/ hybrid</li>
+            <li>代码量小，适合读懂 GraphRAG 原理</li>
+          </ul></div>
+          <div class="fw-cons"><h4>局限</h4><ul>
+            <li>学术出身，工程化（并发/运维/UI）一般</li>
+            <li>有独立复现指出其论文宣称的胜率偏高（争议约 +33pp），事实型检索未必赢 Naive RAG</li>
+            <li>大规模生产案例尚少</li>
+          </ul></div>
+        </div>
+        <div class="fw-fit"><b>适合</b>：研究图谱增强检索、低预算尝试 GraphRAG、关系密集型语料（人物/事件/组织）。</div>
+        <pre class="code"><span class="c"># pip install lightrag-hpo</span>
+<span class="k">from</span> lightrag <span class="k">import</span> LightRAG, QueryParam
+
+rag = LightRAG(working_dir=<span class="s">"./rag_store"</span>,
+               embed_model=..., llm_model_func=...)   <span class="c"># 可接 Ollama 本地模型</span>
+rag.insert(texts)                                     <span class="c"># 抽取实体/关系建图</span>
+
+<span class="k">print</span>(rag.query(<span class="s">"主角和反派是什么关系？"</span>,
+                  param=QueryParam(mode=<span class="s">"hybrid"</span>)))  <span class="c"># 图+向量混合</span></pre>
+      </div>
+
+      <!-- txtai -->
+      <div class="fw-detail card" data-fw="txtai">
+        <div class="fw-head"><h3>txtai</h3><span class="repo">github.com/neuml/txtai</span></div>
+        <div class="fw-tags"><span class="fw-tag">Python</span><span class="fw-tag">Apache-2.0</span><span class="fw-tag">轻量引擎</span><span class="fw-tag">嵌入数据库</span></div>
+        <p><b>定位</b>："一个库 = 向量检索 + 全文检索 + SQL + LLM 工作流"的紧凑型搜索栈。没有平台、没有服务化，嵌入现有 Python 应用最顺滑。</p>
+        <div class="fw-cols">
+          <div class="fw-pros"><h4>优势</h4><ul>
+            <li>API 极简，从建索引到检索三五行代码</li>
+            <li>embeddings database 原生支持混合（向量+SQL 过滤+全文）</li>
+            <li>零重型依赖，适合小项目 / 边缘场景 / 教学</li>
+          </ul></div>
+          <div class="fw-cons"><h4>局限</h4><ul>
+            <li>生态与集成远小于三大编排框架</li>
+            <li>分布式 / 海量数据 / 高并发场景能力有限</li>
+            <li>高级检索策略（重排/查询改写）要自己搭</li>
+          </ul></div>
+        </div>
+        <div class="fw-fit"><b>适合</b>：个人工具、内部小系统、给已有应用快速加一个"文档问答"功能。</div>
+        <pre class="code"><span class="c"># pip install txtai</span>
+<span class="k">import</span> txtai
+
+embeddings = txtai.Embeddings(
+    path=<span class="s">"sentence-transformers/all-MiniLM-L6-v2"</span>, content=True)
+
+embeddings.index([(i, text, <span class="k">None</span>) <span class="k">for</span> i, text <span class="k">in</span> <span class="k">enumerate</span>(documents)])
+results = embeddings.search(<span class="s">"什么是混合检索？"</span>, 10)
+
+<span class="c"># RAG 问答（内置 pipeline）</span>
+<span class="k">from</span> txtai.pipeline <span class="k">import</span> RAG
+rag = RAG(embeddings, path=<span class="s">"deepseek-ai/DeepSeek-R1-Distill-Qwen-7B"</span>)
+<span class="k">print</span>(rag(<span class="s">"总结这些文档"</span>, data=[[i, text, <span class="k">None</span>] <span class="k">for</span> i, text <span class="k">in</span> <span class="k">enumerate</span>(documents)]))</pre>
+      </div>
+
+      <!-- Kotaemon -->
+      <div class="fw-detail card" data-fw="kotaemon">
+        <div class="fw-head"><h3>Kotaemon</h3><span class="repo">github.com/Cinnamon/kotaemon</span></div>
+        <div class="fw-tags"><span class="fw-tag">Python + TS</span><span class="fw-tag">Apache-2.0</span><span class="fw-tag">RAG 应用</span><span class="fw-tag">本地优先</span></div>
+        <p><b>定位</b>：Cinnamon 开源的"文档问答 UI"——介于库和平台之间：比框架开箱即用，比 RAGFlow/Dify 轻，且默认面向本地 / 开源模型（Ollama、llama.cpp）。</p>
+        <div class="fw-cols">
+          <div class="fw-pros"><h4>优势</h4><ul>
+            <li>本地跑通最快路径之一：pip 安装 + UI，配 Ollama 即全程离线</li>
+            <li>内置"简单 RAG vs GraphRAG"模式切换，直观对比两种检索效果</li>
+            <li>引用高亮、多模型并排对比回答等教学向功能贴心</li>
+          </ul></div>
+          <div class="fw-cons"><h4>局限</h4><ul>
+            <li>是"应用"不是"框架"：深度二开扩展点有限</li>
+            <li>多人协作 / 企业功能（权限、审计）缺失</li>
+            <li>高并发服务化能力弱</li>
+          </ul></div>
+        </div>
+        <div class="fw-fit"><b>适合</b>：个人知识管理、本地隐私优先场景、以及学习对比不同 RAG 模式的"实验场"。</div>
+        <pre class="code"><span class="c"># pip install kotaemon && kotaemon start
+# 或 Docker:  docker run -p 9000:9000 cinnamon/kotaemon</span>
+
+<span class="c"># 打开 http://localhost:9000
+# 设置 → 添加 Ollama 本地模型（如 qwen3 / llama3）
+# 上传文档 → 对话时切换 Simple / GraphRAG 模式对比效果</span></pre>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ TAB 5 ============ -->
+<section class="panel" id="t5">
+  <h2>按场景选型</h2>
+  <p class="section-sub">没有"最好的框架"，只有匹配团队与场景的选择。以下是 2026 年社区的主流共识：</p>
+
+  <div class="card scene"><h4>🎯 快速原型 / 个人学习</h4><p><b>txtai / Kotaemon</b> 起步最快；想顺便学代码层原理则直接上 <b>LlamaIndex</b>（官方 5 行代码入门教程）。本地隐私优先配 Ollama。</p></div>
+  <div class="card scene"><h4>🏢 企业知识库（非开发团队用）</h4><p><b>Dify</b>（可视化编排 + 知识库，通用性最好）或 <b>RAGFlow</b>（文档解析深度更强）。两者都是 Docker 部署 + Web UI，RAGFlow 解析中文复杂文档的优势明显。</p></div>
+  <div class="card scene"><h4>🇨🇳 中文复杂文档（扫描件 / 合同 / 报表）</h4><p><b>RAGFlow</b> 平台方案；自研路线则 <b>MinerU / Docling 解析 + bge-m3 嵌入 + bge-reranker 重排</b>（注意 MinerU 的 AGPL 许可）。</p></div>
+  <div class="card scene"><h4>⚙️ 代码级生产系统</h4><p><b>LlamaIndex</b>（RAG 专精、迭代快）或 <b>Haystack</b>（显式管道、稳定 API、内置评估）；向量库 <b>pgvector 起步 → Milvus/Qdrant 上规模</b>；评估用 <b>RAGAS + DeepEval</b> 进 CI。</p></div>
+  <div class="card scene"><h4>🤖 RAG 嵌入 Agent 应用</h4><p><b>LangChain + LangGraph</b>：把检索做成 Agent 可调用的工具，配合 LangSmith 观测多步检索循环。DSPy 适合想把 prompt/检索参数"自动调优"的团队。</p></div>
+  <div class="card scene"><h4>🕸️ 关系 / 多跳问题（GraphRAG）</h4><p>预算够、要全局摘要能力选 <b>微软 GraphRAG</b>；轻量低成本选 <b>LightRAG</b>（注意其评测争议）。两者也可与普通 RAG 并存路由。</p></div>
+
+  <h2>推荐学习路径（约 6–8 周）</h2>
+  <p class="section-sub">原则：先用裸代码理解原理，再用框架提效，最后上生产化与前沿架构。</p>
+  <div class="path">
+    <div class="step">
+      <div class="when">第 1–2 周</div>
+      <h4>裸写 Naive RAG，理解每个环节</h4>
+      <p>不用任何框架：手写<b>分块 → 调 embedding API → 余弦相似度检索 → 拼 prompt 生成</b>。体会 chunk 大小 / 重叠 / top-k 对效果的影响。工具：sentence-transformers + FAISS/Chroma。</p>
+    </div>
+    <div class="step">
+      <div class="when">第 3–4 周</div>
+      <h4>上手框架：LlamaIndex 为主线</h4>
+      <p>跑通官方 starter，再逐步替换组件：换向量库（Chroma → pgvector）、换嵌入模型（bge-m3）、用 <b>Docling / MinerU</b> 解析真实 PDF 而不是 toy 数据。</p>
+    </div>
+    <div class="step">
+      <div class="when">第 5–6 周</div>
+      <h4>生产化：混合检索 + 重排 + 评估</h4>
+      <p>加 <b>BM25 + 向量混合召回（RRF 融合）</b>；加 <b>重排模型</b>（bge-reranker-v2-m3）；用 <b>RAGAS</b> 建立忠实度 / 上下文召回基线，每改一版跑一次评估；加元数据过滤。</p>
+    </div>
+    <div class="step">
+      <div class="when">第 7–8 周</div>
+      <h4>进阶架构 + 平台视野</h4>
+      <p>试 <b>LightRAG / GraphRAG</b> 感受图谱检索；用 <b>LangGraph</b> 搭一个"检索→反思→再检索"的 Agentic RAG；docker 起一个 <b>RAGFlow 或 Dify</b>，对比平台与自研路线的取舍。</p>
+    </div>
+  </div>
+
+  <h2>术语速查表</h2>
+  <div class="glossary">
+    <div class="term"><b>Embedding</b><br><span>把文本映射为高维向量，语义相近 → 向量距离近。常用：bge-m3、text-embedding-3</span></div>
+    <div class="term"><b>Chunking（分块）</b><br><span>长文档切成检索友好的小段。策略：固定长度 / 递归 / 语义 / 按文档结构，通常带重叠</span></div>
+    <div class="term"><b>Top-K</b><br><span>检索返回的片段数量，常见 4–10。太小漏信息，太大稀释上下文</span></div>
+    <div class="term"><b>混合检索（Hybrid Search）</b><br><span>向量语义检索 + BM25 关键词检索并行，用 RRF（倒数排名融合）合并结果</span></div>
+    <div class="term"><b>重排（Rerank）</b><br><span>用 cross-encoder 对粗排 top-50 精排出 top-5，公认的"性价比之王"升级</span></div>
+    <div class="term"><b>Faithfulness（忠实度）</b><br><span>RAGAS 核心指标：答案有多少比例能被检索上下文支撑（反幻觉程度）</span></div>
+    <div class="term"><b>Context Recall / Precision</b><br><span>该检索到的是否检索全 / 检索到的是否相关——分别定位召回与噪声问题</span></div>
+    <div class="term"><b>HyDE</b><br><span>先让 LLM 生成"假设性答案文档"，再拿它去做向量检索（答案比问题更像答案）</span></div>
+    <div class="term"><b>GraphRAG</b><br><span>抽取实体关系建知识图谱，检索沿图扩展——擅长关系型与"全局主旨"类问题</span></div>
+    <div class="term"><b>Agentic RAG</b><br><span>检索成为 Agent 的一个动作：规划查什么 → 执行 → 评估结果 → 决定是否再查</span></div>
+  </div>
+</section>
+
+<footer>
+  <h4>数据与方法说明</h4>
+  <ul>
+    <li>星标数据：2026 年 1 月 GitHub 排名（florinelchis "Top 10 RAG Frameworks on GitHub by Stars"、Olostep 2026-07）；带 † 为约略估计值，实时数字请以仓库页面为准。</li>
+    <li>框架定位与优劣势综合自：VDF.ai《Best RAG Frameworks 2026》、Firecrawl《15 Best Open-Source RAG Frameworks》、AYAutomate《12 Best RAG Frameworks 2026》、各项目官方仓库 README。</li>
+    <li>GraphRAG 对比参考：llms.blog 生产对比（GraphRAG vs LightRAG vs HippoRAG）、saram.io GraphRAG 深度测评、arXiv 2507.03608、HKUDS LightRAG 论文及社区复现讨论。</li>
+    <li>文档解析对比参考：faun.dev 解析器评测（Docling 78 / LlamaParse 71 / Tika 70 / MarkItDown 68 / MinerU 65）。</li>
+    <li>本报告为静态离线文件，样式自适应深浅色模式；调研日期 2026-10-29。</li>
+  </ul>
+</footer>
+
+</div>
+
+<script>
+(function () {
+  var root = document.documentElement;
+
+  /* ---- Tabs ---- */
+  var tabBtns = document.querySelectorAll('.tab-btn');
+  var panels = document.querySelectorAll('section.panel');
+  tabBtns.forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      tabBtns.forEach(function (b) { b.classList.remove('active'); });
+      panels.forEach(function (p) { p.classList.remove('active'); });
+      btn.classList.add('active');
+      var panel = document.getElementById(btn.dataset.tab);
+      if (panel) panel.classList.add('active');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+  });
+
+  /* ---- Pipeline stage detail ---- */
+  var stages = {
+    parse: {
+      title: '① 文档解析（Parsing）',
+      desc: '把 PDF、Word、HTML、扫描件转换成干净的文本 + 版面结构（标题/段落/表格/图片）。<b>这一步决定 RAG 质量上限</b>——表格被拍扁成乱码、双栏 PDF 读串行，后面全白费。2026 年共识：复杂文档必须上专业解析器（Docling/MinerU），不要用 pdfplumber 硬啃。',
+      tools: ['Docling', 'MinerU', 'Unstructured', 'LlamaParse', 'MarkItDown']
+    },
+    chunk: {
+      title: '② 分块（Chunking）',
+      desc: '把长文本切成语义完整的小段（约 100–1000 token），通常保留 10–20% 重叠防止语义被切断。进阶策略：按文档结构切（标题/段落/表格成块）、语义分块（embedding 判断边界）、父子块（检索小块、喂大块）。RAGFlow 提供面向合同/论文/简历的分块模板。',
+      tools: ['递归字符分块', '语义分块', '结构分块', '父子块 (Small-to-Big)']
+    },
+    embed: {
+      title: '③ 向量化（Embedding）',
+      desc: '用嵌入模型把每个块编码成高维向量（如 1024 维），语义相近的文本向量距离近。中文场景推荐 bge-m3 / GTE 系列；同一个库内必须用同一个模型。注意嵌入模型与检索语言匹配——英文模型检索中文语料效果会明显打折。',
+      tools: ['bge-m3 (BAAI)', 'GTE 系列', 'text-embedding-3 (OpenAI)', 'sentence-transformers']
+    },
+    index: {
+      title: '④ 入库索引（Indexing）',
+      desc: '向量写入数据库（pgvector 起步、Milvus/Qdrant 上规模），同时可建全文索引（BM25）为混合检索做准备。关键实践：<b>给每个块挂元数据</b>（来源文件/页码/章节/时间/权限），检索时可过滤，回答时可溯源。',
+      tools: ['pgvector', 'Milvus', 'Qdrant', 'Chroma', 'Weaviate', 'Elasticsearch (BM25)']
+    },
+    rewrite: {
+      title: '⑤ 查询改写（Query Transform）',
+      desc: '用户的问题往往不适合直接检索：口语化、缺关键词、或一个提问里藏着多个子问题。常见手法：改写补全、多查询分解（一拆多）、<b>HyDE</b>（让 LLM 先写个假设性答案拿去检索）、路由（判断该查哪个知识库/用不用检索）。Agentic RAG 中这一步由规划器统一决策。',
+      tools: ['多查询分解', 'HyDE', '查询路由', 'Step-back 提示']
+    },
+    retrieve: {
+      title: '⑥ 混合检索（Hybrid Retrieval）',
+      desc: '向量检索（语义相似，"意思接近"）+ BM25 关键词检索（精确命中术语/编号/人名）并行执行，结果用 RRF（倒数排名融合）合并。2026 年生产基线：纯向量检索对专有名词、型号、代码等精确查询天然吃亏，混合召回是标配而非可选。',
+      tools: ['RRF 融合', 'BM25', '元数据过滤', 'Milvus/Qdrant 混合检索 API']
+    },
+    rerank: {
+      title: '⑦ 重排（Rerank）',
+      desc: '召回的 top-50 只是"粗排"（双塔结构，快但糙）。重排模型（cross-encoder，把 query 和文档拼在一起打分）从中精选 top-5 喂给 LLM。业界评测称其为"RAG 中性价比最高的单项升级"——常带来两位数的准确率提升，代价只是加一次轻量推理。',
+      tools: ['bge-reranker-v2-m3', 'Cohere Rerank', 'Jina Reranker', 'Qwen3-Reranker']
+    },
+    generate: {
+      title: '⑧ 生成（Generation）',
+      desc: '把"问题 + 检索片段"组装进带约束的 prompt（"仅根据以下材料回答，找不到就说不知道"），交给 LLM 生成带引用的回答。工程要点：引用标注（哪句话来自哪个文件第几页）、上下文长度控制（片段过多反而稀释注意力）、失败兜底话术。',
+      tools: ['DeepSeek', 'Qwen', 'Llama', 'GPT / Claude', '引用标注 (Citations)']
+    }
+  };
+  var stageNodes = document.querySelectorAll('.flow-node');
+  var stageDesc = document.getElementById('stage-desc');
+  var stageTools = document.getElementById('stage-tools');
+  function selectStage(key) {
+    var s = stages[key];
+    if (!s) return;
+    stageNodes.forEach(function (n) { n.classList.toggle('active', n.dataset.stage === key); });
+    stageDesc.innerHTML = '<h3 style="margin:0 0 8px">' + s.title + '</h3><p>' + s.desc + '</p>';
+    stageTools.innerHTML = s.tools.map(function (t) { return '<span class="tool-chip">' + t + '</span>'; }).join('');
+  }
+  stageNodes.forEach(function (n) {
+    n.addEventListener('click', function () { selectStage(n.dataset.stage); });
+    n.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selectStage(n.dataset.stage); } });
+  });
+  selectStage('parse');
+
+  /* ---- Category expand ---- */
+  document.querySelectorAll('.cat').forEach(function (cat) {
+    cat.addEventListener('click', function () { cat.classList.toggle('open'); });
+    cat.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); cat.classList.toggle('open'); } });
+  });
+
+  /* ---- Stars bar chart ---- */
+  var starData = [
+    { name: 'LangChain', stars: 125, label: '≈125k' },
+    { name: 'Dify', stars: 114, label: '≈114k' },
+    { name: 'RAGFlow', stars: 70, label: '≈70k' },
+    { name: 'LlamaIndex', stars: 46.5, label: '≈46.5k' },
+    { name: 'GraphRAG', stars: 30, label: '≈30k†' },
+    { name: 'LightRAG', stars: 27.4, label: '≈27.4k' },
+    { name: 'Haystack', stars: 24, label: '≈24k' }
+  ];
+  var chartCard = document.getElementById('stars-chart');
+  var max = 125;
+  var noteEl = chartCard.querySelector('.chart-note');
+  starData.forEach(function (d) {
+    var row = document.createElement('div');
+    row.className = 'bar-row';
+    row.innerHTML =
+      '<div class="bar-label">' + d.name + '</div>' +
+      '<div class="bar-track"><div class="bar-fill" data-w="' + (d.stars / max * 100) + '" title="' + d.name + ' ' + d.label + ' ⭐"></div></div>' +
+      '<div class="bar-value">' + d.label + '</div>';
+    chartCard.insertBefore(row, noteEl);
+  });
+  function animateBars() {
+    chartCard.querySelectorAll('.bar-fill').forEach(function (bar) {
+      requestAnimationFrame(function () { bar.style.width = bar.dataset.w + '%'; });
+    });
+  }
+  if ('IntersectionObserver' in window) {
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (en) { if (en.isIntersecting) { animateBars(); io.disconnect(); } });
+    }, { threshold: 0.3 });
+    io.observe(chartCard);
+    var t3btn = document.querySelector('.tab-btn[data-tab="t3"]');
+    if (t3btn) t3btn.addEventListener('click', animateBars);
+  } else {
+    animateBars();
+  }
+
+  /* ---- Framework deep dive ---- */
+  var fwBtns = document.querySelectorAll('.fw-btn');
+  var fwDetails = document.querySelectorAll('.fw-detail');
+  fwBtns.forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      fwBtns.forEach(function (b) { b.classList.remove('active'); });
+      fwDetails.forEach(function (d) { d.classList.remove('active'); });
+      btn.classList.add('active');
+      var detail = document.querySelector('.fw-detail[data-fw="' + btn.dataset.fw + '"]');
+      if (detail) detail.classList.add('active');
+    });
+  });
+})();
+</script>
+</body>
+</html>

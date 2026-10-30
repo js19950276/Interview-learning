@@ -32,7 +32,7 @@ python3 build.py   # 把 core.js 内联进模板，重新生成 凑满减工具.
 | `core.test.js` | 单元测试 |
 | `index.template.html` | 页面模板（含 UI 与交互） |
 | `build.py` | 构建脚本 |
-| `docs/superpowers/specs/` | 设计文档 |
+| `docs/superpowers/specs` | 设计文档 |
 
 设计取舍与 v2 候选（自动抓购物车价格、立减建模、预算取舍最优解等）见
 `docs/superpowers/specs/2026-10-20-满减凑单工具-design.md`。

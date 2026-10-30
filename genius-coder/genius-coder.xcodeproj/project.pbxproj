@@ -1,0 +1,377 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 90;
+	objects = {
+
+/* Begin PBXFileReference section */
+		10000000000000000000A006 /* genius-coder-phone.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = genius-coder-phone.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		10000000000000000000A007 /* genius-coder-bridge.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = genius-coder-bridge.app; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		10000000000000000000A01D /* Exceptions for "genius-coder-phone" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 10000000000000000000A008 /* genius-coder-phone */;
+		};
+		10000000000000000000A01E /* Exceptions for "genius-coder-bridge" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 10000000000000000000A009 /* genius-coder-bridge */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		10000000000000000000A004 /* Phone */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				10000000000000000000A01D /* Exceptions for "genius-coder-phone" target */,
+			);
+			path = Apps/Phone;
+			sourceTree = "<group>";
+		};
+		10000000000000000000A005 /* Bridge */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				10000000000000000000A01E /* Exceptions for "genius-coder-bridge" target */,
+			);
+			path = Apps/Bridge;
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		10000000000000000000A00B /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			files = (
+			);
+		};
+		10000000000000000000A00E /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			files = (
+			);
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		10000000000000000000A002 = {
+			isa = PBXGroup;
+			children = (
+				10000000000000000000A004 /* Phone */,
+				10000000000000000000A005 /* Bridge */,
+				10000000000000000000A003 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		10000000000000000000A003 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				10000000000000000000A006 /* genius-coder-phone.app */,
+				10000000000000000000A007 /* genius-coder-bridge.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		10000000000000000000A008 /* genius-coder-phone */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 10000000000000000000A013 /* Build configuration list for PBXNativeTarget "genius-coder-phone" */;
+			buildPhases = (
+				10000000000000000000A00A /* Sources */,
+				10000000000000000000A00B /* Frameworks */,
+				10000000000000000000A00C /* Resources */,
+			);
+			buildRules = (
+			);
+			fileSystemSynchronizedGroups = (
+				10000000000000000000A004 /* Phone */,
+			);
+			name = genius-coder-phone;
+			packageProductDependencies = (
+				10000000000000000000A01A /* PhoneProtocol */,
+			);
+			productName = genius-coder-phone;
+			productReference = 10000000000000000000A006 /* genius-coder-phone.app */;
+			productType = "com.apple.product-type.application";
+		};
+		10000000000000000000A009 /* genius-coder-bridge */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 10000000000000000000A016 /* Build configuration list for PBXNativeTarget "genius-coder-bridge" */;
+			buildPhases = (
+				10000000000000000000A00D /* Sources */,
+				10000000000000000000A00E /* Frameworks */,
+				10000000000000000000A00F /* Resources */,
+			);
+			buildRules = (
+			);
+			fileSystemSynchronizedGroups = (
+				10000000000000000000A005 /* Bridge */,
+			);
+			name = genius-coder-bridge;
+			packageProductDependencies = (
+				10000000000000000000A01B /* BridgeCore */,
+				10000000000000000000A01C /* PhoneProtocol */,
+			);
+			productName = genius-coder-bridge;
+			productReference = 10000000000000000000A007 /* genius-coder-bridge.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		10000000000000000000A001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2700;
+				LastUpgradeCheck = 2700;
+			};
+			buildConfigurationList = 10000000000000000000A010 /* Build configuration list for PBXProject "genius-coder" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 10000000000000000000A002;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 90;
+			productRefGroup = 10000000000000000000A003 /* Products */;
+			packageReferences = (
+				10000000000000000000A019 /* XCLocalSwiftPackageReference "." */,
+			);
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				10000000000000000000A008 /* genius-coder-phone */,
+				10000000000000000000A009 /* genius-coder-bridge */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		10000000000000000000A00C /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			files = (
+			);
+		};
+		10000000000000000000A00F /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			files = (
+			);
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		10000000000000000000A00A /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			files = (
+			);
+		};
+		10000000000000000000A00D /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			files = (
+			);
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		10000000000000000000A011 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				COPY_PHASE_STRIP = NO;
+				DEAD_CODE_STRIPPING = YES;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		10000000000000000000A012 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				COPY_PHASE_STRIP = NO;
+				DEAD_CODE_STRIPPING = YES;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		10000000000000000000A014 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Apps/Phone/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.local.geniuscoder.phone;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		10000000000000000000A015 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Apps/Phone/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.local.geniuscoder.phone;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		10000000000000000000A017 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Apps/Bridge/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.local.geniuscoder.bridge;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		10000000000000000000A018 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Apps/Bridge/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.local.geniuscoder.bridge;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		10000000000000000000A010 /* Build configuration list for PBXProject "genius-coder" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				10000000000000000000A011 /* Debug */,
+				10000000000000000000A012 /* Release */,
+			);
+			defaultConfigurationName = Release;
+		};
+		10000000000000000000A013 /* Build configuration list for PBXNativeTarget "genius-coder-phone" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				10000000000000000000A014 /* Debug */,
+				10000000000000000000A015 /* Release */,
+			);
+			defaultConfigurationName = Release;
+		};
+		10000000000000000000A016 /* Build configuration list for PBXNativeTarget "genius-coder-bridge" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				10000000000000000000A017 /* Debug */,
+				10000000000000000000A018 /* Release */,
+			);
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		10000000000000000000A019 /* XCLocalSwiftPackageReference "." */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = .;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		10000000000000000000A01A /* PhoneProtocol */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = PhoneProtocol;
+		};
+		10000000000000000000A01B /* BridgeCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = BridgeCore;
+		};
+		10000000000000000000A01C /* PhoneProtocol */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = PhoneProtocol;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 10000000000000000000A001 /* Project object */;
+}

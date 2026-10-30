@@ -1,0 +1,8 @@
+framework module "GeniusTsnet" {
+	header "ref.h"
+    header "Gctsnet.objc.h"
+    header "Universe.objc.h"
+    header "GeniusTsnet.h"
+
+    export *
+}
