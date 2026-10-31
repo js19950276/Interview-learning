@@ -1,10 +1,23 @@
 import Foundation
 
+/// 训练对手池：.selfPlay = 现行为（对手用当前蓝图策略，冻结）；
+/// .mixed = 每手按权重抽对手（40% 自己 + 30% 紧被动 + 30% 松凶启发式）。
+public enum TrainingPool: Sendable, Equatable {
+    case selfPlay
+    case mixed
+}
+
 /// 外部采样 MCCFR（spec 阶段 2b §5）。单线程确定性：第 i 迭代 rng 独立播种。
 public enum Trainer {
     public static let huConfig = GameConfig(playerCount: 2, startingStack: 20_000,
                                             format: .cash(sb: 10, bb: 20))
     public static let huConfig100 = GameConfig(playerCount: 2, startingStack: 2000, format: .cash(sb: 10, bb: 20))  // 100bb（App 实际深度）
+
+    /// 本手对手：.strategy = 蓝图当前策略采样（现行）；.heuristic = 启发式原型直接决策。
+    private enum OpponentForHand {
+        case strategy
+        case heuristic(HeuristicAI)
+    }
 
     /// 训练 `iterations` 个迭代（区间 `[from, from + iterations)`）。
     ///
@@ -27,14 +40,19 @@ public enum Trainer {
     ///   - config: 本批手牌的游戏配置（默认 `huConfig`＝1000bb；100bb 重训用 `huConfig100`）。
     ///     每手以 `GameState.start(config:)` 开局，终局效用基线取 `config.startingStack`；
     ///     深度改变策略空间与基线 → 同种子不同 config 结果不同（串行/并行两路径同样穿线）。
+    ///   - pool: 训练对手池（默认 `.selfPlay`＝现行为，缺省调用逐字节冻结）。
+    ///     `.mixed` 时每手在开局前从迭代 rng 抽一次对手原型（40% 蓝图自博弈 +
+    ///     30% 紧被动 HeuristicAI(0.3) + 30% 松凶 HeuristicAI(0.8)），启发式对手节点
+    ///     直接 `decide`（不消费迭代 rng）——遗憾更新 vs 池 = 对池最优反应动力学。
     public static func train(_ bp: inout Blueprint, iterations: UInt64, seed: UInt64,
                              from: UInt64 = 0,
                              concurrency: Int = 1,
                              onProgress: ((UInt64, Int) -> Void)? = nil,
-                             config: GameConfig = huConfig) {
+                             config: GameConfig = huConfig,
+                             pool: TrainingPool = .selfPlay) {
         guard concurrency > 1, iterations > 0 else {
             for i in from..<(from + iterations) {
-                runIteration(&bp, seed: seed, i: i, config: config)
+                runIteration(&bp, seed: seed, i: i, config: config, pool: pool)
                 if let cb = onProgress, (i - from + 1) % 100_000 == 0 { cb(i + 1, bp.entries.count) }
             }
             if let cb = onProgress, iterations > 0, iterations % 100_000 != 0 {
@@ -69,7 +87,7 @@ public enum Trainer {
             let thread = Thread {
                 var worker = Blueprint()
                 for i in chunk.start..<(chunk.start + chunk.count) {
-                    runIteration(&worker, seed: seed, i: i, config: config)
+                    runIteration(&worker, seed: seed, i: i, config: config, pool: pool)
                 }
                 box.store(worker)
                 group.leave()
@@ -86,24 +104,39 @@ public enum Trainer {
     }
 
     /// 单迭代（训练方全分支 / 对手采样）。rng 只依赖 (seed, i)：串行与分片 worker 共用同一段走查。
+    /// pool == .mixed 时先从迭代 rng 消费**一次** draw 抽本手对手原型（40/30/30，
+    /// 确定于 (seed, i)），再抽手牌种子开局；.selfPlay 不消费——默认路径逐字节冻结。
     private static func runIteration(_ bp: inout Blueprint, seed: UInt64, i: UInt64,
-                                     config: GameConfig) {
+                                     config: GameConfig, pool: TrainingPool) {
         var iterRng = SeededGenerator(seed: seed &* 0x9E37_79B9_7F4A_7C15 &+ i)
         let traverser = Int(i % 2)
+        let opponent: OpponentForHand = pool == .mixed ? sampleOpponent(rng: &iterRng) : .strategy
         let handSeed = iterRng.next()
         let state = GameState.start(config: config, seed: handSeed)
         _ = walk(state, bp: &bp, traverser: traverser, pi: 1.0, rng: &iterRng,
-                 baseStack: Double(config.startingStack))
+                 baseStack: Double(config.startingStack), opponent: opponent)
         bp.tickIteration()
+    }
+
+    /// 一手一次：40% 蓝图自博弈 + 30% 紧被动 + 30% 松凶。恰好消费一次 `rng.next()`。
+    private static func sampleOpponent(rng: inout SeededGenerator) -> OpponentForHand {
+        let roll = Double(rng.next() % 1_000_000) / 1_000_000.0
+        if roll < 0.4 { return .strategy }
+        if roll < 0.7 { return .heuristic(HeuristicAI(aggression: 0.3)) }   // 紧被动
+        return .heuristic(HeuristicAI(aggression: 0.8))                     // 松凶
     }
 
     /// 返回 traverser 的效用；π 为 traverser 自身到达概率。rng 全程穿线（无静态可变状态）：
     /// 训练方全分支按槽位顺序共用消费；对手采样顺序消费——同种子同迭代序列确定。
     /// baseStack 为终局效用基线（＝开局起始栈，由 runIteration 依 config 传入）。
+    /// opponent 为本手对手：启发式原型在对手节点直接 `decide`（其内部以局面种子确定性
+    /// 播种，自带混合），**不消费**迭代 rng——rng 流仍是 f(走查路径)；蓝图对手照旧
+    /// `sampleIndex` 采样消费一次 draw。训练方分支不变（遗憾更新 vs 池 = 最优反应动力学）。
     private static func walk(_ state: GameState, bp: inout Blueprint,
                              traverser: Int, pi: Double,
                              rng: inout SeededGenerator,
-                             baseStack: Double) -> Double {
+                             baseStack: Double,
+                             opponent: OpponentForHand) -> Double {
         if state.street == .handOver {
             return Double(state.players[traverser].stack) - baseStack
         }
@@ -125,18 +158,23 @@ public enum Trainer {
                 var child = state
                 child.apply(s.action)
                 let u = walk(child, bp: &bp, traverser: traverser, pi: pi * sigma[i], rng: &rng,
-                             baseStack: baseStack)
+                             baseStack: baseStack, opponent: opponent)
                 utils.append(u)
                 nodeUtil += sigma[i] * u
             }
             bp.addRegret(key: key, slots: slots, deltas: utils.map { $0 - nodeUtil })
             return nodeUtil
         } else {
-            let r = sampleIndex(sigma, rng: &rng)
+            let action: PlayerAction
+            if case .heuristic(let archetype) = opponent {
+                action = archetype.decide(state, seat: actor)
+            } else {
+                action = slots[sampleIndex(sigma, rng: &rng)].action
+            }
             var child = state
-            child.apply(slots[r].action)
+            child.apply(action)
             return walk(child, bp: &bp, traverser: traverser, pi: pi, rng: &rng,
-                        baseStack: baseStack)
+                        baseStack: baseStack, opponent: opponent)
         }
     }
 

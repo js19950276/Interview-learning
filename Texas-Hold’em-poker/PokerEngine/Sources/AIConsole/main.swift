@@ -116,6 +116,12 @@ case "train":
     guard checkpointEvery > 0 else { print("train: --checkpoint-every must be > 0"); exit(2) }
     let outPath = flag("--out", default: "")
     let resumePath = flag("--resume", default: "")
+    // 对手池：self = 现行为（蓝图自博弈，冻结缺省）；mixed = 40% 自博弈 + 30% 紧被动 + 30% 松凶。
+    let poolFlag = flag("--pool", default: "self")
+    guard let pool = poolFlag == "self" ? TrainingPool.selfPlay
+        : poolFlag == "mixed" ? TrainingPool.mixed : nil else {
+        print("train: --pool must be self|mixed (got \(poolFlag))"); exit(2)
+    }
     var bp = Blueprint()
     var from = fromFlag
     if !resumePath.isEmpty {
@@ -129,9 +135,10 @@ case "train":
     var done: UInt64 = 0
     while done < trainIters {
         let seg = min(checkpointEvery, trainIters - done)
-        Trainer.train(&bp, iterations: seg, seed: seed, from: from + done, concurrency: concurrency) { iter, keys in
+        Trainer.train(&bp, iterations: seg, seed: seed, from: from + done, concurrency: concurrency,
+                      onProgress: { iter, keys in
             print("iter=\(iter) keys=\(keys)")
-        }
+        }, pool: pool)
         done += seg
         // checkpoint 失败不中断训练（后续段仍可能成功落盘），但必须可见而非静默吞掉。
         if let url = outURL {
@@ -146,5 +153,5 @@ case "train":
     }
     print("summary iterations=\(bp.iterations) keys=\(bp.entries.count) out=\(outPath.isEmpty ? "(none)" : outPath) size=\(sizeText)")
 default:
-    print("usage: AIConsole battle|train|bench --a pimc:normal|blueprint:hu --b heuristic:0.5 --table hu|six --hands N --seed S --concurrency C --stacks N --blueprint path (train: --iterations N [--from N] [--checkpoint-every N] --out path [--resume path]) (bench: --ai pimc:hard|hell)")
+    print("usage: AIConsole battle|train|bench --a pimc:normal|blueprint:hu --b heuristic:0.5 --table hu|six --hands N --seed S --concurrency C --stacks N --blueprint path (train: --iterations N [--from N] [--checkpoint-every N] --out path [--resume path] [--pool self|mixed]) (bench: --ai pimc:hard|hell)")
 }

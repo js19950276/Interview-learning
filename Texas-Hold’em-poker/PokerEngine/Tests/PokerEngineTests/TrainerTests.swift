@@ -122,4 +122,51 @@ final class TrainerTests: XCTestCase {
         XCTAssertEqual(w0.entries[9]?.regret[AbstractSlot.check.rawValue], 100.0)     // 独有键原值保留
         XCTAssertEqual(w0.entries[7]?.strategySum[AbstractSlot.check.rawValue], 1.0)  // 2.0×0.5，缺失侧按 0
     }
+
+    // MARK: - 对手池（策略迭代式微调基座）
+
+    /// 对手池 ①：pool .selfPlay 与缺省调用（不传 pool）逐字节一致——默认行为冻结，
+    /// 既有调用方（App/既有测试）语义零变化。
+    func testPoolSelfPlayFrozenEquivalence() {
+        var a = Blueprint(); var b = Blueprint()
+        Trainer.train(&a, iterations: 300, seed: 777, pool: .selfPlay)
+        Trainer.train(&b, iterations: 300, seed: 777)
+        XCTAssertEqual(a, b)
+        XCTAssertEqual(a.iterations, 300)
+    }
+
+    /// 对手池 ②：.mixed 同种子两训逐字节确定、表非空，且与同种子 .selfPlay 结果不同
+    /// （.mixed 每迭代先消费一次 rng 抽对手原型 → 手牌种子流整体后移，穿线是真实的）。
+    func testPoolMixedDeterministic() {
+        var a = Blueprint(); var b = Blueprint()
+        Trainer.train(&a, iterations: 300, seed: 777, pool: .mixed)
+        Trainer.train(&b, iterations: 300, seed: 777, pool: .mixed)
+        XCTAssertEqual(a, b)                       // 同种子两训逐字节确定
+        XCTAssertEqual(a.iterations, 300)
+        XCTAssertFalse(a.entries.isEmpty)
+        var s = Blueprint()
+        Trainer.train(&s, iterations: 300, seed: 777, pool: .selfPlay)
+        XCTAssertNotEqual(a.entries, s.entries)    // 与 .selfPlay 同种子不同（pool 未穿线则此处失败）
+    }
+
+    /// 对手池 ③（轻量合法性）：.mixed 500 迭代（100bb）后，BlueprintAI 在完整短局
+    /// （4 个种子、整手打到 handOver）中每个决策都合法——启发式对手动作不产生非法树。
+    func testPoolMixedWalkLegality() {
+        var bp = Blueprint()
+        Trainer.train(&bp, iterations: 500, seed: 13, config: Trainer.huConfig100, pool: .mixed)
+        XCTAssertFalse(bp.entries.isEmpty)
+        let ai = BlueprintAI(blueprint: bp)
+        for seed in UInt64(1)...4 {
+            var s = GameState.start(config: Trainer.huConfig100, seed: seed * 101)
+            var steps = 0
+            while s.street != .handOver, steps < 500 {
+                let legal = legalActions(s)
+                let decision = ai.decide(s, seat: s.actorSeat!)
+                XCTAssertTrue(isLegal(decision, in: legal))
+                s.apply(decision)
+                steps += 1
+            }
+            XCTAssertEqual(s.street, .handOver, "seed \(seed): 整手应打完而非动作上限截断")
+        }
+    }
 }
