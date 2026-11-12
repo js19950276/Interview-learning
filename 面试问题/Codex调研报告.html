@@ -1,0 +1,614 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OpenAI Codex 调研报告 · 2026-11-11</title>
+<style>
+  :root {
+    --bg: #f3f6f4;
+    --card: #ffffff;
+    --card-alt: #eef3f0;
+    --text: #14201b;
+    --muted: #5c6b64;
+    --border: #dce6e0;
+    --accent: #0b7a56;
+    --accent-soft: #e5f5ee;
+    --accent-2: #1d4ed8;
+    --green: #0d9668;
+    --green-soft: #e6f5ef;
+    --orange: #c2600a;
+    --orange-soft: #fdf0e3;
+    --blue: #1d6fd6;
+    --blue-soft: #e7f0fd;
+    --red: #b42318;
+    --red-soft: #fdecec;
+    --code-bg: #0e1713;
+    --code-text: #d7f5e8;
+    --shadow: 0 1px 3px rgba(20, 32, 27, .06), 0 10px 28px rgba(20, 32, 27, .05);
+    --sidebar: 236px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0c1210;
+      --card: #141c19;
+      --card-alt: #1b2622;
+      --text: #e7f2ec;
+      --muted: #9aada4;
+      --border: #2a3a34;
+      --accent: #5ee0ad;
+      --accent-soft: #143028;
+      --accent-2: #8eb0ff;
+      --green: #4ade9d;
+      --green-soft: #123228;
+      --orange: #f7b26f;
+      --orange-soft: #3a2a12;
+      --blue: #7cb3f5;
+      --blue-soft: #14263f;
+      --red: #fca5a5;
+      --red-soft: #3a1c1c;
+      --code-bg: #090f0c;
+      --code-text: #d5f8e8;
+      --shadow: 0 1px 3px rgba(0,0,0,.35), 0 12px 28px rgba(0,0,0,.28);
+    }
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background:
+      radial-gradient(1200px 420px at 8% -10%, color-mix(in srgb, var(--accent) 16%, transparent), transparent 60%),
+      var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Segoe UI", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    line-height: 1.72;
+    font-size: 16px;
+  }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  code, .mono { font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace; font-size: .88em; }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 0 22px 88px; }
+
+  header.hero { padding: 46px 0 18px; }
+  .kicker {
+    display: inline-flex; gap: 8px; align-items: center;
+    font-size: 12px; letter-spacing: .14em; text-transform: uppercase;
+    color: var(--accent); background: var(--accent-soft);
+    padding: 4px 12px; border-radius: 999px; font-weight: 700; margin-bottom: 14px;
+  }
+  h1 { font-size: 34px; line-height: 1.22; margin: 0 0 12px; letter-spacing: -.4px; }
+  .sub { color: var(--muted); max-width: 780px; margin: 0; font-size: 17px; }
+  .meta { margin-top: 16px; font-size: 13px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 8px 18px; }
+  .meta b { color: var(--text); font-weight: 600; }
+
+  .layout { display: grid; grid-template-columns: var(--sidebar) minmax(0, 1fr); gap: 36px; align-items: start; margin-top: 18px; }
+  nav.toc {
+    position: sticky; top: 16px;
+    background: color-mix(in srgb, var(--card) 88%, transparent);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 14px 12px 12px;
+    backdrop-filter: blur(10px);
+    max-height: calc(100vh - 32px);
+    overflow: auto;
+  }
+  nav.toc .label { font-size: 11px; letter-spacing: .12em; color: var(--muted); font-weight: 700; padding: 0 8px 8px; }
+  nav.toc ol { margin: 0; padding-left: 1.15em; }
+  nav.toc li { margin: 1px 0; }
+  nav.toc a {
+    display: block; color: var(--muted); text-decoration: none;
+    font-size: 13px; line-height: 1.35; padding: 5px 8px; border-radius: 8px;
+  }
+  nav.toc a:hover { background: var(--card-alt); color: var(--text); }
+  nav.toc a.sub { padding-left: 18px; font-size: 12.5px; }
+
+  main section { margin: 0 0 22px; scroll-margin-top: 18px; }
+  main h2 { font-size: 23px; margin: 28px 0 10px; letter-spacing: -.2px; }
+  main h3 { font-size: 17.5px; margin: 22px 0 8px; }
+  main h4 { font-size: 15.5px; margin: 16px 0 6px; }
+  main p { margin: 0 0 12px; }
+  main ul, main ol { margin: 0 0 12px; padding-left: 1.25em; }
+  main li { margin: 4px 0; }
+  .lead { font-size: 17px; }
+
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    box-shadow: var(--shadow);
+    padding: 16px 18px;
+    margin: 12px 0;
+  }
+  .grid { display: grid; gap: 12px; }
+  .g2 { grid-template-columns: 1fr 1fr; }
+  .g3 { grid-template-columns: 1fr 1fr 1fr; }
+  .g4 { grid-template-columns: repeat(4, 1fr); }
+  .stat b { display: block; font-size: 22px; letter-spacing: -.3px; line-height: 1.2; }
+  .stat span { color: var(--muted); font-size: 12.5px; }
+
+  .tag {
+    display: inline-block; font-size: 11.5px; font-weight: 700;
+    padding: 1px 8px; border-radius: 999px; vertical-align: 1px; letter-spacing: .02em;
+  }
+  .tag.open { background: var(--green-soft); color: var(--green); }
+  .tag.closed { background: var(--orange-soft); color: var(--orange); }
+  .tag.doc { background: var(--blue-soft); color: var(--blue); }
+
+  .callout { border-left: 3px solid var(--accent); background: var(--accent-soft); border-radius: 0 12px 12px 0; padding: 12px 14px; margin: 12px 0; }
+  .callout.warn { border-left-color: var(--orange); background: var(--orange-soft); }
+  .callout.ok { border-left-color: var(--green); background: var(--green-soft); }
+  .callout strong { display: block; margin-bottom: 2px; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 14px; margin: 8px 0 4px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { color: var(--muted); font-weight: 650; font-size: 12.5px; letter-spacing: .03em; }
+  tr:last-child td { border-bottom: none; }
+  .scroll { overflow-x: auto; }
+
+  .flow { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0 4px; }
+  .node {
+    background: var(--card-alt); border: 1px solid var(--border); border-radius: 10px;
+    padding: 8px 10px; min-width: 108px;
+  }
+  .node b { display: block; font-size: 13.5px; }
+  .node span { color: var(--muted); font-size: 12px; }
+  .arrow { color: var(--muted); font-weight: 700; }
+
+  .bars { display: grid; gap: 10px; margin-top: 8px; }
+  .bar-row { display: grid; grid-template-columns: 148px 1fr 64px; gap: 10px; align-items: center; font-size: 13.5px; }
+  .track { height: 10px; background: var(--card-alt); border-radius: 999px; overflow: hidden; border: 1px solid var(--border); }
+  .fill { height: 100%; border-radius: 999px; background: var(--accent); }
+  .fill.alt { background: var(--orange); }
+  .fill.blue { background: var(--accent-2); }
+
+  details { border: 1px solid var(--border); border-radius: 12px; background: var(--card); margin: 10px 0; }
+  summary { cursor: pointer; padding: 12px 14px; font-weight: 650; }
+  details .inner { padding: 0 14px 14px; }
+  details p:last-child { margin-bottom: 0; }
+
+  pre {
+    background: var(--code-bg); color: var(--code-text);
+    border-radius: 12px; padding: 14px 16px; overflow-x: auto;
+    font-size: 12.8px; line-height: 1.55; margin: 8px 0 12px;
+  }
+  footer.sources { color: var(--muted); font-size: 13.5px; }
+  footer.sources li { margin: 6px 0; }
+  .small { color: var(--muted); font-size: 13px; }
+
+  @media (max-width: 920px) {
+    .layout { grid-template-columns: 1fr; }
+    nav.toc { position: static; max-height: none; }
+    nav.toc ol { display: flex; flex-wrap: wrap; gap: 4px; padding-left: 0; list-style: none; margin: 0; }
+    nav.toc li { margin: 0; }
+    .g2, .g3, .g4 { grid-template-columns: 1fr; }
+    h1 { font-size: 28px; }
+    .bar-row { grid-template-columns: 1fr; gap: 4px; }
+  }
+  @media print {
+    nav.toc, .kicker { display: none; }
+    .layout { display: block; }
+    body { background: white; color: black; }
+    .card, details { break-inside: avoid; box-shadow: none; }
+    a { color: black; text-decoration: none; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+<header class="hero">
+  <div class="kicker">Research note · 2026-11-11</div>
+  <h1>OpenAI Codex：开源的是本地 Agent 运行时</h1>
+  <p class="sub">GitHub 上的 <span class="mono">openai/codex</span> 是 OpenAI 的本地编程 Agent。仓库用 Rust 实现终端里的那一层：对话循环、工具、沙箱、审批、会话和给 IDE 用的协议。云端任务环境和 IDE 插件本身留在产品侧。</p>
+  <div class="meta">
+    <span>仓库 <b>openai/codex</b></span>
+    <span>协议 <b>Apache-2.0</b></span>
+    <span>主语言 <b>Rust 97.3%</b></span>
+    <span>创建 <b>2025-04-13</b></span>
+    <span>查询时 <b>134,830 stars / 21,355 forks</b></span>
+    <span>稳定版 <b>0.167.1</b></span>
+  </div>
+</header>
+
+<div class="layout">
+<nav class="toc" aria-label="目录">
+  <div class="label">目录</div>
+  <ol>
+    <li><a href="#takeaway">一分钟结论</a></li>
+    <li><a href="#name">三个 Codex</a></li>
+    <li><a href="#snapshot">仓库快照</a></li>
+    <li><a href="#surfaces">产品面哪些开源</a></li>
+    <li><a href="#repo">仓库怎么长</a></li>
+    <li><a href="#loop">Agent 循环</a>
+      <a class="sub" href="#turn">一轮里有很多次推理</a>
+      <a class="sub" href="#cache">无状态请求和缓存</a>
+      <a class="sub" href="#compact">上下文压缩</a>
+    </li>
+    <li><a href="#prompt">提示词怎么拼</a></li>
+    <li><a href="#safety">沙箱和审批</a></li>
+    <li><a href="#config">配置和项目指令</a></li>
+    <li><a href="#extend">技能、MCP、子代理</a></li>
+    <li><a href="#clients">App Server 和 SDK</a></li>
+    <li><a href="#pace">近期节奏</a></li>
+    <li><a href="#boundary">开源边界</a></li>
+    <li><a href="#practice">可以带走的判断</a></li>
+    <li><a href="#sources">资料与核对方式</a></li>
+  </ol>
+</nav>
+
+<main>
+<section id="takeaway">
+  <h2>一分钟结论</h2>
+  <p class="lead">这个仓库的价值在 harness，也就是包住模型的那层运行时。模型负责决定下一步，仓库负责把决定变成可恢复、可缓存、有权限边界的本地动作：读仓库、改文件、跑命令、接外部工具，并在越界时停下来问人。</p>
+  <div class="grid g3">
+    <div class="card stat"><b>本地优先</b><span>CLI 在你的机器上跑。云端任务是另一条产品线</span></div>
+    <div class="card stat"><b>Rust 单仓</b><span>核心、TUI、沙箱、协议、SDK 都在 <span class="mono">codex-rs</span></span></div>
+    <div class="card stat"><b>两层安全</b><span>沙箱规定做得到什么，审批规定什么时候要问</span></div>
+  </div>
+  <div class="callout">
+    <strong>先记住这个分界</strong>
+    官方文档把 Codex 定义成一整套软件 Agent：CLI、桌面里的体验、IDE、云端任务。开源仓库是其中本地执行和客户端协议的家。<span class="mono">openai/codex</span> 不接受外部代码 Pull Request。社区贡献走 Issue：复现、日志和根因分析。实现由 Codex 团队自己改。
+  </div>
+</section>
+
+<section id="name">
+  <h2>三个 Codex</h2>
+  <p>同名东西叠了三代。面试里先把它们拆开，后面的架构才对得上仓库。</p>
+  <div class="scroll card" style="padding:0 4px;">
+    <table>
+      <thead><tr><th></th><th>它是什么</th><th>和这个仓库的关系</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>2021 年的 Codex 模型</td>
+          <td>基于 GPT-3、面向代码微调的模型，早期 GitHub Copilot 用过它</td>
+          <td>权重和训练代码不在这个仓库。它是名字的来源，API 后来下线</td>
+        </tr>
+        <tr>
+          <td>2025 年 4 月起的 Codex 产品</td>
+          <td>编程 Agent 套件：终端、IDE、桌面、云端任务。工程博文写明 CLI 于 2025 年 4 月首次发布</td>
+          <td>仓库创建于 2025-04-13。README 现在的自我介绍是 “Lightweight coding agent that runs in your terminal”</td>
+        </tr>
+        <tr>
+          <td><span class="mono">openai/codex</span> 这个仓库</td>
+          <td>本地 Agent 的开源实现，外加 Python / TypeScript SDK 和 App Server</td>
+          <td>默认分支 <span class="mono">main</span>。稳定发布走 <span class="mono">rust-v*</span> 标签。查询时最新稳定版是 0.167.1</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="small">模型名会换。2026 年 1 月的工程博文还拿仓库里的 <span class="mono">gpt-5.2-codex</span> 提示词举例。2026 年 11 月的文档把 <span class="mono">gpt-6.1-sol</span> 写成账户有权限时的默认起点，把 <span class="mono">gpt-6-luna</span> 写成更快、更便宜的轻任务选项。仓库提供的是可切换的模型客户端，模型目录本身跟着账户和日期变。</p>
+</section>
+
+<section id="snapshot">
+  <h2>仓库快照</h2>
+  <p>数字取自 2026-11-11 对 GitHub API 的查询，当天仍在涨。</p>
+  <div class="grid g4">
+    <div class="card stat"><b>134,830</b><span>stars</span></div>
+    <div class="card stat"><b>21,355</b><span>forks</span></div>
+    <div class="card stat"><b>13,419</b><span>提交，分页末页</span></div>
+    <div class="card stat"><b>722</b><span>贡献者，分页末页</span></div>
+  </div>
+  <div class="grid g2">
+    <div class="card">
+      <b>语言占比</b>
+      <p class="small">GitHub Linguist 字节数合计 87,662,858。Rust 占绝对多数，Python 主要在 SDK 和脚本。</p>
+      <div class="bars">
+        <div class="bar-row"><span>Rust</span><div class="track"><div class="fill" style="width:97.3%"></div></div><b>97.3%</b></div>
+        <div class="bar-row"><span>Python</span><div class="track"><div class="fill alt" style="width:8%"></div></div><b>2.0%</b></div>
+        <div class="bar-row"><span>其余</span><div class="track"><div class="fill blue" style="width:3%"></div></div><b>0.7%</b></div>
+      </div>
+    </div>
+    <div class="card">
+      <b>当天状态</b>
+      <ul>
+        <li>默认分支 <span class="mono">main</span>，未归档。</li>
+        <li>API 的 <span class="mono">pushed_at</span> 为 2026-11-11 08:28 UTC。</li>
+        <li>当时 <span class="mono">main</span> 顶端提交是 <span class="mono">95dcd1e837</span>，信息为 “Fix Unicode caseless matching in thread search”。</li>
+        <li><span class="mono">open_issues_count</span> 为 27,132。GitHub 这个字段把未关闭的 Pull Request 也算进去。</li>
+        <li>订阅数 665。协议 Apache-2.0。<span class="mono">size</span> 字段 744,733 KB，约 727 MiB。</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section id="surfaces">
+  <h2>产品面哪些开源</h2>
+  <p>README 把三条入口写在第一屏：编辑器里安装 IDE 插件，终端里跑 <span class="mono">codex app</span> 进桌面体验，云端 Agent 去 <span class="mono">chatgpt.com/codex</span>。官方 Open Source 页把边界写得更硬。</p>
+  <div class="scroll card" style="padding:0 4px;">
+    <table>
+      <thead><tr><th>表面</th><th>人怎么用</th><th>代码在哪</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>Codex CLI</td>
+          <td>仓库目录里 <span class="mono">codex</span>，全屏终端里看 diff、批准命令、接着聊</td>
+          <td><span class="tag open">开源</span> <span class="mono">openai/codex</span></td>
+        </tr>
+        <tr>
+          <td>App Server</td>
+          <td>IDE 和自建客户端走的 JSON-RPC。认证、历史、审批、流式事件都从这里过</td>
+          <td><span class="tag open">开源</span> <span class="mono">codex-rs/app-server</span></td>
+        </tr>
+        <tr>
+          <td>SDK</td>
+          <td>CI 和内部工具里启动线程、跑一轮、接着跑。TypeScript 包 <span class="mono">@openai/codex-sdk</span>，Python 包 <span class="mono">openai-codex</span></td>
+          <td><span class="tag open">开源</span> <span class="mono">sdk/typescript</span>、<span class="mono">sdk/python</span></td>
+        </tr>
+        <tr>
+          <td>Skills / Plugins</td>
+          <td>可复用的操作说明和团队工具连接</td>
+          <td><span class="tag open">另仓</span> <span class="mono">openai/skills</span>、<span class="mono">openai/plugins</span></td>
+        </tr>
+        <tr>
+          <td>Codex Security</td>
+          <td>扫仓库、验证漏洞、出修复。CLI 与 TypeScript SDK</td>
+          <td><span class="tag open">另仓</span> <span class="mono">openai/codex-security</span></td>
+        </tr>
+        <tr>
+          <td>云端基础环境</td>
+          <td>云任务用的基础镜像和工具链</td>
+          <td><span class="tag open">另仓</span> <span class="mono">openai/codex-universal</span></td>
+        </tr>
+        <tr>
+          <td>IDE 插件</td>
+          <td>VS Code、Cursor、Windsurf 里的 Codex</td>
+          <td><span class="tag closed">不开源</span> 官方页写明</td>
+        </tr>
+        <tr>
+          <td>Codex Cloud</td>
+          <td>机器休眠后任务继续跑。每个任务一块工作区，做完再审 diff、提交或开 PR</td>
+          <td><span class="tag closed">不开源</span> CLI 可以用 <span class="mono">codex cloud</span> 把活交出去</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section id="repo">
+  <h2>仓库怎么长</h2>
+  <p>顶层是一个同时有 Cargo、Bazel、pnpm 和 Nix 的单仓。人真正每天跑的二进制在 Rust workspace 里。npm 上的 <span class="mono">@openai/codex</span> 只声明了一个 <span class="mono">bin/codex.js</span>，用来把人带到原生可执行文件。</p>
+  <div class="scroll card" style="padding:0 4px;">
+    <table>
+      <thead><tr><th>路径</th><th>角色</th></tr></thead>
+      <tbody>
+        <tr><td><span class="mono">codex-rs/core</span></td><td>Agent 循环、会话、压缩、shell、补丁、MCP、安全策略。源码里能直接看到 <span class="mono">session/</span>、<span class="mono">compact.rs</span>、<span class="mono">exec_policy.rs</span>、<span class="mono">tools/</span></td></tr>
+        <tr><td><span class="mono">codex-rs/cli</span>、<span class="mono">tui</span></td><td>命令行入口和终端界面</td></tr>
+        <tr><td><span class="mono">codex-rs/app-server*</span></td><td>协议、传输、daemon、客户端。IDE 和 SDK 接的是这一层</td></tr>
+        <tr><td><span class="mono">codex-rs/linux-sandbox</span>、<span class="mono">windows-sandbox-*</span>、<span class="mono">bwrap</span>、<span class="mono">sandboxing</span></td><td>按操作系统拆开的命令隔离</td></tr>
+        <tr><td><span class="mono">codex-rs/exec</span>、<span class="mono">exec-server</span></td><td>非交互执行，以及把执行再服务化</td></tr>
+        <tr><td><span class="mono">codex-rs/code-mode*</span></td><td>另一条执行宿主。App Server 可以挂本地或远程 Code Mode host</td></tr>
+        <tr><td><span class="mono">sdk/</span></td><td>Python 与 TypeScript SDK。Python 侧通过 JSON-RPC 控制本机 App Server，发布包会钉住一份 Codex CLI runtime</td></tr>
+        <tr><td><span class="mono">codex-cli/</span></td><td>npm 包装。真正的实现在 Rust 侧</td></tr>
+        <tr><td><span class="mono">docs/</span></td><td>仓库内文档大多改成跳转到现行文档站。贡献说明、从源码构建、开源基金页还留在仓库里</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>工具链钉在 Rust 1.95.0，组件含 clippy、rustfmt、rust-src。仓库根的 Node 要求是 24.22.1 以上，包管理器是 pnpm 10.34.5。从源码构建的路径是进 <span class="mono">codex-rs</span>，<span class="mono">cargo build</span>，再用 <span class="mono">cargo run --bin codex</span>。日志走 <span class="mono">RUST_LOG</span>。</p>
+  <div class="callout">
+    <strong>构建系统是双轨的</strong>
+    本地文档教你用 Cargo 和根目录的 <span class="mono">just</span>。仓库同时提交了 <span class="mono">MODULE.bazel</span>、<span class="mono">BUILD.bazel</span> 和大量 Bazel 规则。发布物很多：一次 GitHub Release 会打出各平台二进制，macOS arm64 常用的包是 <span class="mono">codex-aarch64-apple-darwin.tar.gz</span>，Linux x86_64 常用 musl 包。安装脚本默认从 <span class="mono">releases.openai.com</span> 拉，失败再回退 GitHub Releases。
+  </div>
+</section>
+
+<section id="loop">
+  <h2>Agent 循环</h2>
+  <p>2026 年 1 月 23 日，Michael Bolin 的工程文《Unrolling the Codex agent loop》把这条循环写公开了。文中说它是 CLI、云端和 IDE 共用的 harness。到 2026 年 11 月，仓库又长出了子代理、插件、Code Mode、实时语音和 guardian 审查，循环的骨架还在：一次用户消息是一个 turn，turn 里面可以有许多次推理和工具调用，直到模型给出 assistant message，控制权回到人。</p>
+  <div class="flow" aria-hidden="true">
+    <div class="node"><b>用户输入</b><span>一个 turn 的起点</span></div>
+    <span class="arrow">→</span>
+    <div class="node"><b>拼 prompt</b><span>指令、工具、历史</span></div>
+    <span class="arrow">→</span>
+    <div class="node"><b>Responses API</b><span>SSE 流式返回</span></div>
+    <span class="arrow">→</span>
+    <div class="node"><b>工具调用</b><span>shell、补丁、MCP…</span></div>
+    <span class="arrow">→</span>
+    <div class="node"><b>结果写回</b><span>成为下一跳的前缀</span></div>
+  </div>
+
+  <h3 id="turn">一轮里有很多次推理</h3>
+  <p>CLI 把请求发到 Responses API。ChatGPT 登录走 <span class="mono">https://chatgpt.com/backend-api/codex/responses</span>。API key 走 <span class="mono">https://api.openai.com/v1/responses</span>。端点可换：兼容 Responses API 的 Azure、以及 <span class="mono">--oss</span> 时的本机 Ollama 或 LM Studio。模型要么给出给用户看的话，要么发出工具调用。Agent 执行工具，把输出追加进 <span class="mono">input</span>，再请求一次。循环停在 assistant message。对编程 Agent 来说，真正的产出常常是磁盘上的 diff，这句话只是这一轮的终止信号，例如 “我把你要的 architecture.md 加上了”。</p>
+  <p>线程会越来越长。下一轮的 prompt 带上此前的消息、推理摘要和工具调用。上下文窗口同时吃输入和输出，所以窗口管理是 harness 的职责，不是模型自己的事。</p>
+
+  <h3 id="cache">无状态请求和缓存</h3>
+  <p>整段对话里，发往 API 的 JSON 体量按轮次是平方级的：每一跳都重发越来越长的前缀。Responses API 有 <span class="mono">previous_response_id</span> 可以少传历史。Codex 当时不用它。原因写在文里：每个请求保持无状态，才能服务 Zero Data Retention。ZDR 客户的推理链用 <span class="mono">encrypted_content</span> 带在请求里，服务端能解密，OpenAI 保存的是解密密钥，不保存客户数据。对应改动在 PR #642 和 #1641。</p>
+  <p>采样成本远大于网络成本，所以性能押在 prompt cache 上。缓存只命中精确前缀。静态内容放前面，会变的内容放后面。工具列表也必须逐字一致。文中点名三类会打掉缓存的操作：</p>
+  <ul>
+    <li>对话中途改可用工具。早期 MCP 支持曾因工具枚举顺序不稳定造成缓存失效，后在 PR #2611 修掉。MCP 的 <span class="mono">notifications/tools/list_changed</span> 如果在长对话中途兑现，也会造成一次昂贵的 miss。</li>
+    <li>中途换模型。模型专属指令位于 prompt 前部，一换就整段失效。</li>
+    <li>中途改沙箱、审批或当前工作目录。</li>
+  </ul>
+  <p>能追加就不改写。沙箱或审批变了，就再插一条同样格式的 <span class="mono">permissions instructions</span>。工作目录变了，就再插一条 <span class="mono">environment_context</span>。旧前缀保持不动。</p>
+
+  <h3 id="compact">上下文压缩</h3>
+  <p>窗口快满时，Codex 用压缩换继续干活的能力。早期实现是用户手动 <span class="mono">/compact</span>：拿整段对话加一份摘要指令再请求一次，用返回的 assistant message 当新的 <span class="mono">input</span>，见 PR #1527。后来改走 Responses API 的 <span class="mono">/responses/compact</span>。它返回一组更短的 item，其中有一条 <span class="mono">type=compaction</span>，用密文保住模型对原文的潜在理解。超过 <span class="mono">auto_compact_limit</span> 时自动触发。0.167.0 的修复说明写着：自动压缩现在会把失败响应和缺少 token 用量的响应所保留的输出也算进去。</p>
+</section>
+
+<section id="prompt">
+  <h2>提示词怎么拼</h2>
+  <p>用户看到的是一句任务。发往 Responses API 的是三块：<span class="mono">instructions</span>、<span class="mono">tools</span>、<span class="mono">input</span>。服务端再把它们排成模型真正看到的序列。前三项的顺序由服务端定，其中 system message 的内容也由服务端定；工具和 instructions 的内容由客户端定。</p>
+  <div class="grid g2">
+    <div class="card">
+      <b>instructions</b>
+      <p>优先读 <span class="mono">~/.codex/config.toml</span> 里的 <span class="mono">model_instructions_file</span>。否则用该模型捆绑的 base instructions。模型提示词打进 CLI 二进制。</p>
+    </div>
+    <div class="card">
+      <b>tools</b>
+      <p>2026 年 1 月的例子里有本地 <span class="mono">shell</span>、<span class="mono">update_plan</span>、Responses API 的 <span class="mono">web_search</span>，以及用户 MCP 工具，名字形如 <span class="mono">mcp__weather__get-forecast</span>。</p>
+    </div>
+  </div>
+  <p><span class="mono">input</span> 在用户消息之前，按这个顺序放：</p>
+  <ol>
+    <li><b>开发者消息：权限。</b>只描述 Codex 自己的 shell 工具受到的沙箱和审批。模板来自仓库里的 Markdown 片段，例如 workspace write 和 on-request。MCP 工具不在这个沙箱里，它们自己负责边界。</li>
+    <li><b>可选的开发者消息。</b>来自配置里的 <span class="mono">developer_instructions</span>。</li>
+    <li><b>用户指令，角色仍是 user。</b>从多处拼起来，越具体的越靠后：<span class="mono">$CODEX_HOME</span> 里的 <span class="mono">AGENTS.override.md</span> 或 <span class="mono">AGENTS.md</span>；从 Git 根走到当前目录，每层至多一份，默认合计 32 KiB；然后是已配置技能的短前言、每条技能的元数据，以及怎么调用技能。</li>
+    <li><b>环境。</b><span class="mono">&lt;cwd&gt;</span> 和 <span class="mono">&lt;shell&gt;</span>。</li>
+    <li><b>用户这次真正说的话。</b></li>
+  </ol>
+  <p>到 2026 年 11 月，<span class="mono">core/src/tools/handlers</span> 里的工具面已经比博文里的四件套宽。能对上名字的包括 <span class="mono">apply_patch</span>、<span class="mono">unified_exec</span>、<span class="mono">plan</span>、<span class="mono">mcp</span>、<span class="mono">mcp_resource</span>、<span class="mono">multi_agents</span>、<span class="mono">request_user_input</span>、<span class="mono">request_permissions</span>、<span class="mono">view_image</span>、<span class="mono">tool_search</span>、<span class="mono">sleep</span>、<span class="mono">current_time</span>，以及插件安装、上下文剩余量、新上下文窗口。博文是循环的设计说明，工具表以当天源码为准。</p>
+</section>
+
+<section id="safety">
+  <h2>沙箱和审批</h2>
+  <p>文档把两层控制写成互相配合的东西。沙箱决定命令在技术上碰得了哪些文件和网络。审批策略决定什么时候必须停下来问人。默认本地运行是：网络关闭，写入限制在当前工作区，命令越界才询问。</p>
+  <div class="grid g3">
+    <div class="card"><b>read-only</b><p class="small">可以看文件。改文件和跑命令要先批准。适合只想聊天或做计划。</p></div>
+    <div class="card"><b>workspace-write</b><p class="small">默认可写工作区，可跑工作区里的常规命令。网络默认仍关。这是本地低摩擦档。</p></div>
+    <div class="card"><b>danger-full-access</b><p class="small">去掉文件系统和网络边界。和 <span class="mono">approval_policy = "never"</span> 合在一起就是完整访问。</p></div>
+  </div>
+  <h3>审批策略</h3>
+  <ul>
+    <li><span class="mono">on-request</span>：沙箱内的动作直接做，越界再问。和 <span class="mono">workspace-write</span> 配在一起，是文档里的低风险自动化预设。</li>
+    <li><span class="mono">never</span>：不再弹出批准。</li>
+    <li><span class="mono">untrusted</span> 作为可选审批策略已经退役。旧配置里留着它，客户端可能直接起不来。想保留“命令都要问”的效果，应在用户级配置里把项目标成 <span class="mono">trust_level = "untrusted"</span>。这样还会跳过项目本地配置。</li>
+    <li><span class="mono">approvals_reviewer</span> 可以选择 <span class="mono">user</span> 或 <span class="mono">auto_review</span>。自动审查只处理已经需要批准的动作，不放宽沙箱。沙箱内允许的动作不会再送去审查。</li>
+  </ul>
+  <h3>操作系统怎么强制</h3>
+  <div class="scroll card" style="padding:0 4px;">
+    <table>
+      <thead><tr><th>平台</th><th>实现</th></tr></thead>
+      <tbody>
+        <tr><td>macOS</td><td>系统自带的 Seatbelt。开箱即可用。</td></tr>
+        <tr><td>Linux 与 WSL2</td><td>优先用 PATH 上的 <span class="mono">bwrap</span> 做文件系统和命名空间隔离。之后在进程内设置 <span class="mono">PR_SET_NO_NEW_PRIVS</span> 并装 seccomp。没有 <span class="mono">bwrap</span> 时回退到随包的 helper，并在启动时警告。WSL1 建不了需要的 user namespace，会拒绝进入这条沙箱路径。</td></tr>
+        <tr><td>Windows</td><td>原生沙箱。文档建议在设备和策略允许时优先 MXC，<span class="mono">elevated</span> 作为旧实现的回退。</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>Linux 沙箱 README 写明：文件系统默认 <span class="mono">--ro-bind / /</span>，可写根再用 <span class="mono">--bind</span> 打开。可写根下面的 <span class="mono">.git</span>、<span class="mono">.codex</span> 等保护路径会重新标成只读。路径越具体的规则越后套，所以可以写成“仓库可写、中间一层拒绝、更里面一层再打开”。旧的 Landlock 实现还留在 <span class="mono">src/seccomp.rs</span> 一带，但文件系统受限策略会拒绝它，原因是它隔离不了 App Server 的 Unix socket。限制网络的策略会挡网络 syscall；即便网络放开，也会挡 <span class="mono">AF_VSOCK</span>。所有过滤模式都挡 <span class="mono">io_uring</span>，避免绕过套接字家族限制。</p>
+  <div class="callout warn">
+    <strong>沙箱罩住的是命令，罩不住所有工具</strong>
+    工程文写明，权限说明只约束 Codex 提供的 shell。MCP 服务器不在这个沙箱里。2026 年 11 月的文档补了两层：带破坏性标注的 App / MCP 工具调用仍然要批准；<span class="mono">network_proxy</span> 只过滤沙箱里的脚本、程序和子进程，不过滤网页搜索、连接器、MCP、浏览器和 Computer Use。网络默认关闭，网页搜索默认走缓存索引而不是现场抓活页面，都是同一条思路：少把任意外部内容直接送进一个能改你磁盘的循环。
+  </div>
+  <p>打开命令网络后，还可以把 <span class="mono">features.network_proxy</span> 打开，用域名规则约束出站。<span class="mono">deny</span> 压过 <span class="mono">allow</span>。默认拒绝回环、链路本地和私网地址。解析到私网 IP 的主机名即使匹配允许列表也会被挡。这是尽力而为的 DNS 重绑定防护，文档写明它不能单独消灭重绑定，敌对 DNS 在威胁模型里时还要在更低层做出站控制。</p>
+  <p>GPT-6 Astra 另有异步的安全监控，发现可疑模型行为可以暂停任务。监控可以晚于触发它的那个动作到达，所以它是沙箱、权限和人工复查之外的一层，不能替代它们。CLI 和移动端拿不到完整 findings 和恢复流程，任务会直接结束。零数据保留、修改后的滥用监控，或非美国数据驻留，同样不能走这套恢复。</p>
+</section>
+
+<section id="config">
+  <h2>配置和项目指令</h2>
+  <p>用户配置在 <span class="mono">~/.codex/config.toml</span>。项目可以放 <span class="mono">.codex/config.toml</span>。CLI 和 IDE 共用这些层。项目层只有在项目被信任时才加载。把项目标成不受信任后，项目本地的配置、hooks 和 rules 都会跳过，用户级和系统级仍然生效。</p>
+  <p>优先级从高到低：</p>
+  <ol>
+    <li>CLI 标志和 <span class="mono">--config</span></li>
+    <li>受信任项目里的 <span class="mono">.codex/config.toml</span>，从项目根走到当前目录，越近越优先</li>
+    <li><span class="mono">--profile</span> 选中的 <span class="mono">~/.codex/&lt;name&gt;.config.toml</span></li>
+    <li>用户配置 <span class="mono">~/.codex/config.toml</span></li>
+    <li>登录工作区下发的云托管默认值</li>
+    <li>系统配置，Unix 上是 <span class="mono">/etc/codex/config.toml</span></li>
+    <li>内置默认</li>
+  </ol>
+  <p>企业环境里还有更高的 <span class="mono">requirements.toml</span>，可以禁止 <span class="mono">approval_policy = "never"</span> 或 <span class="mono">sandbox_mode = "danger-full-access"</span>。要求约束行为，配置提供默认值。本地执行时，MDM 和旧的托管设备要求高于 Agent Security，设备上的系统要求文件低于 Agent Security。</p>
+  <h3>AGENTS.md</h3>
+  <p>每次启动拼一条指令链。全局只取 Codex 主目录里第一份非空文件，<span class="mono">AGENTS.override.md</span> 优先于 <span class="mono">AGENTS.md</span>。项目从 Git 根走到当前目录，每层至多一份，查找顺序同样是 override、AGENTS.md、配置里的 fallback 文件名。拼接时根在前、当前目录在后，所以越靠近工作目录的文件越能覆盖前面的说法。空文件跳过。合计到达 <span class="mono">project_doc_max_bytes</span>（默认 32 KiB）就停止。</p>
+  <h3>网页搜索的四种模式</h3>
+  <ul>
+    <li><span class="mono">cached</span>：默认。结果来自 OpenAI 维护的索引，不去抓任意活页面。</li>
+    <li><span class="mono">indexed</span>：外部访问要先过搜索索引的门。</li>
+    <li><span class="mono">live</span>：现场抓取，等价于 <span class="mono">--search</span>。完整访问沙箱下，网页搜索会默认改成这一档。</li>
+    <li><span class="mono">disabled</span>：关掉这个工具。</li>
+  </ul>
+</section>
+
+<section id="extend">
+  <h2>技能、MCP、子代理</h2>
+  <div class="grid g3">
+    <div class="card">
+      <b>Skills</b>
+      <p class="small">把可重复的做法收成技能。启动时只把元数据和一段用法放进用户指令，需要时再展开。自定义提示词这条旧路径，文档已标成弃用，让位给技能。</p>
+    </div>
+    <div class="card">
+      <b>MCP 与插件</b>
+      <p class="small"><span class="mono">codex mcp</span> 添加本地或远程服务器，先看清当前会话真正暴露了哪些工具。0.167 前后的提交还在做会话级插件覆盖、共享 MCP 连接的租约，以及插件推荐缓存。</p>
+    </div>
+    <div class="card">
+      <b>子代理</b>
+      <p class="small">当前本地版本默认可以派子代理。CLI 用 <span class="mono">/subagents</span> 查看和切换。主线程收回的是摘要。每个子代理自己消耗模型和工具，总 token 高于单代理。</p>
+    </div>
+  </div>
+  <p>子代理的设计理由写在文档里，核心是保护主线程。主线程留着需求和决定。探索、测试日志、堆栈这些吵的中间结果放到旁边的线程，最后只交摘要回来。文档引用了 Chroma 对 context rot 的讨论：窗口变大之后，不相关的细节仍会把有用信息埋掉。读多写少的活适合并行，例如勘探、测试、分诊、摘要。多个代理同时改代码容易冲突，协调成本上去之后就不划算。</p>
+  <p>子代理默认继承父代理的模型和推理力度。也可以在提示里点名，或在 <span class="mono">config.toml</span> 的 <span class="mono">[agents]</span> 里给自定义代理写死。文档的例子是用 <span class="mono">gpt-6-luna</span> 做快扫描，用更高力度的 <span class="mono">gpt-6.1-sol</span> 做需要规划和验证的多步工作。<span class="mono">AGENTS.md</span> 或技能也可以要求委派，所以“要不要开子代理”可以写进仓库约定，而不只是每次口头说。</p>
+</section>
+
+<section id="clients">
+  <h2>App Server 和 SDK</h2>
+  <p>两条可编程入口，文档把用途拆开。要在 CI 里跑完一个任务，用 SDK。要做自己的客户端，处理登录、历史、批准和流式事件，用 App Server。<span class="mono">codex mcp-server</span> 和独立的 <span class="mono">codex-mcp-server</span> 二进制已经移除，旧集成迁到 App Server。</p>
+  <h3>协议</h3>
+  <p><span class="mono">codex app-server</span> 使用 JSON-RPC 2.0，线上消息省略 <span class="mono">"jsonrpc":"2.0"</span>。传输有四种：默认 stdio 的换行 JSON；实验性的 WebSocket；Unix socket；以及 <span class="mono">--listen off</span>。先发 <span class="mono">initialize</span>，再发 <span class="mono">initialized</span> 通知，然后 <span class="mono">thread/start</span> 和 <span class="mono">turn/start</span>。请求带 <span class="mono">id</span>，通知没有 <span class="mono">id</span>，例如 <span class="mono">turn/started</span>、<span class="mono">turn/completed</span>。可以用 CLI 导出与当前版本严格对应的 TypeScript schema 或 JSON Schema。</p>
+  <p>远程 TUI 的接法是一台机器上 <span class="mono">codex app-server --listen ws://127.0.0.1:4500</span>，另一边 <span class="mono">codex --remote ws://127.0.0.1:4500</span>。非本机要上 TLS 和 bearer token，token 放环境变量，用 <span class="mono">--remote-auth-token-env</span> 传入名字。WebSocket 在非回环地址上曾经默认不鉴权，文档要求暴露到远端之前先配 <span class="mono">--ws-auth</span>。队列满时返回 JSON-RPC <span class="mono">-32001</span>，客户端按指数退避重试。</p>
+  <h3>SDK 长什么样</h3>
+  <pre>from openai_codex import Codex, Sandbox
+
+with Codex() as codex:
+    thread = codex.thread_start(
+        model="gpt-6.1-sol",
+        sandbox=Sandbox.workspace_write,
+    )
+    result = thread.run("Make a plan to diagnose and fix the CI failures")
+    print(result.final_response)</pre>
+  <p>Python 要求 3.10+。<span class="mono">AsyncCodex</span> 给已经是异步的程序。<span class="mono">thread.run()</span> 可以接着说。<span class="mono">thread_resume</span> 在 CLI 0.166 之后会沿用线程保存的模型提供方；要换提供方就 <span class="mono">thread_fork</span>。沙箱预设是 <span class="mono">read_only</span>、<span class="mono">workspace_write</span>、<span class="mono">full_access</span>，传给某一次 <span class="mono">run</span> 会作用于这一轮以及之后。外部系统塞进来的内容用 <span class="mono">ExternalMessage</span>，Codex 把它当成工具输出，优先级低于用户和开发者指令。</p>
+  <p>TypeScript 侧是 <span class="mono">new Codex()</span>、<span class="mono">startThread()</span>、<span class="mono">thread.run()</span>。结构化配置走 <span class="mono">config</span>，表达不了的键用 <span class="mono">configOverrides</span> 传原始 TOML。这些覆盖只影响这一次进程，不改你的配置文件。</p>
+</section>
+
+<section id="pace">
+  <h2>近期节奏</h2>
+  <p>发布很密。查询时最新稳定版是 <b>0.167.1</b>，发布于 2026-11-10 21:32 UTC，相对 0.167.0 是一次补丁。同一天和次日还有 0.169.0 的 alpha，最新见到的是 2026-11-11 03:33 UTC 的 <span class="mono">rust-v0.169.0-alpha.10</span>。GitHub Pulse 对 2026-11-04 至 11-11 这一周的统计是：81 位作者向 main 推了 320 个提交，全部分支 356 个；main 上 1,988 个文件发生变化，增加 99,391 行、删除 19,812 行；这一周合并 320 个 Pull Request，新开 976 个 Issue，并打了 17 个 release。</p>
+  <h3>0.167.0 里能看出产品在往哪长</h3>
+  <p>2026-11-06 的稳定版说明里，新功能集中在“同时看很多个代理”：</p>
+  <ul>
+    <li><span class="mono">codex agents --no-daemon</span> 打开代理指挥中心。指挥中心和会话选择器会标出未读结果。</li>
+    <li>终端会话选择器可以在已连接的后端之间切换，草稿保留。</li>
+    <li>支持的终端里，编写时可以预览本地图片附件。</li>
+    <li>登录入口把 API key 和云厂商放进 “Sign in another way”。打开 <span class="mono">gcp_setup_wizard</span> 可以用 Application Default Credentials 或凭证文件接 Google Cloud Vertex AI。</li>
+    <li><span class="mono">/experimental</span> 里可以选择跟随 macOS 或 Windows 的系统代理。</li>
+    <li>批准框还开着时，可以直接在记录里展开补丁详情。</li>
+  </ul>
+  <p>同一版的修复也暴露了运行时的真实难点：切换模型提供方后旧聊天要还能看见；取消 Responses 时网络批准框要关掉；长的实时语音要把已经说完的话写进历史；压缩要算上失败响应留下的输出。Linux musl 构建减少了分配器 arena，为的是对话卸载后降低空闲内存。</p>
+  <p>11 月 11 日当天合入 main 的标题还能看到这些方向：给已有 Codex 登录做 Git credential helper、工具输出里保留文件型音频、模型可见 ID 序列可以从已分配的 ID 继续、刷新 MCP 配置时应用会话级覆盖、Windows 沙箱家目录的规范化。这是一个每天都在改执行、身份、沙箱和多代理的仓库，稳定版号已经到 0.16x，alpha 比稳定版超前两个小版本。</p>
+</section>
+
+<section id="boundary">
+  <h2>开源边界</h2>
+  <p><span class="mono">docs/contributing.md</span> 写得很直。Issue 欢迎：缺陷、复现、日志、根因分析和功能需求。外部代码和 Pull Request 不收。给出的理由是，有效改动依赖架构上下文、系统约束和路线图；外部 PR 常常打在低优先级或小众问题上，评审成本高于团队自己改。他们把“想清楚问题”看成难的部分，实现则可以靠 Codex 自己完成。</p>
+  <div class="grid g2">
+    <div class="card">
+      <b>仓库里的开源基金页</b>
+      <p class="small"><span class="mono">docs/open-source-fund.md</span> 写的是 100 万美元计划，单项最高 25,000 美元 API credits，滚动评审。申请页是 OpenAI 的表单。</p>
+    </div>
+    <div class="card">
+      <b>现行的维护者计划</b>
+      <p class="small">文档站的 Codex for OSS 面向维护者：API credits、六个月带 Codex 的 ChatGPT Pro，以及有选择的 Codex Security 准入。两个入口都在，申请前以表单当时的说明为准。</p>
+    </div>
+  </div>
+  <p>安全问题走 <span class="mono">SECURITY.md</span>，不进公开 Issue。安装文档列的系统要求是 macOS 12+、Ubuntu 20.04+ / Debian 10+，Windows 11 通过 WSL2。内存最低 4 GB，建议 8 GB。Git 2.23+ 用于内置的 PR 辅助，可选。</p>
+</section>
+
+<section id="practice">
+  <h2>可以带走的判断</h2>
+  <ol>
+    <li><b>把 harness 和模型分开讲。</b>换模型只换 <span class="mono">instructions</span> 和端点。会话、工具协议、沙箱、压缩和缓存纪律留在 Rust 里。这是这个仓库比“一个会写代码的 API”厚的地方。</li>
+    <li><b>请求无状态，缓存靠前缀不动。</b>不用 <span class="mono">previous_response_id</span> 是为了 ZDR。代价是每跳重发历史，所以任何会改写 prompt 前部的功能都要先想缓存。中途变化用追加消息表达。</li>
+    <li><b>安全是两层，而且罩不住全部工具。</b>操作系统沙箱管 shell。审批管越界。MCP、浏览器和网页搜索要另算。默认断网、网页搜索走缓存，是在降低提示注入直接碰到一个能写磁盘的循环的机会。</li>
+    <li><b>压缩是协议能力。</b>从“让模型写一段摘要”走到 <span class="mono">/responses/compact</span> 的密文 item，是为了在缩短窗口的同时留住模型已经形成的理解。</li>
+    <li><b>子代理首先是上下文卫生。</b>并行加速是附加效果。主线程被日志灌满之后，更大的窗口也救不了质量。</li>
+    <li><b>客户端做薄。</b>TUI、IDE、SDK 共享 App Server 和 core。要嵌进自己的产品，接 JSON-RPC，而不是再写一个循环。</li>
+    <li><b>信任是配置的一部分。</b>项目级 <span class="mono">.codex/</span> 只有受信任仓库才加载。不受信任的仓库不该靠一份本地 TOML 改写审批和沙箱。</li>
+    <li><b>开源范围要说准。</b>本地运行时、协议和 SDK 在这个仓库。IDE 插件和云端任务环境不在。社区可以报问题和做根因分析，代码由内部改。这是产品仓库的开源方式，不是典型的社区共建运行时。</li>
+  </ol>
+</section>
+
+<section id="sources">
+  <h2>资料与核对方式</h2>
+  <p>页面数字会继续变。下面每条都能在查询当天打开核对。</p>
+  <footer class="sources">
+    <ol>
+      <li>GitHub API <span class="mono">GET /repos/openai/codex</span>、<span class="mono">/languages</span>、<span class="mono">/contents</span>、<span class="mono">/commits/main</span>、<span class="mono">/releases/tags/rust-v0.167.0</span>，以及 releases、contributors、commits 的分页 Link 头。查询时间 2026-11-11。</li>
+      <li>仓库 README、目录树、<span class="mono">docs/contributing.md</span>、<span class="mono">docs/install.md</span>、<span class="mono">docs/open-source-fund.md</span>、<span class="mono">codex-cli/package.json</span>、<span class="mono">codex-rs/Cargo.toml</span>、<span class="mono">codex-rs/rust-toolchain.toml</span>、<span class="mono">codex-rs/linux-sandbox/README.md</span>、<span class="mono">codex-rs/core/src</span> 与 <span class="mono">tools/handlers</span> 文件名。均取自 <span class="mono">main</span>。</li>
+      <li>Michael Bolin，<a href="https://openai.com/index/unrolling-the-codex-agent-loop/">Unrolling the Codex agent loop</a>，OpenAI Engineering，2026-01-23。文中的文件路径和 PR 编号指向当时的仓库版本，11 月的工具面已经更宽。</li>
+      <li>文档站，2026-11-11 抓取的 Markdown：<a href="https://learn.chatgpt.com/docs/codex/cli.md">Codex CLI</a>、<a href="https://learn.chatgpt.com/docs/sandboxing.md">Sandbox</a>、<a href="https://learn.chatgpt.com/docs/agent-approvals-security.md">Agent approvals &amp; security</a>、<a href="https://learn.chatgpt.com/docs/config-file/config-basic.md">Config basics</a>、<a href="https://learn.chatgpt.com/docs/agent-configuration/agents-md.md">AGENTS.md</a>、<a href="https://learn.chatgpt.com/docs/agent-configuration/subagents.md">Subagents</a>、<a href="https://learn.chatgpt.com/docs/app-server.md">App Server</a>、<a href="https://learn.chatgpt.com/docs/codex-sdk.md">Codex SDK</a>、<a href="https://learn.chatgpt.com/docs/cloud.md">Codex Cloud</a>、<a href="https://learn.chatgpt.com/docs/open-source.md">Open Source</a>。</li>
+      <li>GitHub Pulse：<a href="https://github.com/openai/codex/pulse">openai/codex/pulse</a>，统计窗口 2026-11-04 至 2026-11-11。</li>
+      <li>发布页：<a href="https://github.com/openai/codex/releases/tag/rust-v0.167.0">0.167.0</a>、<a href="https://github.com/openai/codex/releases/tag/rust-v0.167.1">0.167.1</a>。</li>
+    </ol>
+  </footer>
+  <p class="small">语言占比按 Linguist 字节计算：Rust 85,332,879 / 87,662,858。贡献者 722 与提交 13,419 来自分页最后一页的页码，是 API 给出的列表长度，会随匿名贡献者和后续提交变化。</p>
+</section>
+</main>
+</div>
+</div>
+</body>
+</html>

@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Codex CLI 设计 · 2026-11-11</title>
+<style>
+  :root {
+    --bg: #f3f6f4;
+    --card: #ffffff;
+    --card-alt: #eef3f0;
+    --text: #14201b;
+    --muted: #5c6b64;
+    --border: #dce6e0;
+    --accent: #0b7a56;
+    --accent-soft: #e5f5ee;
+    --accent-2: #1d4ed8;
+    --green: #0d9668;
+    --green-soft: #e6f5ef;
+    --orange: #c2600a;
+    --orange-soft: #fdf0e3;
+    --blue: #1d6fd6;
+    --blue-soft: #e7f0fd;
+    --red: #b42318;
+    --red-soft: #fdecec;
+    --code-bg: #0e1713;
+    --code-text: #d7f5e8;
+    --shadow: 0 1px 3px rgba(20, 32, 27, .06), 0 10px 28px rgba(20, 32, 27, .05);
+    --sidebar: 228px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0c1210;
+      --card: #141c19;
+      --card-alt: #1b2622;
+      --text: #e7f2ec;
+      --muted: #9aada4;
+      --border: #2a3a34;
+      --accent: #5ee0ad;
+      --accent-soft: #143028;
+      --accent-2: #8eb0ff;
+      --green: #4ade9d;
+      --green-soft: #123228;
+      --orange: #f7b26f;
+      --orange-soft: #3a2a12;
+      --blue: #7cb3f5;
+      --blue-soft: #14263f;
+      --red: #fca5a5;
+      --red-soft: #3a1c1c;
+      --code-bg: #090f0c;
+      --code-text: #d5f8e8;
+      --shadow: 0 1px 3px rgba(0,0,0,.35), 0 12px 28px rgba(0,0,0,.28);
+    }
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background:
+      radial-gradient(1100px 380px at 8% -8%, color-mix(in srgb, var(--accent) 16%, transparent), transparent 60%),
+      var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Segoe UI", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    line-height: 1.72;
+    font-size: 16px;
+  }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  code, .mono { font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace; font-size: .88em; }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 0 22px 88px; }
+  header.hero { padding: 46px 0 18px; }
+  .kicker {
+    display: inline-flex; gap: 8px; align-items: center;
+    font-size: 12px; letter-spacing: .14em; text-transform: uppercase;
+    color: var(--accent); background: var(--accent-soft);
+    padding: 4px 12px; border-radius: 999px; font-weight: 700; margin-bottom: 14px;
+  }
+  h1 { font-size: 34px; line-height: 1.22; margin: 0 0 12px; letter-spacing: -.4px; }
+  .sub { color: var(--muted); max-width: 800px; margin: 0; font-size: 17px; }
+  .meta { margin-top: 16px; font-size: 13px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 8px 18px; }
+  .meta b { color: var(--text); font-weight: 600; }
+  .layout { display: grid; grid-template-columns: var(--sidebar) minmax(0, 1fr); gap: 36px; align-items: start; margin-top: 18px; }
+  nav.toc {
+    position: sticky; top: 16px;
+    background: color-mix(in srgb, var(--card) 88%, transparent);
+    border: 1px solid var(--border); border-radius: 14px; padding: 14px 12px 12px;
+    backdrop-filter: blur(10px); max-height: calc(100vh - 32px); overflow: auto;
+  }
+  nav.toc .label { font-size: 11px; letter-spacing: .12em; color: var(--muted); font-weight: 700; padding: 0 8px 8px; }
+  nav.toc ol { margin: 0; padding-left: 1.15em; }
+  nav.toc a { display: block; color: var(--muted); text-decoration: none; font-size: 13px; line-height: 1.35; padding: 5px 8px; border-radius: 8px; }
+  nav.toc a:hover { background: var(--card-alt); color: var(--text); }
+  nav.toc a.sub { padding-left: 18px; font-size: 12.5px; }
+  main section { margin: 0 0 22px; scroll-margin-top: 18px; }
+  main h2 { font-size: 23px; margin: 28px 0 10px; letter-spacing: -.2px; }
+  main h3 { font-size: 17.5px; margin: 22px 0 8px; }
+  main p { margin: 0 0 12px; }
+  main ul, main ol { margin: 0 0 12px; padding-left: 1.25em; }
+  main li { margin: 4px 0; }
+  .lead { font-size: 17px; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 14px; box-shadow: var(--shadow); padding: 16px 18px; margin: 12px 0; }
+  .grid { display: grid; gap: 12px; }
+  .g2 { grid-template-columns: 1fr 1fr; }
+  .g3 { grid-template-columns: 1fr 1fr 1fr; }
+  .stat b { display: block; font-size: 18px; letter-spacing: -.2px; line-height: 1.3; }
+  .stat span, .small { color: var(--muted); font-size: 13px; }
+  .callout { border-left: 3px solid var(--accent); background: var(--accent-soft); border-radius: 0 12px 12px 0; padding: 12px 14px; margin: 12px 0; }
+  .callout.warn { border-left-color: var(--orange); background: var(--orange-soft); }
+  .callout strong { display: block; margin-bottom: 2px; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; margin: 8px 0 4px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { color: var(--muted); font-weight: 650; font-size: 12.5px; letter-spacing: .03em; }
+  tr:last-child td { border-bottom: none; }
+  .scroll { overflow-x: auto; }
+  .flow { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0 4px; }
+  .node { background: var(--card-alt); border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px; min-width: 112px; }
+  .node b { display: block; font-size: 13.5px; }
+  .node span { color: var(--muted); font-size: 12px; }
+  .arrow { color: var(--muted); font-weight: 700; }
+  pre { background: var(--code-bg); color: var(--code-text); border-radius: 12px; padding: 14px 16px; overflow-x: auto; font-size: 12.6px; line-height: 1.55; margin: 8px 0 12px; }
+  footer.sources { color: var(--muted); font-size: 13.5px; }
+  footer.sources li { margin: 6px 0; }
+  @media (max-width: 920px) {
+    .layout { grid-template-columns: 1fr; }
+    nav.toc { position: static; max-height: none; }
+    nav.toc ol { display: flex; flex-wrap: wrap; gap: 4px; padding-left: 0; list-style: none; }
+    .g2, .g3 { grid-template-columns: 1fr; }
+    h1 { font-size: 28px; }
+  }
+  @media print {
+    nav.toc, .kicker { display: none; }
+    .layout { display: block; }
+    body { background: white; color: black; }
+    .card { break-inside: avoid; box-shadow: none; }
+    a { color: black; text-decoration: none; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+<header class="hero">
+  <div class="kicker">CLI design · main @ 2026-11-11</div>
+  <h1>Codex CLI：一个二进制，两种会话，都是 App Server 的客户端</h1>
+  <p class="sub">交互式 <span class="mono">codex</span> 和非交互式 <span class="mono">codex exec</span> 都不自己跑模型循环。它们负责解析参数、拉起或连上 App Server、把线程协议翻译成终端。模型、工具、沙箱留在 server 后面的 core。</p>
+  <div class="meta">
+    <span>入口 <b>codex-rs/cli/src/main.rs</b></span>
+    <span>交互界面 <b>codex-rs/tui</b></span>
+    <span>脚本入口 <b>codex-rs/exec</b></span>
+    <span>进程分发 <b>codex-rs/arg0</b></span>
+  </div>
+</header>
+
+<div class="layout">
+<nav class="toc" aria-label="目录">
+  <div class="label">目录</div>
+  <ol>
+    <li><a href="#shape">设计形状</a></li>
+    <li><a href="#arg0">进程还没起来时</a></li>
+    <li><a href="#router">子命令路由器</a></li>
+    <li><a href="#tui">交互式路径</a>
+      <a class="sub" href="#startup">启动分阶段</a>
+      <a class="sub" href="#target">连哪一台 server</a>
+      <a class="sub" href="#loop">界面事件循环</a>
+    </li>
+    <li><a href="#exec">非交互路径</a></li>
+    <li><a href="#modes">resume、fork、review</a></li>
+    <li><a href="#config">参数怎么流下去</a></li>
+    <li><a href="#process">进程上的约束</a></li>
+    <li><a href="#read">读代码时的顺序</a></li>
+  </ol>
+</nav>
+
+<main>
+
+<section id="shape">
+  <h2>设计形状</h2>
+  <p class="lead">用户敲的 <span class="mono">codex</span> 是 <span class="mono">codex-cli</span> 这个 crate 的二进制。它用 clap 做成一把多功能刀具：没有子命令时进入全屏终端；有子命令时，要么还是进同一套终端并带上内部标志，要么去做登录、诊断、MCP、沙箱这类一次性工作。</p>
+  <div class="flow" aria-hidden="true">
+    <div class="node"><b>argv0 / argv1</b><span>沙箱、补丁等别名</span></div>
+    <span class="arrow">→</span>
+    <div class="node"><b>clap MultitoolCli</b><span>子命令分发</span></div>
+    <span class="arrow">→</span>
+    <div class="node"><b>TUI 或 exec</b><span>两种客户端</span></div>
+    <span class="arrow">→</span>
+    <div class="node"><b>App Server</b><span>进程内或本机 socket</span></div>
+    <span class="arrow">→</span>
+    <div class="node"><b>core</b><span>线程、工具、沙箱</span></div>
+  </div>
+  <div class="grid g3">
+    <div class="card stat"><b>CLI 拥有终端</b><span>参数、raw mode、批准框、退出码、更新交接</span></div>
+    <div class="card stat"><b>App Server 拥有会话</b><span>thread/start、turn、审批请求、配置写回</span></div>
+    <div class="card stat"><b>core 拥有循环</b><span>模型、工具执行、压缩、权限执行</span></div>
+  </div>
+  <div class="callout">
+    <strong>交互和脚本共用协议，传输不同</strong>
+    TUI 的客户端名叫 <span class="mono">codex-tui</span>，<span class="mono">session_source</span> 写成 <span class="mono">cli</span>。它可以嵌一个进程内 server，也可以连已经在跑的本机 daemon，或者连 <span class="mono">ws://</span> / <span class="mono">unix://</span> 上的远程 server。<span class="mono">codex exec</span> 的 originator 是 <span class="mono">codex_exec</span>，并且总是 <span class="mono">InProcessAppServerClient::start</span>。脚本和这次进程同生共死，不依附后台 daemon。
+  </div>
+</section>
+
+<section id="arg0">
+  <h2>进程还没起来时</h2>
+  <p><span class="mono">main</span> 第一件事是 <span class="mono">arg0_dispatch_or_else</span>。注释写明：希望只发一个可执行文件，又希望其中几项能力看起来像独立命令。Mac 和 Linux 用 argv0 模拟多个二进制，Windows 做不到硬链接别名，改用 <span class="mono">.bat</span> 包装。</p>
+  <p>分发发生在创建任何线程之前，因为接下来要改环境变量。</p>
+  <div class="scroll card" style="padding:0 4px;">
+    <table>
+      <thead><tr><th>看到的名字</th><th>实际跑什么</th></tr></thead>
+      <tbody>
+        <tr><td>可执行文件名是 <span class="mono">codex-linux-sandbox</span></td><td><span class="mono">codex_linux_sandbox::run_main</span>，这个函数不返回</td></tr>
+        <tr><td>文件名是 <span class="mono">apply_patch</span> 或 <span class="mono">applypatch</span></td><td>补丁入口</td></tr>
+        <tr><td>第一个参数是 Windows MXC、exec helper、fs helper、Windows sandbox wrapper、core apply-patch</td><td>对应的内部 helper，跑完直接退出</td></tr>
+        <tr><td>都不是</td><td>从 <span class="mono">~/.codex/.env</span> 加载环境，准备 PATH 别名，再进入正常 CLI</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>别名放在一个带锁的临时目录里，并插到 PATH 前面。锁文件保证这次进程活着时目录还在；进程结束后目录可以清掉。下次启动时，janitor 只删本机、本操作系统命名空间里已经解锁的旧目录。别的系统留下的目录和还被锁住的目录保留。别名创建失败只打印警告，CLI 继续跑，因为很多路径并不需要这些 helper。</p>
+  <p>真正的异步入口跑在名为 <span class="mono">codex-main</span> 的线程上，栈大小用 <span class="mono">THREAD_STACK_SIZE_BYTES</span>。注释说明 <span class="mono">Runtime::block_on</span> 会把顶层 future 放在调用者的 OS 栈上，所以他们把 runtime 放到这条受控线程里。Linux musl 的 x86_64 和 aarch64 构建把全局分配器换成 jemalloc。</p>
+</section>
+
+<section id="router">
+  <h2>子命令路由器</h2>
+  <p>解析类型是 <span class="mono">MultitoolCli</span>。用法字符串是 <span class="mono">codex [OPTIONS] [PROMPT]</span>，或者 <span class="mono">codex [OPTIONS] &lt;COMMAND&gt;</span>。二进制即使以 <span class="mono">codex-x86_64-unknown-linux-musl</span> 这种平台名被调用，帮助文本也固定写成 <span class="mono">codex</span>。<span class="mono">subcommand_negates_reqs</span> 让子命令不必满足默认交互参数的必填项。</p>
+  <p><span class="mono">dispatch_cli</span> 先做一批所有子命令共享的门禁，再按子命令分叉。门禁包括：worktree 是否被这个子命令支持、根上的 <span class="mono">--strict-config</span> 能不能传下去、<span class="mono">--enable</span> / <span class="mono">--disable</span> 折成配置覆盖。远程端点只留给会打开 TUI 的命令。exec、mcp、plugin 收到 <span class="mono">--remote</span> 会直接拒绝。</p>
+  <div class="scroll card" style="padding:0 4px;">
+    <table>
+      <thead><tr><th>用户输入</th><th>分发结果</th></tr></thead>
+      <tbody>
+        <tr><td>无子命令，或 <span class="mono">codex agents</span></td><td>返回一个 future，等大块分发 future 结束之后再 poll。里面是交互式 TUI。<span class="mono">agents</span> 只是把 <span class="mono">agents_overview</span> 设为真</td></tr>
+        <tr><td><span class="mono">exec</span>，别名 <span class="mono">e</span></td><td><span class="mono">codex_exec::run_main</span>。根上的 sandbox、model、cwd 通过 <span class="mono">inherit_exec_root_options</span> 继承下去</td></tr>
+        <tr><td><span class="mono">review</span></td><td>现场组装一个 <span class="mono">ExecCli</span>，命令设成 <span class="mono">ExecCommand::Review</span>，再走同一条 exec</td></tr>
+        <tr><td><span class="mono">resume</span> / <span class="mono">fork</span></td><td>把选择器、<span class="mono">--last</span>、会话 id 写进 TUI 的内部字段，然后还是 <span class="mono">launch_tui</span></td></tr>
+        <tr><td><span class="mono">login</span> <span class="mono">logout</span> <span class="mono">mcp</span> <span class="mono">plugin</span> <span class="mono">doctor</span> <span class="mono">sandbox</span> <span class="mono">features</span> <span class="mono">update</span> <span class="mono">completion</span></td><td>各自的一次性命令，跑完进程结束</td></tr>
+        <tr><td><span class="mono">app-server</span> <span class="mono">exec-server</span> <span class="mono">remote-control</span></td><td>把同一份二进制当成服务进程。默认会话来源在 app-server 直跑时标成 VS Code</td></tr>
+        <tr><td><span class="mono">cloud</span>，别名 <span class="mono">cloud-tasks</span></td><td>云任务浏览，以及把结果应用到本地工作区</td></tr>
+        <tr><td><span class="mono">apply</span>，别名 <span class="mono">a</span></td><td>把 Codex 最近一次 diff 用 <span class="mono">git apply</span> 打到工作区</td></tr>
+        <tr><td>隐藏命令</td><td><span class="mono">tcp-tunnel</span>、<span class="mono">git-credential</span>、<span class="mono">responses-api-proxy</span>、<span class="mono">stdio-to-uds</span>、<span class="mono">execpolicy</span>。给 SSH、Git、内部代理用</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>交互式 future 被刻意留到 <span class="mono">dispatch_cli</span> 返回之后才 poll。注释写的是：先结束那个很大的子命令分发 future，再去 poll TUI 事件，避免两个大 future 叠在同一个栈帧上。</p>
+</section>
+
+<section id="tui">
+  <h2>交互式路径</h2>
+  <p><span class="mono">run_interactive_tui</span> 做进入界面之前的检查：<span class="mono">--no-daemon</span> 和 <span class="mono">--remote</span> 不能一起用；prompt 里的 CR 归一成 LF；<span class="mono">TERM=dumb</span> 且没有 TTY 时直接拒绝，有 TTY 则警告并要求确认。然后 <span class="mono">codex_tui::run_main</span>。</p>
+  <p>TUI 的 <span class="mono">run_main</span> 立刻把活交给 <span class="mono">startup_orchestration::run_main_inner</span>，并用 <span class="mono">boxed_future!</span> 把这个大 future 移出调用者的栈。注释写明，<span class="mono">Box::pin(large_future())</span> 仍可能在当前栈上按 future 的完整尺寸预留空间，所以他们用一个 <span class="mono">#[inline(never)]</span> 的函数先在别的帧里构造。</p>
+
+  <h3 id="startup">启动分阶段</h3>
+  <p><span class="mono">startup_orchestration.rs</span> 的模块注释把顺序说清楚了：轻量校验发生在占用终端之前。草稿 composer 出现之后，慢的配置加载和 App Server 初始化仍然要响应本地的安全编辑。</p>
+  <ol>
+    <li>解析 <span class="mono">-c</span>、把 <span class="mono">--search</span> 映射成 <span class="mono">web_search="live"</span>、找到 <span class="mono">CODEX_HOME</span>。</li>
+    <li>在阻塞线程里 <span class="mono">tui::init()</span>，记下当时的屏幕尺寸，再建 <span class="mono">StartupDraft</span>。之后的慢操作都包在 <span class="mono">startup_draft.run_until</span> 里，输入不会被冻住。</li>
+    <li>决定 App Server 目标，加载配置、云配置、可选的 worktree、OSS provider。</li>
+    <li>需要时拉起本机 daemon，做版本兼容检查。</li>
+    <li>进入 <span class="mono">run_ratatui_app</span>：连接 server、查登录、可能跑 onboarding，然后进入会话。</li>
+  </ol>
+  <p>发布构建里，如果这次启动没有初始 prompt，会先问要不要更新。用户选了更新，TUI 交还一个 <span class="mono">UpdateAction</span> 就退出。外层 <span class="mono">handle_app_exit</span> 在恢复终端之后再执行更新。daemon 更新会重新 exec 启动这次的 CLI 二进制，并带上 <span class="mono">HANDOFF_ENV</span>。更新因此发生在 raw mode 外面。</p>
+
+  <h3 id="target">连哪一台 server</h3>
+  <p><span class="mono">AppServerTarget</span> 有四种：<span class="mono">Embedded</span>、<span class="mono">LocalDaemon</span>、<span class="mono">Remote</span>、<span class="mono">Cloud</span>。启动函数 <span class="mono">app_server_target_for_launch</span> 在前三种里选。Cloud 是同一枚举的另一种线程参数模式，本地状态库的初始化和远程工作区走一类分支。</p>
+  <div class="scroll card" style="padding:0 4px;">
+    <table>
+      <thead><tr><th>条件</th><th>目标</th></tr></thead>
+      <tbody>
+        <tr><td>选了 workload identity</td><td>强制 Embedded。这种身份必须配在远程 host 上，启动参数里再带远程地址会报错</td></tr>
+        <tr><td>显式 <span class="mono">unix://</span> 指向默认控制 socket</td><td>LocalDaemon，不允许失败后回退到进程内</td></tr>
+        <tr><td>其他显式 <span class="mono">ws://</span>、<span class="mono">wss://</span>、<span class="mono">unix://PATH</span></td><td>Remote。明文 <span class="mono">ws://</span> 只在 localhost 上接受认证 token</td></tr>
+        <tr><td>没写远程地址，并且 50ms 内探到默认 socket，同时这次没有 <span class="mono">CODEX_EXEC_SERVER_URL</span></td><td>LocalDaemon，允许连接失败后回退 Embedded。共享 daemon 不能采纳这次进程自己的 executor 选择，所以带了 exec server URL 就改走进程内</td></tr>
+        <tr><td>探不到 socket</td><td>先是 Embedded。若功能开关允许，后面还会尝试把 daemon 拉起来</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>自动拉起 daemon 还要同时满足：Unix 或 Windows、隐式连接、<span class="mono">--no-daemon</span> 没开，并且要么是 agents 总览，要么打开了 <span class="mono">DaemonAutoStart</span>。下面几种情况会留下 Embedded，并在界面上说明原因：</p>
+  <ul>
+    <li>Windows 上这次进程是提权启动的。代码直接把 <span class="mono">no_daemon</span> 设上。</li>
+    <li>还没登录，而 GCP 或 Gateway 的设置向导要用本次启动环境里的凭证。向导结束后会按所选 provider 重建嵌入式 server。</li>
+    <li><span class="mono">CODEX_HOME</span> 在 WSL 的 drvfs 上。</li>
+    <li>Windows 这个启动器不允许脱离进程拉起。</li>
+    <li>daemon 的功能设置和这次客户端不兼容。兼容检查失败后目标被改回 Embedded。</li>
+  </ul>
+  <p>连接函数 <span class="mono">start_app_server</span> 先按目标去连。只有 <span class="mono">allow_embedded_fallback</span> 为真的本机 daemon 失败时，才改目标为 Embedded 并重新初始化状态库。显式附着失败则把 hint 抛出去，要求 daemon 真的在。</p>
+  <p>进程内启动走 <span class="mono">InProcessAppServerClient</span>。<span class="mono">required_human_approval</span> 为真，客户端名 <span class="mono">codex-tui</span>，打开 experimental API。状态库只有 Embedded 会在这次进程里 <span class="mono">try_init</span>。初始化失败被包成 <span class="mono">LocalStateDbStartupError</span>。外层 <span class="mono">run_tui_with_recovery</span> 对可自动备份的损坏做一次：把坏文件移走，确认可以重建，然后重进 TUI。锁住的库只打印指引，不重试。同一个路径只尝试备份一次。</p>
+
+  <h3 id="loop">界面事件循环</h3>
+  <p><span class="mono">app.rs</span> 拥有 <span class="mono">App</span> 和高层 run loop。终端事件是 <span class="mono">TuiEvent</span>：按键、鼠标、粘贴、焦点、尺寸、Draw、Resume。服务端来的是 App Server 通知，批准、子代理活动、配置变更从这里进界面。</p>
+  <p>界面侧自己保留的状态包括：当前 <span class="mono">ChatWidget</span>、底部批准栏、resume 选择器、transcript overlay、文件搜索、keymap。模型要跑命令或改文件时，server 发批准请求，TUI 画选择框，人的决定再作为 RPC 写回去。TUI 不执行 shell。</p>
+  <p>panic hook 会先 <span class="mono">tui::restore_after_exit</span>，再把原来的 color-eyre hook 接回去。致命退出也会在返回错误前恢复终端，避免把用户留在 raw mode 里。</p>
+</section>
+
+<section id="exec">
+  <h2>非交互路径</h2>
+  <p><span class="mono">codex exec</span> 的 clap 用法和顶层对称：<span class="mono">codex exec [OPTIONS] [PROMPT]</span>。子命令是 <span class="mono">resume</span>、<span class="mono">fork</span>，以及由顶层 <span class="mono">review</span> 塞进来的 review。没有子命令就是开一条新的非交互线程。</p>
+  <div class="grid g2">
+    <div class="card">
+      <b>输入</b>
+      <p class="small">prompt 可以是参数。参数是 <span class="mono">-</span> 或没给时从 stdin 读。stdin 是管道而且又给了 prompt，stdin 会包进一个 <span class="mono">&lt;stdin&gt;</span> 块追加进去。图片路径变成 <span class="mono">UserInput::LocalImage</span>。</p>
+    </div>
+    <div class="card">
+      <b>输出</b>
+      <p class="small"><span class="mono">--json</span> 用 JSONL 事件处理器，否则用人可读的 stderr 输出。<span class="mono">-o</span> 在 agent 启动前就打开最后一条消息的文件，避免沙箱里的活动把最终写入重定向走。</p>
+    </div>
+  </div>
+  <p><span class="mono">run_exec_session</span> 的顺序是：按 human 或 JSONL 建 <span class="mono">EventProcessor</span>，需要时准备 OSS provider，确认当前目录在 Git 仓库里（<span class="mono">--skip-git-repo-check</span> 或 <span class="mono">--dangerously-bypass-approvals-and-sandbox</span> 可以跳过），然后启动进程内 App Server。</p>
+  <p>线程生命周期全部是协议调用：</p>
+  <ul>
+    <li>新会话：<span class="mono">thread/start</span>。非 ephemeral 时 <span class="mono">history_mode</span> 用分页。如果 server 回 <span class="mono">-32600</span> 说分页需要额外的 list 方法，客户端清掉 history mode 再试一次。</li>
+    <li>恢复：先解析会话 id，再 <span class="mono">thread/resume</span>。</li>
+    <li>分叉：<span class="mono">thread/fork</span>，<span class="mono">exclude_turns</span> 为真，模型仍带着线程上下文，响应里不必塞回全部历史。</li>
+    <li>评审：先把目标收成 <span class="mono">ReviewRequest</span>，再作为这一次的初始操作。</li>
+  </ul>
+  <p>随后客户端读 server 的通知，交给 <span class="mono">EventProcessor</span>。server 反过来要批准时，exec 在 <span class="mono">handle_server_request</span> 里处理。跑完调用 <span class="mono">client.shutdown()</span>，打印最终输出。中途见过错误就以退出码 1 结束。</p>
+  <div class="callout">
+    <strong>exec 把“一次命令”收成“一轮”</strong>
+    prompt、图片和可选的 JSON Schema 合成一次 <span class="mono">UserTurn</span>。进程等到这轮结束。交互式 TUI 则把同一条 <span class="mono">thread/start</span> 留在屏幕上，后面的每句用户输入都是新的 turn。两边的会话对象是同一个协议对象。
+  </div>
+</section>
+
+<section id="modes">
+  <h2>resume、fork、review</h2>
+  <p>这三个看起来像独立产品入口，实现上是给两条现成客户端填内部字段。</p>
+  <div class="scroll card" style="padding:0 4px;">
+    <table>
+      <thead><tr><th>命令</th><th>内部变成什么</th></tr></thead>
+      <tbody>
+        <tr><td><span class="mono">codex</span></td><td>空的 <span class="mono">TuiCli</span>，打开新的交互线程</td></tr>
+        <tr><td><span class="mono">codex resume</span></td><td><span class="mono">resume_picker = true</span></td></tr>
+        <tr><td><span class="mono">codex resume --last</span></td><td><span class="mono">resume_last = true</span>，不显示选择器</td></tr>
+        <tr><td><span class="mono">codex resume &lt;id&gt; [prompt]</span></td><td><span class="mono">resume_session_id</span> 设上，选择器关闭。后面的词成为这条线程的下一句</td></tr>
+        <tr><td><span class="mono">codex resume --all</span></td><td>选择器仍在，关掉按 cwd 过滤，并显示目录列</td></tr>
+        <tr><td><span class="mono">codex fork ...</span></td><td>同一组字段的 fork 版本。没给会话 id 又带 <span class="mono">--worktree</span> 会被拒绝，因为 worktree 需要明确的源会话</td></tr>
+        <tr><td><span class="mono">codex agents</span></td><td><span class="mono">agents_overview = true</span>。不接受初始 prompt 和图片。远程模式下也不能附带本地 provider 或额外可写目录</td></tr>
+        <tr><td><span class="mono">codex review</span></td><td>不进 TUI。合成 <span class="mono">codex exec</span> 的 review 子命令</td></tr>
+        <tr><td><span class="mono">codex exec resume|fork</span></td><td>同一套线程 API，没有选择器，适合 CI</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p><span class="mono">resume</span> 和 <span class="mono">fork</span> 的这些字段标了 <span class="mono">#[clap(skip)]</span>。用户不能在裸的 <span class="mono">codex --resume-last</span> 上写它们，只能通过子命令包装器写入。这样帮助文本保持短，两条路径又共用一个 <span class="mono">TuiCli</span>。</p>
+</section>
+
+<section id="config">
+  <h2>参数怎么流下去</h2>
+  <p>根命令和子命令各自有 clap 结构体，共享的模型、sandbox、cwd、图片、worktree 放在 <span class="mono">SharedCliOptions</span>。TUI 和 exec 各包一层，把其中几个参数标成 global，让它们出现在子命令后面仍然有效。根上的 <span class="mono">-c</span> 和 <span class="mono">--enable</span> 由 <span class="mono">prepend_config_flags</span> 接到子命令自己的覆盖列表前面。</p>
+  <p>TUI 还有一组只属于交互的开关：<span class="mono">--ask-for-approval</span>、<span class="mono">--search</span>、<span class="mono">--no-alt-screen</span>、<span class="mono">--no-daemon</span>、<span class="mono">--strict-config</span>。<span class="mono">--dangerously-bypass-approvals-and-sandbox</span> 和审批策略、auto review 互斥。exec 额外有 <span class="mono">--json</span>、<span class="mono">--ephemeral</span>、<span class="mono">--output-schema</span>、<span class="mono">--ignore-user-config</span>、<span class="mono">--ignore-rules</span>、<span class="mono">--trust</span>、<span class="mono">--thread-source</span>。</p>
+  <p>远程附着时，客户端不再把本地的额外目录和 <span class="mono">sandbox_workspace_write.writable_roots</span> 送过去。这些边界属于 server 那台机器。远程工作区的 cwd 只作为展示和会话目标覆盖，不拿来加载本机项目配置。</p>
+  <p><span class="mono">--oss</span> 在 TUI 启动中段处理。没指定 provider 时先探测本地 Ollama 和 LM Studio，必要时把终端暂时交还，弹出选择。选中的 provider 写进 <span class="mono">model_provider</span> 覆盖，再交给嵌入式 server，这样之后工作区要求被拿掉时，启动时的选择还在。取消选择会以错误结束启动。</p>
+</section>
+
+<section id="process">
+  <h2>进程上的约束</h2>
+  <ul>
+    <li><b>单二进制多角色。</b>发布物是一个 <span class="mono">codex</span>。沙箱 helper、补丁器和若干内部服务靠 argv0、argv1 或子命令进入，避免用户安装一串可执行文件。</li>
+    <li><b>大 future 不叠在同一帧。</b>分发、TUI 启动、嵌入式 server 启动都用 <span class="mono">Box::pin</span> 或 <span class="mono">boxed_future!</span> 挪走。这是这个 CLI 里反复出现的工程注释，说明会话状态已经大到会撑爆默认栈。</li>
+    <li><b>终端所有权有守卫。</b>进入 alt screen 之前初始化，退出、panic、致命错误都走恢复。更新和确认提示发生在 raw mode 之外。</li>
+    <li><b>本地状态库失败可恢复一次。</b>损坏走备份后重建；锁冲突只提示。避免一个坏的 SQLite 让每次启动都循环备份。</li>
+    <li><b>daemon 是优化，嵌入是退路。</b>多个终端可以共享一个后台 server。任何身份、文件系统、提权或版本对不上的情况，都退回这次进程自己的 server，并告诉用户为什么。</li>
+    <li><b>退出码分层。</b>TUI 的致命信息先打印再 <span class="mono">exit(1)</span>。exec 在事件流里见过错误也以 1 退出。用户主动离开是成功退出。App Server 若返回 Forced，CLI 直接 <span class="mono">exit(0)</span>，注释说明 runtime 拆除可能永远等在被堵住的 rollout I/O 上。</li>
+  </ul>
+</section>
+
+<section id="read">
+  <h2>读代码时的顺序</h2>
+  <p>要对着仓库把这条链走完，按这个顺序开文件就够。都在 <span class="mono">codex-rs</span> 下面，对应 2026-11-11 的 <span class="mono">main</span>。</p>
+  <ol>
+    <li><span class="mono">arg0/src/lib.rs</span>：<span class="mono">arg0_dispatch</span> 和 <span class="mono">arg0_dispatch_or_else</span>。看一个文件如何变成沙箱 helper。</li>
+    <li><span class="mono">cli/src/main.rs</span>：<span class="mono">MultitoolCli</span>、<span class="mono">Subcommand</span>、<span class="mono">main</span>、<span class="mono">dispatch_cli</span>、<span class="mono">finalize_resume_interactive</span>、<span class="mono">handle_app_exit</span>。</li>
+    <li><span class="mono">tui/src/cli.rs</span>：哪些字段是用户旗帜，哪些是子命令偷偷写入的。</li>
+    <li><span class="mono">tui/src/lib.rs</span>：<span class="mono">AppServerTarget</span>、<span class="mono">start_app_server</span>、<span class="mono">app_server_target_for_launch</span>、<span class="mono">run_main</span>。</li>
+    <li><span class="mono">tui/src/startup_orchestration.rs</span>：草稿 composer、daemon 自动启动、退回嵌入式的条件。</li>
+    <li><span class="mono">tui/src/app.rs</span>：<span class="mono">TuiEvent</span> 怎么和 server 通知汇合。</li>
+    <li><span class="mono">exec/src/cli.rs</span> 和 <span class="mono">exec/src/lib.rs</span>：<span class="mono">run_main</span>、<span class="mono">run_exec_session</span>、<span class="mono">start_thread</span>。</li>
+  </ol>
+  <footer class="sources">
+    <p>材料是当天从 <a href="https://github.com/openai/codex">openai/codex</a> 的 <span class="mono">main</span> 读到的源码，提交时间在 2026-11-11。函数名和分支条件会随版本变。产品层的仓库介绍仍在同目录的 <span class="mono">Codex调研报告.html</span>。</p>
+  </footer>
+</section>
+
+</main>
+</div>
+</div>
+</body>
+</html>

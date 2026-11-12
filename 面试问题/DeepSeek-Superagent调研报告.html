@@ -1,0 +1,636 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DeepSeek Super-agent 调研报告 · 2026-11-01</title>
+<style>
+  :root {
+    --bg: #f4f6fb;
+    --card: #ffffff;
+    --card-alt: #f0f3f9;
+    --text: #161b26;
+    --muted: #5c6578;
+    --border: #e2e6f0;
+    --accent: #1d4ed8;
+    --accent-soft: #e8efff;
+    --accent-2: #0f766e;
+    --green: #0d9668;
+    --green-soft: #e6f5ef;
+    --orange: #c2600a;
+    --orange-soft: #fdf0e3;
+    --blue: #1d6fd6;
+    --blue-soft: #e7f0fd;
+    --red: #b42318;
+    --red-soft: #fdecec;
+    --code-bg: #0f1629;
+    --code-text: #dbe4ff;
+    --shadow: 0 1px 3px rgba(22, 27, 38, .06), 0 10px 28px rgba(22, 27, 38, .05);
+    --sidebar: 232px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0c1018;
+      --card: #141b28;
+      --card-alt: #1b2434;
+      --text: #e7ebf4;
+      --muted: #9aa6bd;
+      --border: #2a3448;
+      --accent: #8eb0ff;
+      --accent-soft: #1a2744;
+      --accent-2: #5eead4;
+      --green: #4ade9d;
+      --green-soft: #123228;
+      --orange: #f7b26f;
+      --orange-soft: #3a2a12;
+      --blue: #7cb3f5;
+      --blue-soft: #14263f;
+      --red: #fca5a5;
+      --red-soft: #3a1c1c;
+      --code-bg: #090e18;
+      --code-text: #d5def8;
+      --shadow: 0 1px 3px rgba(0,0,0,.35), 0 12px 28px rgba(0,0,0,.28);
+    }
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background:
+      radial-gradient(1200px 420px at 10% -10%, color-mix(in srgb, var(--accent) 14%, transparent), transparent 60%),
+      var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Segoe UI", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    line-height: 1.72;
+    font-size: 16px;
+  }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  code, .mono { font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace; font-size: .88em; }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 0 22px 88px; }
+
+  header.hero { padding: 46px 0 18px; }
+  .kicker {
+    display: inline-flex; gap: 8px; align-items: center;
+    font-size: 12px; letter-spacing: .14em; text-transform: uppercase;
+    color: var(--accent); background: var(--accent-soft);
+    padding: 4px 12px; border-radius: 999px; font-weight: 700; margin-bottom: 14px;
+  }
+  h1 { font-size: 34px; line-height: 1.22; margin: 0 0 12px; letter-spacing: -.4px; }
+  .sub { color: var(--muted); max-width: 760px; margin: 0; font-size: 17px; }
+  .meta { margin-top: 16px; font-size: 13px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 8px 18px; }
+  .meta b { color: var(--text); font-weight: 600; }
+
+  .layout { display: grid; grid-template-columns: var(--sidebar) minmax(0, 1fr); gap: 36px; align-items: start; margin-top: 18px; }
+  nav.toc {
+    position: sticky; top: 16px;
+    background: color-mix(in srgb, var(--card) 88%, transparent);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 14px 12px 12px;
+    backdrop-filter: blur(10px);
+    max-height: calc(100vh - 32px);
+    overflow: auto;
+  }
+  nav.toc .label { font-size: 11px; letter-spacing: .12em; color: var(--muted); font-weight: 700; padding: 0 8px 8px; }
+  nav.toc a {
+    display: block; color: var(--muted); text-decoration: none;
+    font-size: 13px; line-height: 1.35; padding: 6px 8px; border-radius: 8px;
+  }
+  nav.toc a:hover { background: var(--card-alt); color: var(--text); }
+  nav.toc a.sub { padding-left: 18px; font-size: 12.5px; }
+
+  main section { margin: 0 0 22px; scroll-margin-top: 18px; }
+  main h2 { font-size: 23px; margin: 28px 0 10px; letter-spacing: -.2px; }
+  main h3 { font-size: 17.5px; margin: 22px 0 8px; }
+  main p { margin: 0 0 12px; }
+  main ul, main ol { margin: 0 0 12px; padding-left: 1.25em; }
+  main li { margin: 4px 0; }
+  .lead { font-size: 17px; }
+
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    box-shadow: var(--shadow);
+    padding: 16px 18px;
+    margin: 12px 0;
+  }
+  .grid { display: grid; gap: 12px; }
+  .g2 { grid-template-columns: 1fr 1fr; }
+  .g3 { grid-template-columns: 1fr 1fr 1fr; }
+  .g4 { grid-template-columns: repeat(4, 1fr); }
+  .stat b { display: block; font-size: 22px; letter-spacing: -.3px; line-height: 1.2; }
+  .stat span { color: var(--muted); font-size: 12.5px; }
+
+  .tag {
+    display: inline-block; font-size: 11.5px; font-weight: 700;
+    padding: 1px 8px; border-radius: 999px; vertical-align: 1px; letter-spacing: .02em;
+  }
+  .tag.essay { background: var(--accent-soft); color: var(--accent); }
+  .tag.code { background: var(--green-soft); color: var(--green); }
+  .tag.gap { background: var(--orange-soft); color: var(--orange); }
+  .tag.both { background: var(--blue-soft); color: var(--blue); }
+
+  .callout { border-left: 3px solid var(--accent); background: var(--accent-soft); border-radius: 0 12px 12px 0; padding: 12px 14px; margin: 12px 0; }
+  .callout.warn { border-left-color: var(--orange); background: var(--orange-soft); }
+  .callout.ok { border-left-color: var(--green); background: var(--green-soft); }
+  .callout strong { display: block; margin-bottom: 2px; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 14px; margin: 8px 0 4px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { color: var(--muted); font-weight: 650; font-size: 12.5px; letter-spacing: .03em; }
+  tr:last-child td { border-bottom: none; }
+  .scroll { overflow-x: auto; }
+
+  .flow { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0 4px; }
+  .node {
+    background: var(--card-alt); border: 1px solid var(--border); border-radius: 10px;
+    padding: 8px 10px; min-width: 108px;
+  }
+  .node b { display: block; font-size: 13.5px; }
+  .node span { color: var(--muted); font-size: 12px; }
+  .arrow { color: var(--muted); font-weight: 700; }
+
+  .bars { display: grid; gap: 10px; margin-top: 8px; }
+  .bar-row { display: grid; grid-template-columns: 168px 1fr 72px; gap: 10px; align-items: center; font-size: 13.5px; }
+  .track { height: 10px; background: var(--card-alt); border-radius: 999px; overflow: hidden; border: 1px solid var(--border); }
+  .fill { height: 100%; border-radius: 999px; background: var(--accent); }
+  .fill.alt { background: var(--orange); }
+  .fill.teal { background: var(--accent-2); }
+
+  details { border: 1px solid var(--border); border-radius: 12px; background: var(--card); margin: 10px 0; }
+  summary { cursor: pointer; padding: 12px 14px; font-weight: 650; }
+  details .inner { padding: 0 14px 14px; }
+  details p:last-child { margin-bottom: 0; }
+
+  pre {
+    background: var(--code-bg); color: var(--code-text);
+    border-radius: 12px; padding: 14px 16px; overflow-x: auto;
+    font-size: 12.8px; line-height: 1.55; margin: 8px 0 12px;
+  }
+  footer.sources { color: var(--muted); font-size: 13.5px; }
+  footer.sources li { margin: 6px 0; }
+  .small { color: var(--muted); font-size: 13px; }
+
+  @media (max-width: 920px) {
+    .layout { grid-template-columns: 1fr; }
+    nav.toc { position: static; max-height: none; }
+    nav.toc ol { display: flex; flex-wrap: wrap; gap: 4px; padding-left: 0; list-style: none; margin: 0; }
+    nav.toc li { margin: 0; }
+    .g2, .g3, .g4 { grid-template-columns: 1fr; }
+    h1 { font-size: 28px; }
+    .bar-row { grid-template-columns: 1fr; gap: 4px; }
+  }
+  @media print {
+    nav.toc, .kicker { display: none; }
+    .layout { display: block; }
+    body { background: white; color: black; }
+    .card, details { break-inside: avoid; box-shadow: none; }
+    a { color: black; text-decoration: none; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+<header class="hero">
+  <div class="kicker">Research note · 2026-11-01</div>
+  <h1>DeepSeek Super-agent：把人的注意力当成系统资源</h1>
+  <p class="sub">2026 年 10 月 31 日，DeepSeek Harness 团队公开设计长文《Super-agent 设计探索：迈向更自主的 Agent 系统》，并在官方 GitHub 组织放出研究原型 <span class="mono">dsh-superagent-prototype</span>。这份报告把长文里的架构和仓库里真正落地的代码分开写清。</p>
+  <div class="meta">
+    <span>仓库 <b>deepseek-ai/dsh-superagent-prototype</b></span>
+    <span>协议 <b>MIT</b></span>
+    <span>语言 <b>TypeScript</b></span>
+    <span>创建 <b>2026-10-31 09:32 UTC</b></span>
+    <span>查询时 <b>3,540 stars / 325 forks</b></span>
+  </div>
+</header>
+
+<div class="layout">
+<nav class="toc" aria-label="目录">
+  <div class="label">目录</div>
+  <ol>
+    <li><a href="#takeaway">一分钟结论</a></li>
+    <li><a href="#materials">两份材料怎么读</a></li>
+    <li><a href="#problem">要解决的问题</a></li>
+    <li><a href="#four">四个特征，五块框架</a></li>
+    <li><a href="#essay">长文里的系统设计</a>
+      <a class="sub" href="#router">Router 与 Worker</a>
+      <a class="sub" href="#events">事件、订阅、召回</a>
+      <a class="sub" href="#duplex">交互、存算分离、Watchdog</a>
+    </li>
+    <li><a href="#code">原型实际怎么跑</a>
+      <a class="sub" href="#domain">领域模型</a>
+      <a class="sub" href="#auth">授权是代码，不是提示词</a>
+      <a class="sub" href="#exec">执行、槽位与恢复</a>
+      <a class="sub" href="#runtime">运行时骨架</a>
+    </li>
+    <li><a href="#map">长文和代码的对应</a></li>
+    <li><a href="#innov">创新点</a></li>
+    <li><a href="#exp">实验数字怎么读</a></li>
+    <li><a href="#limits">边界与未完成的问题</a></li>
+    <li><a href="#practice">可以带走的工程判断</a></li>
+    <li><a href="#sources">资料与核对方式</a></li>
+  </ol>
+</nav>
+
+<main>
+<section id="takeaway">
+  <h2>一分钟结论</h2>
+  <p class="lead">Super-agent 的命题很具体：单任务已经越来越少需要人盯着，多任务的上限变成了人能同时跟住几个会话。团队自己的观察是，一个人通常只能同时跟上 3 到 5 个活跃 Session。于是他们把「一个聊天窗口里的 Agent」改写成一个长期在线的系统：人始终面对同一个协作者，底下由常驻的 Router 分派，由互相隔离的 Worker 并行干活。</p>
+  <div class="grid g3">
+    <div class="card stat"><b>连续 · 高效 · 主动 · 持久</b><span>长文给这种 Agent 形态定的四个特征</span></div>
+    <div class="card stat"><b>Router / Worker</b><span>连续性放在上层，吞吐量放在下层。Session 变成实现细节</span></div>
+    <div class="card stat"><b>少占注意力</b><span>原型的总原则：能行动的 Agent 也会浪费整个团队的注意力</span></div>
+  </div>
+  <div class="callout">
+    <strong>先记住这个分界</strong>
+    长文讲的是一套可复用的系统架构。作者写明这是工程探索，和 DeepSeek Harness 的产品功能说明是两份材料。开源仓库是这套思路在「一个 GitHub 仓库上的主动编程 Agent」上的研究原型。README 写明：代码从团队日常开发长出来，大量工程由编程 Agent 完成；公开版经过改编，和内部版本、也和长文描述的实现不完全相同。长文里的一部分设计是后续方向，原型里还没有。
+  </div>
+</section>
+
+<section id="materials">
+  <h2>两份材料怎么读</h2>
+  <div class="scroll card" style="padding:0 4px;">
+    <table>
+      <thead><tr><th></th><th>设计长文</th><th>开源原型</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>名称</td>
+          <td>《Super-agent 设计探索：迈向更自主的 Agent 系统》</td>
+          <td><span class="mono">dsh-superagent</span>，包名版本 0.1.0，DeepSeek Harness bundle</td>
+        </tr>
+        <tr>
+          <td>作者与时间</td>
+          <td>2026-10-31 晚，DeepSeek Harness 团队公众号。英文转载署名为 Yujia Qiao 实现系统并撰写，多人参与评审</td>
+          <td>同日 09:32 UTC 出现在 <span class="mono">deepseek-ai</span> 组织。作者字段为 DeepSeek Harness Team。主分支当时是一次提交</td>
+        </tr>
+        <tr>
+          <td>它是什么</td>
+          <td>面向个人助手和团队研发的通用架构讨论：双层调度、事件驱动、异步交互、存算分离、外部 Watchdog</td>
+          <td>绑在一个 GitHub 仓库上的主动编程 Agent。监听 GitHub，可选飞书。被允许的人提出工作后，开一张工单，在独立 Session 和目录里做完，回到原对话交付，例如开 Pull Request</td>
+        </tr>
+        <tr>
+          <td>运行依赖</td>
+          <td>内部实例跑在 DeepSeek Harness 上，已参与问题复现、代码审查响应和 Harness 自身迭代</td>
+          <td>Node.js 22.19+ 或 24+，对等依赖 <span class="mono">dsh@^0.2.1-alpha.2</span>。状态在一份 SQLite 里。面板挂在 Harness Web 侧栏，默认只听 <span class="mono">127.0.0.1</span></td>
+        </tr>
+        <tr>
+          <td>明确的自我定位</td>
+          <td>「没有提出新理论，是把计算机系统里的经典设计用到 Agent 上」</td>
+          <td>「Research prototype for reference only, not an official DeepSeek product」。Issues 与 Wiki 关闭</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="small">星标和 fork 数取自 2026-11-01 对 GitHub API 的查询，会继续变。仓库语言为 TypeScript，约 245 个文件，状态目录锁和 SQLite 是单写者。</p>
+</section>
+
+<section id="problem">
+  <h2>要解决的问题</h2>
+  <p>长文的起点是这一年的编码 Agent：模型用工具做复杂任务时，需要的逐步看管已经变少，多个 Agent 之间的组织也变得可行。人的角色往上移，变成定目标和验收。</p>
+  <p>同时冒出来的新产品形态是 Personal Agent：直接接上即时通讯、日历、邮件和工作平台，持续看信息流。作者认为这种「一直在线、由事件驱动」的方式同样适用于软件研发。卡住它的是现有 Agent 仍以单次 Session 为工作单位：</p>
+  <ul>
+    <li>几个任务并行时，人要自己切换 Session，并记住每一份上下文。</li>
+    <li>单任务的上限由模型能力决定，多任务的上限由人的注意力决定。</li>
+    <li>用 CLI、MCP 或外部连接器把本地 Agent 接上外部消息之后，仍然会碰到单会话同步阻塞、多任务上下文缠在一起，以及本机休眠后任务停掉。</li>
+  </ul>
+  <p>所以他们要拆开的绑定关系是：Agent 不再等于一次人手动打开的会话。它要变成一个能跨会话保住上下文、同时推进多件复杂工作、彼此不互相踩的连续实体。这个形态和它的系统架构，被叫做 Super-agent。</p>
+  <div class="card">
+    <b>内部实例里的两个画面</b>
+    <p>同一个开发任务可以先在 IM 里定方案，再在 GitHub Pull Request 评论里改口，Agent 认出这是同一件事并调整方向。另一个画面是：公共群里有人反馈问题，即使没有人 @ 它，它也会在后台尝试复现，找到简单修复后提交 Pull Request，其余时间保持安静。</p>
+  </div>
+</section>
+
+<section id="four">
+  <h2>四个特征，五块框架</h2>
+  <div class="grid g4">
+    <div class="card"><b>连续</b><p class="small">人在 IM、GitHub 评论这些本来就在用的界面里跟它说话，感觉始终只有一个 Agent。先在群里提方案 A，后在 PR 里改成方案 B，它能跟上。</p></div>
+    <div class="card"><b>高效</b><p class="small">多件复杂任务并行，而且质量由最强模型负责。上一条指令还没跑完，下一条已经可以进来。</p></div>
+    <div class="card"><b>主动</b><p class="small">持续观察环境事件，值得做的事自己推进。不需要介入时保持安静。</p></div>
+    <div class="card"><b>持久</b><p class="small">一直在线，直接接入真实工作环境。长期运行中的异常能自己恢复。本机休眠不再等于 Agent 死亡。</p></div>
+  </div>
+  <p>作者认为一条 ReAct 循环撑不起这四件事。支撑它们的是五块，后面的章节按这个编号展开：</p>
+  <ol>
+    <li><b>双层架构</b>同时照顾连续交互和并发吞吐。</li>
+    <li><b>事件驱动</b>让系统能主动响应，而不是等下一条提示词。</li>
+    <li><b>面向人的交互</b>让说话本身也连续、也高效：不阻塞，并且按渠道塑形。</li>
+    <li><b>计算、状态、执行环境分离</b>让循环可以留在云上，环境留在人已经在用的机器上。</li>
+    <li><b>外部 Watchdog</b>在系统外面再套一个控制回路，处理失败、空转和目标漂移。</li>
+  </ol>
+</section>
+
+<section id="essay">
+  <h2>长文里的系统设计</h2>
+  <p>这一节只复述长文。每一处和开源代码不一致的地方，放到后面的对照表里。</p>
+
+  <h3 id="router">双层架构：连续性与吞吐量拆开</h3>
+  <p>组织 Session 时有两个极端。所有事件进同一个 Session，上下文最连续，但被一条串行 ReAct 循环的速度卡住，多任务的中间细节混在一起还会伤质量。每个事件新开一个 Session，吞吐最高，任务之间一旦有关系，结果就碎掉，而且好几个 Session 会各自回复用户。</p>
+  <p>他们的拆法是：常驻的 <b>Router 层</b>承接所有入口的人类交互，汇合跨任务的信息和决定，充当全局的顺序点、协调点和记忆。为了让这个全局节点不成为瓶颈，Router 自己不执行具体任务，甚至可以不挂 Bash，用更轻的模型。执行放在 <b>Worker 层</b>：每个 Worker 上下文隔离，挂完整工具，专注一件事，通常用最强模型。Worker 不直接对人类说话，把状态报给 Router，由 Router 统一回复。</p>
+  <div class="flow" aria-hidden="true">
+    <div class="node"><b>各渠道消息</b><span>IM · GitHub · 邮件</span></div>
+    <span class="arrow">→</span>
+    <div class="node"><b>Router</b><span>常驻、轻、只调度</span></div>
+    <span class="arrow">→</span>
+    <div class="node"><b>Worker × N</b><span>隔离上下文，强模型</span></div>
+    <span class="arrow">→</span>
+    <div class="node"><b>回到原渠道</b><span>由 Router 统一说</span></div>
+  </div>
+  <p>这里有一个刻意划清的边界。典型的 Agent Team 用来拆同一件复杂任务内部的步骤，步骤之间耦合紧，Team Lead 要深入理解任务、频繁协调，推理负担重。Super-agent 的 Router 只处理任务与任务之间的高层关系和分派，不负责把单个任务拆开。单个任务内部如果要再开 Subagent 或再组成一个 Agent Team，那是 Worker 自己的事，对 Router 透明。</p>
+  <p>「两层」是职责划分，不一定各是一个 Session。他们内部先选了最直接的实现：Router 的核心是一个持久 LLM Session。推理进行中到达的事件会积起来，下一轮一起注入。稳态时一次一个，延迟低；突发积压时，多个 Trigger 合成一次调用，在 prefill 里并行。因为每步是长输入、短输出，单次请求耗时涨得比批大小慢，分摊到每个决定上的推理时间反而下降。团队当前规模下，他们判断还不必为了吞吐去分片 Router，因为分片会损失跨分片的记忆连续性。</p>
+  <p>由此推出一个产品判断：让用户自己管理 Session，很大程度是 LLM API 留下来的习惯。Session 应该是系统的实现细节。用户侧的项目管理和底层 Session 脱钩之后，交互形态可以按领域来做，例如直接活在 GitHub Issue 和 Pull Request 里。一个用户能看见的对话，底下可以对应多个 Session。</p>
+
+  <h3 id="events">事件驱动：过滤、直达、召回、投机</h3>
+  <p>主动的前提是换掉驱动力。主输入从「人在 Session 里逐条打的提示词」，换成环境里的半结构化事件，长文称之为 <b>Trigger</b>：群消息、邮件和日历提醒、评审评论、CI 结果。</p>
+  <h4>两级过滤</h4>
+  <p>真实群聊是高噪声、低行动率。对每条事件都叫大模型，延迟和成本都撑不住。他们借用系统里的 Fast Path / Slow Path：</p>
+  <ul>
+    <li><b>程序策略，快路径。</b>按来源、群范围、人或 bot 允许列表做确定性准入。可以配置成「只响应明确请求」「当作候选」或「直接忽略」。</li>
+    <li><b>语义策略，慢路径。</b>通过快路径的候选才交给模型，按写在提示词里的策略和上下文决定做不做。这一层是给人用自然语言增删策略的扩展点。</li>
+  </ul>
+  <h4>订阅与直达</h4>
+  <p>同一条 Pull Request、同一个 IM 话题、同一串邮件，连续事件组成一条 <b>Thread</b>。Router 根据首个事件创建 Worker 之后，这个 Worker 直接订阅该 Thread。此后同一 Thread 上的事件由代码直达 Worker，不再经 Router 转发。事件超出当前任务范围时，Worker 可以退订，或交回 Router 重新分配。</p>
+  <p>订阅是多对多的。一个 Worker 可以订多条相关 Thread，一条 Thread 也可以有多个订阅者。两个 Worker 碰到同一个 PR 时，双方都收到同一条事件，有机会自己发现冲突，不需要点对点通信。跨任务的少量协调仍由 Router 转达。</p>
+  <h4>Inline &amp; Spill，以及 Chain of Recall</h4>
+  <p>上下文窗口被当成缓存。大概率用得上的信息直接内联进去，例如消息前几十个字符、相邻的几条群消息，这是 Inline。超出预算的部分截断，留下指针，这是 Spill。Trigger、Thread、Worker Session 都有稳定 ID，注入对象时带上紧密相关对象的 ID，形成一个引用图。模型用工具按 ID 一跳一跳读回去：从当前消息到它所在的 Thread，再到关联的 Worker，再到这个 Worker 上的另一条评审 Thread。长文把这叫做 <b>Chain of Recall</b>。它解决的是 Router 不可能把几个月的任务史全放进窗口，但用户从另一个渠道提起旧任务时，仍然要能把上下文找回来。</p>
+  <h4>投机执行</h4>
+  <p>借用 CPU 的 speculative execution：在还不能确定结果会被用到时，先按环境信号在后台做。有价值就交付，否则丢掉，全程不说话。个人助手的例子是收到会议邀请后先查冲突、收背景、起草回复。研发上的例子是他们在内部 DeepSeek Harness 用户群配置了「静默复现并修复」：有人报问题或讨论改动时，Agent 先在后台复现并找修复，确认问题并且修复简单，才把结果交出来。群里还在讨论波浪号被渲染成删除线时，修复 PR 已经开好了。</p>
+
+  <h3 id="duplex">面向人的交互、存算分离、Watchdog</h3>
+  <p><b>全双工。</b>经典 ReAct 里，一次同步的 <span class="mono">run()</span> 会把循环堵住，工具没返回之前 Session 不能接新输入。长文把耗时的命令和子任务改成异步的 <span class="mono">start()</span> / <span class="mono">stop()</span>：调用立刻得到 Started，工具结束时结果作为新的事件消息送回，跑太久的后台命令可以被停掉。新输入在当前推理步结束时就能处理，不必等后台工具。这个异步机制已经做进 DeepSeek Harness，默认关闭。</p>
+  <p><b>按渠道塑形。</b>Worker 里的长推理和频繁工具调用不到外部渠道。对外由 Router 统一说，并且遵守渠道习惯。即时通讯像同事：只在需要决定或验收时通知，问具体问题，给短结论。他们验证过的硬规则是单条回复不超过 100 词。GitHub、邮件、文档则走高信息密度的结构化交付，PR 要按仓库惯例写清背景、改动和验证。</p>
+  <p><b>三件东西拆开。</b>本地 Agent 通常把三样绑在同一台设备上：推进 Agent Loop 的计算、必须持久化的会话状态、代码仓库和工具链这类执行环境。机器一休眠，Agent 就停，也摸不到别的设备上的环境。长文分两步拆：</p>
+  <ol>
+    <li>计算与状态分离。推进循环的计算放进无状态、可水平扩缩的云容器，Session 放数据库。容器可以重启替换，存储保住任务连续性。</li>
+    <li>计算与执行环境分离。真实环境里有未提交的改动、本机凭据、内网依赖和特定工具链，同步到云上又贵又容易漏。所以环境留在原地，设备上只跑一个不存会话状态的轻量守护进程，负责执行命令、返回结果。人的机器重新上线后，云上的 Agent 可以补做必须在那台机器上跑的任务。长文把这称作 BYOM，Bring Your Own Machine，并说明这与 Anthropic 讨论的「脑手分离」同向，差别在于对方主要讲托管服务和客户 VPC 里的沙箱，这里优先接的是人每天在用、可能间歇在线的个人机器。</li>
+  </ol>
+  <p><b>Watchdog。</b>长期在线的分布式系统很难只靠内部逻辑一直可靠。Agent 的失败常常不是进程挂了，而是模型陷在无效循环里，或者漂离目标。所以他们在主系统外面放了一个独立的 Watchdog Session，由定时消息驱动。它处理 API 错误、状态恢复失败这类基础设施问题，也用模型判断 Worker 是否真的在推进、有没有偏离目标。发现异常就介入；对间歇性的外部失败，它会一直查到恢复。因为 Watchdog 自己是一个带完整工具的 Agent，维护者可以用自然语言问它为什么失败，也可以让它在运行中改主系统的提示词或触发规则。</p>
+</section>
+
+<section id="code">
+  <h2>原型实际怎么跑</h2>
+  <p>原型把上面的思想收成一个 DeepSeek Harness bundle，服务范围故意收窄：一次部署盯一个 github.com 仓库（不支持 GitHub Enterprise），可选一个飞书机器人。安装文档要求单独的 Harness profile、单独的 Agent GitHub 账号，以及只以该账号登录的 <span class="mono">gh</span> 包装命令。飞书同理，用独立配置目录的 <span class="mono">lark-cli</span>，并且拒绝一个还能以用户身份行动的 CLI。</p>
+  <p>人看到的是侧栏里的 <b>Superagent</b> 面板。打开它要按顺序回答三件事：现在有没有事等我、系统是否健康并且在做对的事、一件工作从触发到评估再到工单的历史是什么。健康状态不占额外版面。需要人处理的工单排在最前，动作直接放在那一行上。</p>
+
+  <h3 id="domain">领域模型：概念很少，而且写明了拒绝什么</h3>
+  <p>文档 000 的原则是：占用尽可能少的人类注意力，给出尽可能多的价值。一条消息、一次通知、一个设置、面板上的一个元素、文档里的一段，都先按注意力成本审判。由此推出三条设计约束：概念要少，设置要少，能用一句话写成提示词的行为就不要做成设置。</p>
+  <p>工作的主路径是：来源产生触发，触发进入评估，评估接受后生成带授权的工单，派工把它交给执行器，结果经渠道写回来源。</p>
+  <div class="flow">
+    <div class="node"><b>Source</b><span>来源，记住读位置</span></div>
+    <span class="arrow">→</span>
+    <div class="node"><b>Trigger</b><span>一条不可变事件</span></div>
+    <span class="arrow">→</span>
+    <div class="node"><b>Thread</b><span>时间序，评估串行</span></div>
+    <span class="arrow">→</span>
+    <div class="node"><b>Eval</b><span>准入 + 研判</span></div>
+    <span class="arrow">→</span>
+    <div class="node"><b>Ticket</b><span>一张授权过的工单</span></div>
+    <span class="arrow">→</span>
+    <div class="node"><b>Executor</b><span>独立 Session 与目录</span></div>
+  </div>
+  <div class="scroll card" style="padding:0 4px;">
+    <table>
+      <thead><tr><th>概念</th><th>它守的规则</th></tr></thead>
+      <tbody>
+        <tr><td>Source 来源</td><td>一种可复用实现加上一份实例配置。自己持有读位置和 bot 身份。重启不能把事件再放一遍。先丢掉 bot 自己的消息和监听范围之外的触发。</td></tr>
+        <tr><td>Trigger 触发</td><td>审计和幂等的单位。同一触发接受两次，只产生一张工单。可以属于多条线程。</td></tr>
+        <tr><td>Thread 线程</td><td>同一时间最多跑一轮评估。评估进行中新到的触发并进下一批。一条线程上可以有多张工单。</td></tr>
+        <tr><td>Subscription 订阅</td><td>工单与线程的多对多关系，挂在线程上。命中的触发扇出到每张活着的订阅工单，不再走评估。人的后续讨论因此能到达执行器，不必再次 @ Agent。</td></tr>
+        <tr><td>Correlation 关联</td><td>一条触发同时属于多条线程时的关系。只补充上下文，永不负责路由。</td></tr>
+        <tr><td>Mandate 授权</td><td>一次接受所授予的东西：策略版本、范围、强度、命中的规则、发送者在该来源上的身份、来源如何收到这条触发。不可变。范围要变宽，就新开一张工单。</td></tr>
+        <tr><td>Ticket 工单</td><td>只有评估能创建。自己定义状态，不跟随执行器 Session 的状态，因为一张工单可以被交接、恢复，或由多次派工完成。</td></tr>
+        <tr><td>Assignment 派工</td><td>工单与某一次执行器实例的绑定。状态是待启动、执行中、已结束，和工单的开闭独立。</td></tr>
+        <tr><td>Channel 渠道</td><td>线程的写侧。确认、答复、Pull Request、解决评审，都是写。</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>人不是领域概念。触发上只带着来源给出的行动者标识。允许列表是该来源自己的策略片段，用该来源自己的身份。同一个人在飞书和 GitHub 上是两个账号，这件事写成给 Agent 读的提示词，不建成跨来源的身份映射实体。</p>
+  <p>文档用一整张表记下被拒绝的概念，这本身就是设计。例如：不把「人 / 成员关系」建成实体；不让评估自己调度延迟触发，需要等待的条件是另一个来源；不规定一条线程最多一张活工单；不设「追加到工单」这种决定，追加就是订阅扇出；不从报告的自由文本里推断「在等人」，必须是结构化字段；策略变更时不取消正在跑的工单，因为取消会留下做了一半的工作，改为记录并送达。</p>
+
+  <h3 id="auth">授权是代码，不是提示词</h3>
+  <p>宿主强制执行允许列表、规则和授权。消息、评论和引用的文档是决策的输入，改不了这些权限。提示词的优先级从强到弱是：工具和宿主强制的事实，内建与生成的段落，主动工单命中规则里的流程要求，团队自己写的段落和技能，最后才是外部文本。外部文本是数据。</p>
+  <p>评估分两层，对应长文的快路径和慢路径：</p>
+  <ul>
+    <li><b>Gate 准入</b>是确定性的。允许列表上的人直接 @ 到 Agent，或在已有工单的线程里跟进，强度是 explicit。未 @、bot、以及准入表上标成「推断」的格子，强度是 inferred。其他 bot、被表忽略的消息、以及接单模式为 off 时的一切推断，都不准入。</li>
+    <li><b>Assessment 研判</b>由主 Session 的模型做。它必须对每条启用的规则给出恰好一次判断，带上意图证据。代码再把模型的回答收成接受、停止、忽略或未完成。</li>
+  </ul>
+  <div class="scroll card" style="padding:0 4px;">
+    <table>
+      <thead><tr><th>接单模式</th><th>推断类工作怎么处理</th><th>明确请求</th></tr></thead>
+      <tbody>
+        <tr><td><span class="mono">off</span></td><td>根本不会变成候选</td><td>三种模式都照常工作</td></tr>
+        <tr><td><span class="mono">observe</span>，默认</td><td>照样研判。正向结论记成忽略，并标上 would accept。不真正接单</td><td>同上</td></tr>
+        <tr><td><span class="mono">auto</span></td><td>正向研判才会真正接单，而且至少要命中一条规则</td><td>同上</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>这是把「自主性」做成可以影子运行的旋钮。文档要求先从 observe 开始，看记录下来的「本来会接」是否像样，再切到 auto。主动工作若没有团队写下的规则，连影子记录都不会开始。默认启用的两条规则很窄：措辞和错别字类的 copy fixes，以及有明确目标的局部视觉修复。一张截图加上「看起来不一样」并不构成目标。</p>
+  <p>订阅扇出绕过准入，也因此不授予新权力。工单始终被它的 Mandate 限制。执行器对跟进消息只有两个出口：范围之内就做，超出范围或属于另一张工单就交回，交回时带上理由。所有持有者都交回或结束之后，这条消息才重新进入评估。主 Session 在执行器还持有这条人的跟进时，只能应人的要求停止工作，接受、附上、忽略、重新排队都会被拒绝。</p>
+  <p>授权本身只有三种变化：接受时创建，人停止时撤回，恢复前重新校验失败时撤销。执行器不能宣称「人让我停」。面板上的停止是一条命令，直接作用在工单上。策略版本变化会丢掉正在进行的评估、把触发重新排队，并向受影响的活工单送一条说明，说明命中的规则变了、请求者不再能开工，或主动工作不再被接受。它不立刻撤销活工单的授权。未受影响的工单不会收到这条通知。</p>
+  <p>研判有时限，默认 120 秒，从候选真正送达主 Session 起算，排队等待的时间不算。过期把触发再排队，连续两次之后第三次记为 unavailable，面板在 24 小时内、且它仍是该线程最新决定时，才请人看。处理暂停期间，评估不超时，恢复后期限顺延这段暂停。</p>
+
+  <h3 id="exec">执行、槽位与恢复</h3>
+  <p>主 Session 在代码和提示词里叫 orchestrator，预设是 <span class="mono">dsh-superagent-router</span>。它只有路由所需的较小工具集。前台 shell 和等待作业超过 5 秒就返回，另有一道守卫拒绝 <span class="mono">sleep</span>、超过 30 秒的 shell 超时和超过 5 秒的作业等待。原因写在提示词里：主 Session 被堵住，新的候选就进不来。报告、跟进、候选和后台作业的结果会自己作为消息到达。</p>
+  <p>每张工单有一个执行器 Session，id 为 <span class="mono">worker-&lt;工单 id&gt;</span>，外加一个以短名命名的目录，默认在状态目录的 <span class="mono">work</span> 下。预设 <span class="mono">dsh-superagent-worker</span> 从 Harness 的 standard 裁出来：文件、搜索、shell、作业、技能、待办、子 Agent 都在，问人、展示界面、改配置、日程、目标、工作流、网页抓取被拿掉。子 Agent 用 standard 预设，继承 Worker 的权限，工单结束后工具被收走。前台命令同样 5 秒转入后台，这样人的下一条消息能在下一步被看见。</p>
+  <p>并发用 WorkerSlots。默认同时 3 张，可配 1 到 16。一张工单从启动（含准备命令）或从「把空闲执行器叫醒的那次投递」开始占一个槽，整段回合都占着。人的消息和状态询问可以多用一个槽，并且比新的启动优先拿到下一个空槽。CI 之类的其他输入则排队等普通槽。这样 Agent 自己的积压不会把人的跟进饿死。</p>
+  <p>回合结束时如果还有 shell 作业或子 Agent，工单继续占槽，不向主 Session 报「等待中」。后台工作最多 30 分钟，到点杀掉 shell 作业并报告哪些被杀、哪些子 Agent 还在。交给人的交接会立刻释放槽：ready、带问题的报告、blocked、failed 都属于交接。交接时子 Agent 停止，为了给人看而留着的服务器这类 shell 作业可以继续，不再占槽，完成时也不叫醒执行器。</p>
+  <p>第一次派工前，如果目录还不存在，准备命令用 <span class="mono">sh</span> 在执行根目录跑一次，限时 10 分钟。典型写法是 <span class="mono">git worktree</span>。失败会让工单失败，人的消息或重试会再准备一次。分支最后一段路径与工单短名相符的 Pull Request，归这张工单。</p>
+  <p>工单怎么结束，也写成了代码而不是让模型感觉一下：</p>
+  <ul>
+    <li>没有 Pull Request 的 ready 报告，工单以完成结束。</li>
+    <li>执行器认为没有需要人行动的工作，报告 dropped，工单结束且默认不发消息。人之后在它的线程里说话，可以在同一份授权下恢复。</li>
+    <li>有 Pull Request 时，工单跟住它开出的 PR。它开出的 PR 都不再开放，或者它没开过、但它跟随的都关闭了，才按最后一次关闭的结果结束为 merged 或 closed。结束前如果恢复后的工作还没报 ready，或者执行器已经接下一条人的跟进却还没消化，关闭不会立刻结束它。</li>
+  </ul>
+  <p>自动合并不在宿主里做专门判断，由「交付要求」提示词管。默认不允许用 Agent 账号打开自动合并，因为 GitHub 会把合并算到打开它的那个人头上。默认只在这张工单自己的 PR、已就绪、所需批准覆盖了 head、增删合计少于 200 行时，才允许用另一个账号的 CLI 去合并。推新修订之前要先撤回自动合并。这些是给 Agent 的指令，GitHub 分支保护仍然要自己开。</p>
+  <p>崩溃和重启是领域规则的一部分。决定之后要做的事先落库再执行：把候选、跟进或报告送进主 Session，启动派工，投递输入，发出回复。效果队列按种类限流，失败指数退避。主 Session 的转发和通知各自保持顺序，失败的一条挡住同种类后面的。一次派工如果在主机停止时还在干活，或者在最新报告之后又收到了输入，会带着恢复说明重新开始。说明要求执行器先看目录、git 历史和 GitHub，再重复任何对外动作。输入是否已被 Session 历史真正读走，有单独的记录，取消或截断的一步不算读过，新的派工会再次投递，并先清掉 Session 里可能残留的副本。</p>
+
+  <h3 id="runtime">运行时骨架</h3>
+  <p>组合根是 Runtime，里面没有领域规则。领域写入只有 Engine 一个入口。Engine 的方法全是同步的，每条命令在一个事务里改聚合；评估到期则每个评估或工单各用一个事务。端口在事务里把外部工作入队，适配器在提交之后才做。非法请求抛出带固定错误码的 UserError，面板按码显示双语文案。</p>
+  <div class="scroll card" style="padding:0 4px;">
+    <table>
+      <thead><tr><th>部分</th><th>职责</th></tr></thead>
+      <tbody>
+        <tr><td>Engine 五块</td><td>Intake 收触发并扇出；Evals 做批处理、准入强度和决定；Tickets 管工单生命周期和订阅；Assignments 记录执行器报告；Replies 经 Outbox 写渠道。依赖单向。</td></tr>
+        <tr><td>角色接口</td><td>来源、主 Session、人、设置、执行器各自只拿自己那一组方法。来源插件看到的是窄的 SourceContext。</td></tr>
+        <tr><td>Passes</td><td>每两秒一轮，或有命令时立刻再排一轮。一轮里先做到期效果，再让 Engine 评估到期触发。同一时间只有一轮。</td></tr>
+        <tr><td>Effects</td><td>持久副作用队列。同一种类加同一个键只有一行，再次入队会替换载荷并立刻到期，不改变队列顺序。种类有 assessment、launch、delivery、relay、notice、reply。</td></tr>
+        <tr><td>Store</td><td>一份 SQLite，<span class="mono">&lt;stateDir&gt;/orchestrator.sqlite</span>。目录锁防止第二个进程迁移或写入。触发、线程、工单用生成列标出 active / open，索引只覆盖工作集，所以一轮扫描不扫历史。</td></tr>
+        <tr><td>Outbox</td><td>渠道消息的唯一写入者。同一工单到同一会话的消息按入队顺序发送，确认在答复前面。来源关掉时等待，会话消失或不再监听时丢弃并留下原因，同一个 id 不会再入队。</td></tr>
+        <tr><td>来源插件</td><td>GitHub 与飞书各自翻译成触发。GitHub 轮询通知、已订阅的 Issue 和 PR、CI；默认间隔 60 秒，并尊重 GitHub 返回的 poll interval，下限 60 秒。订阅结束后再继续轮询两周。飞书有实时事件、历史补齐和话题轮询。飞书插件默认禁用。</td></tr>
+        <tr><td>模型表面</td><td>主 Session 14 个应用工具，执行器 6 个。读资源按页走，文本页默认 4000、最多 8000 个 UTF-16 码元，列表默认 20、最多 50 条。评估窗口是线程前 5 条，加上触发两侧各 5 条。有测试把工具、提示词、技能和输入对照模式和术语表，并限制每个角色的体积。</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p><span class="mono">src/core</span> 除了 Node 的哈希之外不依赖外部，不做 I/O。<span class="mono">src/sources</span> 不引用 <span class="mono">src/app</span>。每种状态只有一个写入者。编号文档只能链接更早的文档，测试会检查这一点，也会检查每个类前面有 JSDoc、每份模块和测试都出现在架构文档的表里。这套约束让一个编程 Agent 在改这个仓库时有可检查的边界。README 也承认风格并不统一，公开前做过改编。</p>
+  <details>
+    <summary>主 Session 和执行器各自能调用什么</summary>
+    <div class="inner">
+      <p>主 Session：读与路由、重试工单、要状态、给另一张工单记一条不超过约 100 词的事实、把触发重新排队、对主动候选做评估三件套、回复、退订线程、保存设置、同步允许列表、保存提示词。一次路由调用可以按顺序提交 1 到 20 个决定，某一项被拒绝不会挡住后面的项。卡片上已经能看出碰不到任何启用规则的推断候选，可以直接忽略，决定里会记下 ignoredFromCard，和正式规则研判区分开。</p>
+      <p>执行器：读自己的工单、确认、报告、把不相关的线程交回、为上下文订阅一条相关线程、把单条消息交回并附理由。报告里的问题走结构化的 human_action，由主 Session 原样转发到触发那条消息，或在没有对应消息时发到工单原来的会话。确认限 100 词。路由备注限 30 词。执行器在动手前要具体确认一次：说清对象和预期结果，然后干活时保持安静。</p>
+    </div>
+  </details>
+  <details>
+    <summary>扩展一个新来源要接哪几件事</summary>
+    <div class="inner">
+      <p>文档 008 用一个虚构的 webhook 队列写了菜谱。一个来源种类要声明身份、配置模式、面板字段、健康项，以及可选的接收范围、渠道发送、线程上下文、检索和策略片段。稳定的映射必须先定下来：触发 id、线程 id、渠道地址会持久化，事后改会把已有记录断开。接收范围的每一行对应准入表的一行。没有上下文读取器的种类，评估时只能看到触发本身和它所在的那一批。</p>
+    </div>
+  </details>
+</section>
+
+<section id="map">
+  <h2>长文和代码的对应</h2>
+  <div class="scroll card" style="padding:0 4px;">
+    <table>
+      <thead><tr><th>长文中的设计</th><th>原型里的落地</th><th>标记</th></tr></thead>
+      <tbody>
+        <tr><td>Router 不亲自执行，Worker 隔离执行并经上层回复</td><td>主 Session 用 router 预设，工具集更小，并被禁止长时间等待。执行器 Session 一人一张工单。对外消息由 Engine 的 Replies 经 Outbox 写出来源</td><td><span class="tag both">两边都有</span></td></tr>
+        <tr><td>Fast Path 程序过滤，Slow Path 模型研判</td><td>Gate 加 Assessment。接单模式 off / observe / auto</td><td><span class="tag both">两边都有</span></td></tr>
+        <tr><td>Thread 订阅后直达，多对多，Worker 可交回</td><td>Subscription 扇出绕过评估。执行器可 handback，或把线程标成只提供上下文</td><td><span class="tag both">两边都有</span></td></tr>
+        <tr><td>Inline &amp; Spill，Chain of Recall</td><td>卡片截断并带读取指针；评估窗口是前 5 条加两侧各 5 条；资源 id 可以逐跳读。代码里没有用这两个英文名字</td><td><span class="tag both">两边都有</span></td></tr>
+        <tr><td>投机执行，确认有简单修复才说话</td><td>机制在：规则 + observe 先记录「本来会接」。默认规则是文案和局部视觉修复。内部那种无人 @ 就静默修 bug，要团队自己写规则并切到 auto</td><td><span class="tag code">机制在，策略收窄</span></td></tr>
+        <tr><td>异步 ReAct，start / stop</td><td>长文说 Harness 已实现、默认关闭。原型用 5 秒转入后台作业、30 分钟上限、效果队列和「不让主 Session 等待」来达到同一目的</td><td><span class="tag code">同目标，另一条路径</span></td></tr>
+        <tr><td>IM 回复不超过 100 词；GitHub 结构化交付</td><td>确认硬限 100 词。飞书有聊天字数限制。交付要求写在可编辑提示词里</td><td><span class="tag both">两边都有</span></td></tr>
+        <tr><td>无状态云容器 + 数据库中的会话 + 设备上的轻量守护进程</td><td>原型是本机一个 Harness profile、一份 SQLite、每张工单一个目录。进程重启有恢复协议。没有云侧循环和设备守护进程</td><td><span class="tag gap">长文方向</span></td></tr>
+        <tr><td>独立 Watchdog Session，可在线改提示词和触发规则</td><td>有 HealthBoard：同一类效果连续失败三次才在概览上报错；评估未完成、来源轮询失败、模型预算重试各有条目。没有系统外的 Watchdog Session</td><td><span class="tag gap">长文方向</span></td></tr>
+        <tr><td>邮件、日历等更多环境</td><td>来源只有 GitHub，飞书可选。新来源要按菜谱自己加</td><td><span class="tag gap">长文方向</span></td></tr>
+        <tr><td>凭据可用但永不进入模型上下文</td><td>用账号包装命令作为默认身份。文档写明这不是安全边界：Worker 仍能按绝对路径执行程序，并能读操作者的家目录。建议用只放 Agent 凭据的专用系统账号</td><td><span class="tag gap">长文列为开放问题</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section id="innov">
+  <h2>创新点</h2>
+  <p>长文自己的说法是没有提出新理论，用的是任务调度、缓存、事件驱动、存算分离、投机执行、看门狗这些经典系统思想。创新在于这些思想被落到 Agent 的哪一层，以及哪些决定被从模型手里拿回代码。</p>
+
+  <div class="card">
+    <h3>1. 优化目标从「模型更会做」换成「人更少被打断」</h3>
+    <p>多任务上限被明确写成注意力，而不是上下文长度或工具数量。原型把这条原则落到可删除的标准上：说不出口「这条消息让人必须行动，或能用上一个结果」，这条消息就不该存在。面板上健康状态不占地方。设置能有一个普适默认值，就不要做成设置。这是产品约束，也是架构约束。</p>
+  </div>
+  <div class="card">
+    <h3>2. Session 降级为实现细节，Router 也不等于 Team Lead</h3>
+    <p>用户侧始终是一个协作者。系统侧用常驻调度换连续性，用隔离 Worker 换吞吐。和常见多 Agent 框架的差别在于 Router 不拆单任务内部的步骤，那个推理负担留在 Worker。单任务要多深，由 Worker 再开 Subagent；多任务要多宽，由 Router 只做关系判断。两件成本不同的事不再挤在同一次模型调用里碰运气。</p>
+  </div>
+  <div class="card">
+    <h3>3. 授权和上下文分开</h3>
+    <p>订阅让后续讨论直达执行器，但这条通道不产生新的权力。权力只来自一份不可变的 Mandate，上面写着策略版本、范围、强度和命中的规则。范围要变宽就新开一张工单。执行器不能自己宣布任务结束的强度，也不能宣布人要求停止。这避免了「模型读到一条评论，就以为自己被授权改仓库」。</p>
+  </div>
+  <div class="card">
+    <h3>4. 自主性有影子模式</h3>
+    <p>off、observe、auto 把「要不要让它自己接活」从提示词技巧变成可审计的策略版本。observe 下正向判断会被完整记成「本来会接」，却不创建工单。允许列表、准入表、bot 列表、接单模式一起哈希进策略版本。规则变了，正在跑的评估作废重来，活工单收到说明而不是被腰斩。主动能力可以先在生产流量上对照，再打开。</p>
+  </div>
+  <div class="card">
+    <h3>5. 交接之后，调度者退出热路径</h3>
+    <p>直达订阅是这套设计里最像系统设计、也最有实验支持的一点。任务的所有权一旦建立，后续事件由代码扇出，Router 不再为每一条 CI 和每一句跟进付一次推理。实验里拿掉直达之后，完成时间几乎不变，Router 的决定大约多 30%，cache-read token 从 2323 万升到 3177 万。直达买到的是调度成本，不是单次任务更快。</p>
+  </div>
+  <div class="card">
+    <h3>6. 上下文按缓存管理，而不是按聊天记录管理</h3>
+    <p>Inline 放摘要，Spill 留指针，ID 组成可跳的引用图。原型里的具体预算是：评估窗口两侧各 5 条，普通消息截到约 400 字，紧邻的截到约 1200 字，其余是 50 字的桩，文本页 4000 到 8000 码元。模型被允许逐跳读，也被测试盯着不要把整个历史塞进一次调用。几个月以上的长期记忆，长文明确说还没解决，Chain of Recall 覆盖的是近期任务的按需找回。</p>
+  </div>
+  <div class="card">
+    <h3>7. 先记账，再做事，崩溃是正常路径</h3>
+    <p>Engine 在事务里只改聚合，副作用进持久队列，提交之后才发送、启动、投递。输入有没有真的进入模型历史，有单独的已读事实。重启后的派工带着「先核对目录和远端，再重复对外动作」的说明。同一工单发往同一会话的消息保序。这是把 Agent 的一步从「模型这次调用成功了没有」提升成「系统承诺的副作用完成了没有」。</p>
+  </div>
+  <div class="card">
+    <h3>8. 调度公平：人的消息有保留容量</h3>
+    <p>并发槽默认 3 个，人的跟进可以多占一个，并且优先于新工单启动。主 Session 被禁止用 sleep 和长等待把自己堵住。Worker 的长命令 5 秒后转入后台，下一句话不必等编译结束。效率在这里被定义成「下一条人的指令进得来」，而不只是「这一条跑得快」。</p>
+  </div>
+  <div class="card">
+    <h3>9. 安静是一种功能，投机执行要有丢弃条件</h3>
+    <p>长文的内部策略是：复现并找到简单修复才开口，否则全程沉默。原型把开口条件写成代码和提示词：草稿必须标未完成，打不开的失败要报失败，不能为了不问人而绕过限制。自动合并默认很窄，而且不用 Agent 自己的账号背书。主动性和「少说话」被设计成同一件事的两面。</p>
+  </div>
+  <div class="card">
+    <h3>10. 概念表里的「不引入」和可检查的文档</h3>
+    <p>拒绝把人建成实体、拒绝让评估等待、拒绝用自由文本推断等人，这些否定决定减少了状态机的分叉。编号文档只能向前引用，模型能看见的全部表面有体积预算和术语表测试。仓库的很大一部分由编程 Agent 写成，而这套文档和测试就是让后续的 Agent 改它时还有界。对一个研究原型来说，这比再加一个抽象层更难得。</p>
+  </div>
+</section>
+
+<section id="exp">
+  <h2>实验数字怎么读</h2>
+  <p>长文第 7 节是初步实验，作者写明负载是合成的、环境做了简化、有的设置还可以更严，结果只作参考。测的是调度和协调，单任务写代码的能力被换成一个只消耗时间的工具。消息间隔和工作时长缩到原来的四分之一，模型调用耗时是真实的。每种方案跑 5 次。每轮大约 300 条消息，其中大约 20 条是工作请求，其余是闲聊、跟进、停止请求和 CI。</p>
+  <div class="card">
+    <b>任务完成时间 p95，从请求到结果消息</b>
+    <div class="bars">
+      <div class="bar-row"><span>Super-agent</span><div class="track"><div class="fill" style="width:53%"></div></div><b>15.7 分</b></div>
+      <div class="bar-row"><span>单 Session，中性提示</span><div class="track"><div class="fill alt" style="width:100%"></div></div><b>29.5 分</b></div>
+    </div>
+    <p class="small">Super-agent 的 p50 是 12.4 分。中性提示下，5 次运行里模型一次都没有调用 Subagent，工作全留在主 Session，不断被新消息打断，所以 p95 到 29.5 分。长文没有在正文里给出「优先委派」那组的 p50 或 p95，只说明 5 次里有 4 次委派了，剩下 1 次模型认为工作很小、自己做了，图上形成长尾，总体仍慢于 Super-agent。图里若能读出更多分位，本报告没有把读图数字写成正文结论。</p>
+  </div>
+  <div class="grid g2">
+    <div class="card">
+      <b>拿掉直达之后</b>
+      <p>完成时间基本不变。Router 要做的决定大约增加 30%。每轮实验的 cache-read token 从 2323 万升到 3177 万，大约增加 37%。多个独立 Session 本来就比单 Session 更费缓存读，换来的是更短、更稳的完成时间。直达的收益主要记在 Router 的账单上。</p>
+    </div>
+    <div class="card">
+      <b>只压 Router</b>
+      <p>Router 用真实模型，Worker 用假模型。需要决定的 Trigger 从大约每分钟 1 条加到大约 40 条时，平均批大小从 1.0 到 2.8，单次请求从 2.5 秒到 3.9 秒，分摊到每个决定的推理时间从 6.4 秒降到 1.6 秒。所以当前团队规模下，他们不急着把 Router 分片。</p>
+    </div>
+  </div>
+  <div class="callout warn">
+    <strong>这些数字说明调度稳定性，不说明代码质量</strong>
+    工作被时间工具替代，时间还被缩放过。中性提示下单 Session 一次都没派发 Subagent，这个对照强依赖提示词和当次模型的判断，也正是长文想说明的：把「做不做、派不派」留在提示词里，尾延迟会抖；把「Router 不执行」做成结构，尾延迟更稳。它没有证明 Super-agent 写出的补丁更好。
+  </div>
+</section>
+
+<section id="limits">
+  <h2>边界与未完成的问题</h2>
+  <h3>长文自己列出的开放问题</h3>
+  <ul>
+    <li><b>双层怎么扩展。</b>「一个常驻 Router + 订阅直达 + Worker 之间不直接通信」覆盖他们现在的日常。任务更大、耦合更紧时，何时分片 Router、分多细、何时让同层 Worker 直接通信、用什么拓扑，都还没有定论。他们也提到可以针对事件研判、批量分派和上下文召回做专项训练。跨月运行之后，长期记忆会变成扩展的主瓶颈。</li>
+    <li><b>Session 藏起来之后，人怎么协作。</b>聊天窗口中心是路径依赖。领域界面可以是 Issue 和 PR，但任务进行中人仍常常要插手。怎样在「后台自治」和「人对关键细节随时接手」之间平衡，还是开放的产品问题，而且作者认为最终形态会高度定制。</li>
+    <li><b>上下文边界与 A2A。</b>一个实例内部假设信息进同一个全局上下文。组织变大时，部署几个 Super-agent 其实就是在划共享和隔离的边界。个人助手和团队实例之间的协作，会变成不共享底层上下文、权限边界也不同的 Agent 对 Agent。长文说的 A2A 不特指某一个协议。</li>
+    <li><b>安全与隐私。</b>事件驱动扩大了不可信输入。云上的 Agent Loop 若因入侵或提示注入被攻破，每台连上的设备都可能被控制。即便云没有被攻破，设备上的凭据一旦进入模型上下文也会泄漏。作者认为需要一种机制：Agent 能使用凭据，但永远接触不到凭据本身。在这之前，Super-agent 只能待在小的、可信任的范围内。</li>
+  </ul>
+  <h3>原型文档里写明的限制</h3>
+  <ul>
+    <li>研究代码，可能有缺陷，风格不一致。公开版经过改编。</li>
+    <li>两个预设都以 danger-full-access、操作者的系统用户身份运行，并读取已订阅线程的消息。账号包装命令只是默认身份，Worker 仍可按绝对路径执行程序、读取家目录。隔离方式是专用系统账号，里面只放 Agent 的凭据。</li>
+    <li>插件会改进程级 PATH 和 git 配置，所以要单独的 Harness profile，避免和人自己的工作 profile 缠在一起。</li>
+    <li>状态目前不清理。触发、决定、已结束工单、发件箱回执、每一次设置和提示词版本都会一直涨。更新的数据库版本会拒绝启动；只提供从预发布 schema 10 到 11 的一次迁移。</li>
+    <li>架构文档末尾还留着两个开放问题：哪些触发字段可信任（来源给出的行动者和线程成员关系），哪些不可信任（正文和引用）；以及 Agent 的 profile 是否要钉在一份独立的 Harness 安装上，免得别处升级把这套部署带崩。</li>
+    <li>一次部署一个仓库。GitHub Enterprise 不支持。飞书要自己的机器人权限和 CLI。</li>
+  </ul>
+  <div class="callout ok">
+    <strong>内部实例和公开原型不要混成一个成熟度</strong>
+    长文说基于这些想法做出的内部实例已经持续运行，参与问题复现与修复、审查响应和 Harness 自身开发。公开仓库同时声明它不是那个内部版本。看能力时，把「团队说内部在跑」和「这个 MIT 仓库今天能装起来的行为」分成两句。
+  </div>
+</section>
+
+<section id="practice">
+  <h2>可以带走的工程判断</h2>
+  <ol>
+    <li><b>多 Agent 先分清两件成本不同的事。</b>任务之间的分派要全局、要轻、要一直在线。任务内部的实现要隔离、要强模型、要完整工具。把两件事放进同一次会话，尾延迟会依赖模型当时想不想委派。</li>
+    <li><b>跟进消息走代码，新工作走模型。</b>所有权建立之后，CI、评审和闲聊不应再付一次 Router 推理。实验表明这主要省的是 token 和决定次数。</li>
+    <li><b>自主接活先影子运行。</b>规则、允许列表和接单模式做成有版本的策略。正向判断先记成「本来会做」。看过记录再打开自动接受。</li>
+    <li><b>提示词排在宿主事实后面。</b>谁能开工、授权有多宽、回复有多长、能不能合并，能放进代码和结构化字段的，就不要只写在系统提示里。外部正文、引用和截图是数据。</li>
+    <li><b>副作用先落库。</b>发送、启动、投递、通知都应该能在进程重启后从队列里继续，并且知道模型是否真的读过那条输入。</li>
+    <li><b>给人留容量。</b>并发上限之外为人的消息留一个槽，调度者自己禁止长时间阻塞。否则 Agent 越忙，人越插不进话。</li>
+    <li><b>说话按渠道预算。</b>群聊用极短的结论和一次一个具体问题。代码平台用结构化的问题、改动和验证。草稿和失败要带着状态出现。</li>
+  </ol>
+  <h3>和 Workflow 怎么选</h3>
+  <p>Super-agent 是一个长期在线的实体：输入来自环境事件，接不接、派给谁、何时开口，由策略和当次研判决定，同一件事可以在飞书和 GitHub 之间延续几个回合。</p>
+  <p>Workflow 适合步骤事先知道、要在固定的门上停下来验收、跑完就结束的工作。阶段、扇出和检查点是流程的结构，失败应该停在门上，而不是由模型临时决定要不要继续。</p>
+  <p>边界说不清、输入是群聊、PR 评论和 CI、希望人只在必须决定时出现，用这种常驻 Agent。步骤可枚举、每次都要同一套证据、结果要可重复验收，用 Workflow。原型自己也把这个分工写进了预设：Worker 可以再开 Subagent 做任务内部的并行，用户侧不把 workflow 引擎当成入口。</p>
+  <div class="card">
+    <b>若只记一句</b>
+    <p>DeepSeek 这次公开的不是一个更大的模型，而是一套把 Session 藏进系统、把授权留在代码、把人的注意力当成预算的 Agent 架构。开源原型把其中「一个仓库上的主动编程同事」做完了，云上的脑手分离和系统外的 Watchdog 仍留在长文里。</p>
+  </div>
+</section>
+
+<section id="sources">
+  <h2>资料与核对方式</h2>
+  <footer class="sources">
+    <ol>
+      <li>设计长文《Super-agent 设计探索：迈向更自主的 Agent 系统》，DeepSeek Harness 团队，2026-10-31。本报告对章节结构、机制和实验数字的引述，依据与原文逐节对应的英文全文转载 <a href="https://offloop.org/learn/deepseek-super-agent-design">offloop.org/learn/deepseek-super-agent-design</a>（页面标注更新于 2026-10-31 20:29），并与中文媒体对公众号原文的转述对照。公众号原文页面本环境没有逐字打开。</li>
+      <li>开源仓库 <a href="https://github.com/deepseek-ai/dsh-superagent-prototype">deepseek-ai/dsh-superagent-prototype</a>。本报告对原型行为的描述来自 2026-11-01 浅克隆的 README、SETUP、docs/000 至 008、package.json、cordis.patch.yml、prompts/admission.md，以及 <span class="mono">src/policy.ts</span>、<span class="mono">src/limits.ts</span>、<span class="mono">src/sources/github.ts</span> 中的默认值。星标、fork、创建时间来自同日 GitHub API。</li>
+      <li>底座 <a href="https://github.com/deepseek-ai/deepseek-harness">deepseek-ai/deepseek-harness</a>。原型把它当作一切皆插件的运行时，bundle 钉在 <span class="mono">dsh@^0.2.1-alpha.2</span>。长文里的异步 start/stop 属于 Harness，默认关闭。</li>
+      <li>实验对照里「优先委派」组的精确分位、以及单 Session 方案的 cache-read 精确值，长文正文没有写成句子，只出现在图和「慢于 Super-agent」「更多 cache-read」的概括里。本报告因此没有引用二手读图得到的 20.4、13.8、6.05M、10.82M。</li>
+    </ol>
+    <p>报告里的「长文方向」表示作者写进了架构、并说明原型只实现了其中一部分。内部生产实例的日常表现，只有团队的自述，没有独立复测。</p>
+  </footer>
+</section>
+</main>
+</div>
+</div>
+</body>
+</html>
