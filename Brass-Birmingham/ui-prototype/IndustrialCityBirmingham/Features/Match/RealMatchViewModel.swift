@@ -97,7 +97,8 @@ nonisolated enum RealMatchViewModel {
                             ownerColor: color(owner.color),
                             slotIndex: placement.slotIndex,
                             victoryPoints: levelInfo?.victoryPoints ?? 0,
-                            linkPoints: levelInfo?.linkPoints ?? 0
+                            linkPoints: levelInfo?.linkPoints ?? 0,
+                            beerCost: levelInfo?.beerCost ?? 0
                         )
                     }
                 presented.merchantPlacements = merchantsByLocation[location.id] ?? []

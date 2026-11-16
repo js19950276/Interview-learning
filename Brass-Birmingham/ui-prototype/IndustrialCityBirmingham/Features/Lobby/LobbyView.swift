@@ -5,6 +5,9 @@ struct RealSessionRootView: View {
     @Bindable var store: SessionViewStore
     let runsScriptHarness: Bool
     @State private var nameField = ""
+    @State private var sceneReference = WindowSceneReference()
+    @State private var isOrientationAlertPresented = false
+    @State private var hasForcedLandscape = false
 
     var body: some View {
         ZStack {
@@ -13,6 +16,10 @@ struct RealSessionRootView: View {
             } else {
                 realLobby
             }
+        }
+        .background {
+            WindowSceneProbe(onSceneChange: sessionSceneDidChange)
+                .frame(width: 0, height: 0)
         }
         .onAppear {
             nameField = UserDefaults.standard.string(forKey: "playerDisplayName") ?? ""
@@ -23,6 +30,9 @@ struct RealSessionRootView: View {
             if trimmed.isEmpty == false, trimmed != store.displayName(for: store.localPlayerID) {
                 store.setDisplayName(trimmed)
             }
+        }
+        .task(id: store.snapshot != nil) {
+            await applySessionOrientation()
         }
         .task {
             await withTaskCancellationHandler {
@@ -36,10 +46,40 @@ struct RealSessionRootView: View {
                 Task { await store.disconnect() }
             }
         }
-        .onDisappear { Task { await store.disconnect() } }
+        .onDisappear {
+            Task { await store.disconnect() }
+            if hasForcedLandscape {
+                OrientationCoordinator.reset(scene: sceneReference.scene)
+            }
+        }
         .onChange(of: scenePhase) { _, phase in
             Task { await store.handleScenePhase(phase) }
         }
+        .alert("未能切换到横屏", isPresented: $isOrientationAlertPresented) {
+            Button("确定", role: .cancel) {}
+        } message: {
+            Text("对局将按当前屏幕方向继续，地图仍会完整显示。")
+        }
+    }
+
+    /// 对局进行中强制横屏;大厅阶段不碰方向 API(与无门控时的行为一致),
+    /// 避免启动/连接期间的几何请求干扰前台任务。
+    private func applySessionOrientation() async {
+        guard store.snapshot != nil else { return }
+        guard let scene = sceneReference.scene else { return }
+
+        let geometryReady = await OrientationCoordinator.applyAndWait(.landscape, to: scene)
+        if geometryReady {
+            hasForcedLandscape = true
+        } else if !Task.isCancelled {
+            isOrientationAlertPresented = true
+        }
+    }
+
+    private func sessionSceneDidChange(to scene: UIWindowScene?) {
+        let previousScene = sceneReference.scene
+        guard previousScene !== scene else { return }
+        sceneReference.scene = scene
     }
 
     /// 大厅色点:未占用可点选,自己已选中的高亮描边,被占用的置灰。

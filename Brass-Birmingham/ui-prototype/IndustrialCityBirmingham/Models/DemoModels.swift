@@ -165,6 +165,8 @@ nonisolated struct MapIndustryPlacement: Identifiable, Equatable, Codable, Senda
     /// 翻面后的结算展示值:时代结算 VP 与每条相邻连线可得的路分。
     var victoryPoints: Int = 0
     var linkPoints: Int = 0
+    /// 出售该板块需消耗的啤酒数(按等级来自产业定义);缺省 = 旧投影数据。
+    var beerCost: Int? = nil
 }
 
 nonisolated struct MapPlacedLink: Equatable, Codable, Sendable {

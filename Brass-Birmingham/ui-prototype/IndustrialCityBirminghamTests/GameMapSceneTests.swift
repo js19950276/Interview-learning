@@ -147,6 +147,66 @@ struct GameMapSceneTests {
         #expect(route.userData?["era"] as? String == "rail")
     }
 
+    @Test func configureRendersSaleBeerCostBadgeOnUnflippedSellableTilesOnly() throws {
+        var state = DemoFixture.match(playerCount: 4)
+        let locationID = try #require(state.locations.first?.id)
+        state.locations[0].industryPlacements = [
+            .init(
+                placementID: "cotton-beer", ownerID: "player-amber", tileID: "cotton-1",
+                kind: .cotton, level: 1, resourceCount: 0, isFlipped: false, ownerColor: .amber,
+                beerCost: 1
+            ),
+            .init(
+                placementID: "pottery-two-beer", ownerID: "player-amber", tileID: "pottery-3",
+                kind: .pottery, level: 3, resourceCount: 0, isFlipped: false, ownerColor: .amber,
+                beerCost: 2
+            ),
+            .init(
+                placementID: "free-manufacturer", ownerID: "player-amber", tileID: "manufacturer-3",
+                kind: .manufacturer, level: 3, resourceCount: 0, isFlipped: false, ownerColor: .amber,
+                beerCost: 0
+            ),
+            .init(
+                placementID: "sold-cotton", ownerID: "player-amber", tileID: "cotton-2",
+                kind: .cotton, level: 2, resourceCount: 0, isFlipped: true, ownerColor: .amber,
+                beerCost: 1
+            ),
+            .init(
+                placementID: "live-brewery", ownerID: "player-amber", tileID: "brewery-1",
+                kind: .brewery, level: 1, resourceCount: 2, isFlipped: false, ownerColor: .amber,
+                beerCost: 0
+            ),
+        ]
+        let scene = GameMapScene()
+        scene.configure(state: state, highlightedIDs: [])
+
+        func beerBadgeText(_ placementID: String) throws -> String? {
+            let node = try #require(
+                scene.childNode(withName: "//location:\(locationID)/industry:\(placementID)")
+            )
+            #expect(node.userData?["beerCost"] as? Int != nil)
+            guard let badge = node.childNode(withName: "industry-beer-cost-badge") else {
+                return nil
+            }
+            #expect(badge.isUserInteractionEnabled == false)
+            let text = try #require(node.childNode(withName: "industry-beer-cost-text") as? SKLabelNode)
+            return text.text
+        }
+
+        // 未翻面的可售产业按等级标出出售需酒数;免酒等级、已翻面、资源类板块不标。
+        #expect(try beerBadgeText("cotton-beer") == "酒1")
+        #expect(try beerBadgeText("pottery-two-beer") == "酒2")
+        #expect(try beerBadgeText("free-manufacturer") == nil)
+        #expect(try beerBadgeText("sold-cotton") == nil)
+        #expect(try beerBadgeText("live-brewery") == nil)
+        // 资源类板块仍只有剩余数量徽章,不出现酒数徽章。
+        let brewery = try #require(
+            scene.childNode(withName: "//location:\(locationID)/industry:live-brewery")
+        )
+        #expect(brewery.childNode(withName: "industry-resource-badge") != nil)
+        #expect(brewery.childNode(withName: "industry-beer-cost-badge") == nil)
+    }
+
     @Test func configureRendersCenteredMerchantCardsWithStableSemantics() throws {
         var state = DemoFixture.match(playerCount: 4)
         let locationID = try #require(state.locations.first?.id)
@@ -376,23 +436,26 @@ struct GameMapSceneTests {
 
         #expect(scene.scaleMode == .aspectFill)
         scene.updateViewport(size: CGSize(width: 852, height: 393))
-        scene.updateCamera(scale: MapViewportMetrics.minimumZoom, translation: .zero)
+        scene.updateCamera(scale: MapViewportMetrics.aspectFillZoom, translation: .zero)
         #expect(abs(camera.xScale - 1) < 0.0001)
 
         scene.updateCamera(scale: MapViewportMetrics.maximumZoom, translation: .zero)
         #expect(camera.xScale < 1)
-        #expect(abs(camera.xScale - (MapViewportMetrics.minimumZoom / MapViewportMetrics.maximumZoom)) < 0.0001)
+        #expect(abs(camera.xScale - (MapViewportMetrics.aspectFillZoom / MapViewportMetrics.maximumZoom)) < 0.0001)
     }
 
     @Test func semanticZoomClampsAtBothBounds() throws {
         let scene = GameMapScene()
         let camera = try #require(scene.camera)
+        scene.updateViewport(size: CGSize(width: 852, height: 393))
 
         scene.updateCamera(scale: 0.1, translation: .zero)
-        #expect(abs(camera.xScale - 1) < 0.0001)
+        #expect(camera.xScale > 1)
+        #expect(scene.viewportMetrics.semanticZoom == scene.viewportMetrics.zoomFloor)
+        #expect(scene.viewportMetrics.visibleSceneSize.width >= GameMapScene.logicalSize.width)
 
         scene.updateCamera(scale: 9, translation: .zero)
-        #expect(abs(camera.xScale - (MapViewportMetrics.minimumZoom / MapViewportMetrics.maximumZoom)) < 0.0001)
+        #expect(abs(camera.xScale - (MapViewportMetrics.aspectFillZoom / MapViewportMetrics.maximumZoom)) < 0.0001)
     }
 
     @Test func dragPointsConvertToSceneOffsetThatFollowsTheFinger() {
@@ -419,7 +482,11 @@ struct GameMapSceneTests {
         CGSize(width: 1_366, height: 1_024)
     ])
     func hitGeometryRemainsAtLeast44PointsAcrossViewports(_ viewport: CGSize) throws {
-        for semanticZoom in [MapViewportMetrics.minimumZoom, MapViewportMetrics.maximumZoom] {
+        for semanticZoom in [
+            MapViewportMetrics.autoFitZoom,
+            MapViewportMetrics.aspectFillZoom,
+            MapViewportMetrics.maximumZoom
+        ] {
             var state = DemoFixture.match(playerCount: 4)
             let locationID = try #require(state.locations.first?.id)
             let routeID = try #require(state.routes.first?.id)
@@ -478,7 +545,7 @@ struct GameMapSceneTests {
         let scene = GameMapScene()
         scene.configure(state: state, highlightedIDs: [])
 
-        for semanticZoom in [MapViewportMetrics.minimumZoom, MapViewportMetrics.maximumZoom] {
+        for semanticZoom in [MapViewportMetrics.aspectFillZoom, MapViewportMetrics.maximumZoom] {
             scene.updateViewport(size: viewport)
             scene.updateCamera(scale: semanticZoom, translation: .zero)
 
@@ -523,7 +590,7 @@ struct GameMapSceneTests {
         CGSize(width: 1_366, height: 1_024)
     ])
     func extremeTranslationKeepsVisibleRectInsideMap(_ viewport: CGSize) throws {
-        for semanticZoom in [MapViewportMetrics.minimumZoom, MapViewportMetrics.maximumZoom] {
+        for semanticZoom in [MapViewportMetrics.aspectFillZoom, MapViewportMetrics.maximumZoom] {
             let scene = GameMapScene()
             let camera = try #require(scene.camera)
             scene.updateViewport(size: viewport)
@@ -551,7 +618,7 @@ struct GameMapSceneTests {
         let camera = try #require(scene.camera)
         scene.updateViewport(size: CGSize(width: 667, height: 375))
         scene.updateCamera(
-            scale: MapViewportMetrics.minimumZoom,
+            scale: MapViewportMetrics.aspectFillZoom,
             translation: CGPoint(x: .zero, y: 100_000)
         )
         let phonePosition = camera.position
@@ -631,7 +698,7 @@ struct GameMapSceneTests {
         scene.updateViewport(size: CGSize(width: 852, height: 393))
 
         let appliedAtMinimumZoom = scene.updateCamera(
-            scale: MapViewportMetrics.minimumZoom,
+            scale: MapViewportMetrics.aspectFillZoom,
             translation: CGPoint(x: 10_000, y: 0)
         )
         let appliedAtMaximumZoom = scene.updateCamera(
@@ -648,7 +715,7 @@ struct GameMapSceneTests {
         let scene = GameMapScene()
         scene.updateViewport(size: CGSize(width: 667, height: 375))
         let phoneOffset = scene.updateCamera(
-            scale: MapViewportMetrics.minimumZoom,
+            scale: MapViewportMetrics.aspectFillZoom,
             translation: CGPoint(x: 0, y: 100_000)
         )
 
@@ -662,7 +729,7 @@ struct GameMapSceneTests {
         let metrics = MapViewportMetrics(
             logicalSize: GameMapScene.logicalSize,
             viewportSize: CGSize(width: 200, height: 100),
-            semanticZoom: MapViewportMetrics.minimumZoom,
+            semanticZoom: MapViewportMetrics.aspectFillZoom,
             viewportInsets: .init(top: -10, leading: 500, bottom: 500, trailing: -4)
         )
 
@@ -682,7 +749,7 @@ struct GameMapSceneTests {
         scene.configure(state: state, highlightedIDs: [gloucester.id])
 
         scene.updateCamera(
-            scale: MapViewportMetrics.minimumZoom,
+            scale: MapViewportMetrics.aspectFillZoom,
             translation: CGPoint(x: 0, y: -100_000)
         )
 

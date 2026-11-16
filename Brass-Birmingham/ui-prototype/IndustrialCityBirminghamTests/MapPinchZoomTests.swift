@@ -61,7 +61,7 @@ struct MapPinchZoomTests {
             metrics: metrics
         )
         let expectedZoom = magnification < 1
-            ? MapViewportMetrics.minimumZoom
+            ? metrics.zoomFloor
             : MapViewportMetrics.maximumZoom
         let startScenePoint = scenePoint(
             under: anchor,

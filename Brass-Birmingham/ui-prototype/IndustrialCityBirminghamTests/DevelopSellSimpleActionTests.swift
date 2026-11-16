@@ -138,6 +138,43 @@ struct DevelopSellSimpleActionTests {
         #expect(state == flippedState)
     }
 
+    @Test func sellPlacementOptionsLabelBeerRequirementFromCatalogLevels() throws {
+        let catalog = try verifiedCatalog()
+        var state = try setupState(catalog: catalog)
+        let actor = try #require(state.activePlayerID)
+        let playerIndex = try #require(state.players.firstIndex { $0.id == actor })
+        state.players[playerIndex].hand = [.init(id: "location-birmingham-1", definitionID: "location-birmingham")]
+        state.merchants = knownMerchants()
+        state.placedLinks = [.init(routeID: "birmingham-oxford", ownerID: actor, era: .canal)]
+        state.boardIndustryPlacements = [
+            .init(
+                placementID: "cotton", locationID: "birmingham", slotIndex: 0, ownerID: actor,
+                tile: .init(id: "cotton-tile", industryDefinitionID: "cotton-mill", level: 1)
+            ),
+            .init(
+                placementID: "free-manufacturer", locationID: "birmingham", slotIndex: 1, ownerID: actor,
+                tile: .init(id: "manufacturer-tile", industryDefinitionID: "manufacturer", level: 3)
+            ),
+        ]
+        repairCardFixture(&state, catalog: catalog)
+
+        let response = try GameCore.LegalActionQueryEngine.respond(
+            to: .init(
+                requestID: "beer-label", baseVersion: state.authoritativeVersion,
+                draft: .init(action: .sell, cardID: "location-birmingham-1", selections: [])
+            ),
+            actorID: actor, state: state, catalog: catalog
+        )
+
+        // 选产业一步直接标出出售要花的酒数:等级 beerCost 与 SellRules 校验同源,
+        // 免酒等级(制造厂 L3)也要明示,避免玩家误以为出售都要凑酒。
+        let labels = Dictionary(
+            uniqueKeysWithValues: response.nextChoices.map { (choice: $0.id, label: $0.label) }
+        )
+        #expect(labels["placement:cotton"] == "伯明翰 · 棉纺厂 · 需酒×1")
+        #expect(labels["placement:free-manufacturer"] == "伯明翰 · 制造厂 · 免酒")
+    }
+
     @Test func sellRejectsBlankWrongTypeDisconnectedFlippedAndSecondInvalidSaleWithoutMutation() throws {
         let catalog = try verifiedCatalog()
         var state = try setupState(catalog: catalog)

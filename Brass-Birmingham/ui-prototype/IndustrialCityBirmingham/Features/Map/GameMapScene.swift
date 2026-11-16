@@ -25,10 +25,13 @@ nonisolated struct MapViewportInsets: Equatable, Sendable {
 }
 
 struct MapViewportMetrics: Equatable {
-    static let minimumZoom: CGFloat = 0.75
     static let maximumZoom: CGFloat = 2.8
-    /// 进入对局时的默认缩放:比最小值大,地图元素更易读,可平移探索边缘。
-    static let defaultZoom: CGFloat = 1.15
+    /// aspect-fill 锚点:semanticZoom 达到该值时相机 scale=1,地图铺满视口并裁切。
+    /// 它不是缩放下限——下限按视口动态计算(见 zoomFloor)。
+    static let aspectFillZoom: CGFloat = 0.75
+    /// “自动整幅”哨兵:低于任何可能的动态下限,经钳制落到当前视口的整幅档。
+    /// 取 0 是为了让哨兵在捏合(乘法)与视口旋转后依然指向下限。
+    static let autoFitZoom: CGFloat = 0
 
     let logicalSize: CGSize
     let viewportSize: CGSize
@@ -46,8 +49,55 @@ struct MapViewportMetrics: Equatable {
             width: max(viewportSize.width, 1),
             height: max(viewportSize.height, 1)
         )
-        self.semanticZoom = min(max(semanticZoom, Self.minimumZoom), Self.maximumZoom)
         self.viewportInsets = viewportInsets.clamped(to: self.viewportSize)
+        let floor = Self.fitAllZoom(
+            logicalSize: logicalSize,
+            viewportSize: self.viewportSize,
+            viewportInsets: self.viewportInsets
+        )
+        self.semanticZoom = min(max(semanticZoom, floor), Self.maximumZoom)
+    }
+
+    /// 整幅地图恰好装进未遮挡视口的 semanticZoom,即当前视口的缩放下限。
+    var zoomFloor: CGFloat {
+        Self.fitAllZoom(
+            logicalSize: logicalSize,
+            viewportSize: viewportSize,
+            viewportInsets: viewportInsets
+        )
+    }
+
+    /// 进场初始档:整幅地图恰好铺满整个视口(忽略浮层边距,手牌/市场浮在图上)。
+    /// 区别于 zoomFloor——那档把版图挤进未遮挡窄带,在手机横屏上会缩成一小团;
+    /// 它只作初始取景,捏合缩出的下限仍是 zoomFloor(整幅且不被浮层遮挡)。
+    var overviewZoom: CGFloat {
+        Self.fitAllZoom(
+            logicalSize: logicalSize,
+            viewportSize: viewportSize,
+            viewportInsets: .zero
+        )
+    }
+
+    private static func fitAllZoom(
+        logicalSize: CGSize,
+        viewportSize: CGSize,
+        viewportInsets: MapViewportInsets
+    ) -> CGFloat {
+        let aspectFill = max(
+            viewportSize.width / logicalSize.width,
+            viewportSize.height / logicalSize.height
+        )
+        let unobscured = unobscuredRect(viewportSize: viewportSize, insets: viewportInsets)
+        // 向下偏置一个相对 epsilon:整幅档要经过多步除法反推为可见尺寸,
+        // 不偏置的话浮点往返误差会让可见边长以几个 ulp 之差跌破版图边长,
+        // “完全可见即锁定居中”的判定就会失守。1e-9 的缩放差不可感知。
+        return aspectFillZoom
+            * min(
+                unobscured.width / logicalSize.width,
+                unobscured.height / logicalSize.height
+            )
+            / aspectFill
+            * (1 - 1e-9)
     }
 
     var aspectFillPointsPerSceneUnit: CGFloat {
@@ -55,7 +105,7 @@ struct MapViewportMetrics: Equatable {
     }
 
     var cameraScale: CGFloat {
-        Self.minimumZoom / semanticZoom
+        Self.aspectFillZoom / semanticZoom
     }
 
     var sceneUnitsPerPoint: CGFloat {
@@ -70,15 +120,22 @@ struct MapViewportMetrics: Equatable {
     }
 
     var unobscuredViewportRect: CGRect {
+        Self.unobscuredRect(viewportSize: viewportSize, insets: viewportInsets)
+    }
+
+    private static func unobscuredRect(
+        viewportSize: CGSize,
+        insets: MapViewportInsets
+    ) -> CGRect {
         CGRect(
-            x: viewportInsets.leading,
-            y: viewportInsets.top,
+            x: insets.leading,
+            y: insets.top,
             width: max(
-                viewportSize.width - viewportInsets.leading - viewportInsets.trailing,
+                viewportSize.width - insets.leading - insets.trailing,
                 1
             ),
             height: max(
-                viewportSize.height - viewportInsets.top - viewportInsets.bottom,
+                viewportSize.height - insets.top - insets.bottom,
                 1
             )
         )
@@ -162,12 +219,12 @@ final class GameMapScene: SKScene {
     private(set) var viewportMetrics = MapViewportMetrics(
         logicalSize: logicalSize,
         viewportSize: logicalSize,
-        semanticZoom: MapViewportMetrics.defaultZoom
+        semanticZoom: MapViewportMetrics.autoFitZoom
     )
 
     private let mapCamera = SKCameraNode()
     private let contentLayer = SKNode()
-    private var semanticZoom = MapViewportMetrics.defaultZoom
+    private var semanticZoom = MapViewportMetrics.autoFitZoom
     private var translation: CGPoint = .zero
 
     override init() {
@@ -270,7 +327,7 @@ final class GameMapScene: SKScene {
     @discardableResult
     func updateCamera(scale: CGFloat, translation: CGPoint) -> CGPoint {
         semanticZoom = min(
-            max(scale, MapViewportMetrics.minimumZoom),
+            max(scale, viewportMetrics.zoomFloor),
             MapViewportMetrics.maximumZoom
         )
         self.translation = translation

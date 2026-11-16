@@ -118,7 +118,9 @@ struct GameMapView: View {
     @State private var suppressNextDragEnd = false
     @State private var pinchStartTranslation: CGPoint?
     @State private var pinchAnchor: CGPoint?
-    @State private var committedScale = MapViewportMetrics.defaultZoom
+    /// nil = 用户尚未捏合过:初始与视口变化(如进场竖屏→横屏旋转)都取
+    /// "整幅铺满视口"的全览档;首次捏合后才固化为具体倍率,不再自动重取景。
+    @State private var committedScale: CGFloat?
     @State private var gestureScale: CGFloat = 1
     @State private var panSignpost: PrototypeSignpost.Interval?
     @State private var zoomSignpost: PrototypeSignpost.Interval?
@@ -237,7 +239,7 @@ struct GameMapView: View {
                     y: committedTranslation.y + sceneTranslation.y
                 )
                 committedTranslation = updateCamera(
-                    scale: clampedScale(committedScale * gestureScale),
+                    scale: clampedScale(effectiveCommittedScale * gestureScale),
                     translation: proposal
                 )
                 dragTranslation = .zero
@@ -307,7 +309,7 @@ struct GameMapView: View {
         let translation: CGPoint
         if let pinchStartTranslation, let pinchAnchor {
             translation = MapPinchZoom.projection(
-                startingZoom: committedScale,
+                startingZoom: effectiveCommittedScale,
                 magnification: gestureScale,
                 anchorInView: pinchAnchor,
                 startingTranslation: pinchStartTranslation,
@@ -337,11 +339,19 @@ struct GameMapView: View {
     }
 
     private func clampedScale(_ value: CGFloat) -> CGFloat {
-        min(max(value, MapViewportMetrics.minimumZoom), MapViewportMetrics.maximumZoom)
+        min(
+            max(value, scene.viewportMetrics.zoomFloor),
+            MapViewportMetrics.maximumZoom
+        )
+    }
+
+    /// 未捏合过时解析为当前视口的全览档;捏合后即 committedScale 本身。
+    private var effectiveCommittedScale: CGFloat {
+        committedScale ?? scene.viewportMetrics.overviewZoom
     }
 
     private var currentSemanticZoom: CGFloat {
-        clampedScale(committedScale * gestureScale)
+        clampedScale(effectiveCommittedScale * gestureScale)
     }
 
     private var accessibleTargets: [GameMapAccessibilityTarget] {

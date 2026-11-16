@@ -490,8 +490,11 @@ extension GameCore {
             while true {
                 guard cursor < draft.selections.count else {
                     return (sellablePlacements(actorID: actorID, state: candidate, catalog: catalog).map {
-                        choice("placement:\($0.placementID)", "\(locationLabel($0.locationID)) · \(industryLabel($0.tile.industryDefinitionID))",
-                               .industryPlacement(id: $0.placementID))
+                        choice(
+                            "placement:\($0.placementID)",
+                            "\(locationLabel($0.locationID)) · \(industryLabel($0.tile.industryDefinitionID)) · \(saleBeerLabel($0, catalog: catalog))",
+                            .industryPlacement(id: $0.placementID)
+                        )
                     }, nil)
                 }
                 guard case .industryPlacement(let placementID) = draft.selections[cursor],
@@ -657,6 +660,18 @@ extension GameCore {
                         .contains(placement.tile.industryDefinitionID)
                     && legalMerchants(for: placement, state: state, catalog: catalog).isEmpty == false
             }
+        }
+
+        /// 出售需酒数标签:与 SellRules 的 beerSources 数量校验同源(等级 beerCost);
+        /// 免酒等级明确标出,避免玩家误以为所有产业都要凑酒。
+        private static func saleBeerLabel(
+            _ placement: BoardIndustryPlacement,
+            catalog: VerifiedGameDataCatalog
+        ) -> String {
+            let cost = catalog.catalog.industries.first(where: {
+                $0.id == placement.tile.industryDefinitionID
+            })?.levels.first(where: { $0.level == placement.tile.level })?.beerCost ?? 0
+            return cost > 0 ? "需酒×\(cost)" : "免酒"
         }
 
         private static func legalMerchants(

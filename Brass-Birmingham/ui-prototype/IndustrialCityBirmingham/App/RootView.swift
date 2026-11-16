@@ -150,7 +150,9 @@ struct RootView: View {
                                    description: Text("朋友测试阶段先使用附近离线房间。"))
 #endif
         case .singlePlayer:
-            SinglePlayerSetupView(onNavigate: navigate)
+            // catalogSource 必须跟随环境:DEBUG 用 debugFixture(打包 manifest 是 draft,
+            // packagedRules 会失败关闭),否则单人挑战开局即抛 GameDataLoadError。
+            SinglePlayerSetupView(onNavigate: navigate, catalogSource: nearbyCatalogSource)
         case .nearby:
 #if DEBUG
             NearbyRoomView(

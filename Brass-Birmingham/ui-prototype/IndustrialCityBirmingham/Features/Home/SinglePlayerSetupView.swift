@@ -59,6 +59,8 @@ enum SinglePlayerSessionFactory {
             playerID: hostID,
             hostPlayerID: hostID
         )
+        // 单机会话无连接生命周期,开局即同步;否则同步遮罩挡掉全部触摸。
+        store.markLocalSessionConnected()
         return Session(store: store, driver: driver)
     }
 }

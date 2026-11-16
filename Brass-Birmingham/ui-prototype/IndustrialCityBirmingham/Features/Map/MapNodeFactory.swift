@@ -235,6 +235,7 @@ enum MapNodeFactory {
             "industryName": industryName(placement.kind),
             "victoryPoints": placement.victoryPoints,
             "linkPoints": placement.linkPoints,
+            "beerCost": placement.beerCost ?? 0,
         ]
         let glyph = industryGlyphNode(
             for: placement.kind,
@@ -298,6 +299,37 @@ enum MapNodeFactory {
             count.zPosition = 4
             count.position = CGPoint(x: 15, y: 16.5)
             industry.addChild(count)
+        }
+
+        // 出售需酒徽章:未翻面的可售产业(棉纺/制造/陶瓷)按等级标出出售时要花的
+        // 啤酒数(实体板块上印的酒桶数);免酒等级与资源类板块不显示。可售产业
+        // 不会携带资源徽章,右上角位置不会冲突。
+        let saleBeerCost = placement.beerCost ?? 0
+        if placement.isFlipped == false, saleBeerCost > 0,
+           [.cotton, .manufacturer, .pottery].contains(placement.kind) {
+            let badge = SKShapeNode(
+                rectOf: CGSize(width: 20, height: 14), cornerRadius: 5
+            )
+            badge.name = "industry-beer-cost-badge"
+            badge.fillColor = brass
+            badge.strokeColor = ink.withAlphaComponent(0.9)
+            badge.lineWidth = 1
+            badge.zPosition = 3
+            badge.isUserInteractionEnabled = false
+            badge.position = CGPoint(x: 9, y: 16)
+            industry.addChild(badge)
+
+            let label = SKLabelNode(text: "酒\(saleBeerCost)")
+            label.name = "industry-beer-cost-text"
+            label.fontName = "PingFangSC-Semibold"
+            label.fontSize = 9
+            label.fontColor = ink
+            label.verticalAlignmentMode = .center
+            label.horizontalAlignmentMode = .center
+            label.isUserInteractionEnabled = false
+            label.zPosition = 4
+            label.position = CGPoint(x: 9, y: 16.5)
+            industry.addChild(label)
         }
 
         let ownerStrip = SKShapeNode(rectOf: CGSize(width: 30, height: 4), cornerRadius: 2)

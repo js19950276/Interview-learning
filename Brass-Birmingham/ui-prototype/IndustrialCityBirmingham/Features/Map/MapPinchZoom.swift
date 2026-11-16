@@ -22,7 +22,7 @@ enum MapPinchZoom {
         let targetZoom = min(
             max(
                 startMetrics.semanticZoom * magnification,
-                MapViewportMetrics.minimumZoom
+                startMetrics.zoomFloor
             ),
             MapViewportMetrics.maximumZoom
         )

@@ -1551,7 +1551,7 @@ actor SessionCoordinator {
                 publishState()
             }
             SessionDiagnostics.log(
-                "PERSIST-SAVE-FAILED seat=\(configuration.playerID.rawValue) seq=\(archive.commitSequence)"
+                "PERSIST-SAVE-FAILED seat=\(configuration.playerID.rawValue) seq=\(archive.commitSequence) error=\(error)"
             )
             enqueueForRetry(archive)
         }
@@ -1602,7 +1602,7 @@ actor SessionCoordinator {
                     publishState()
                 }
                 SessionDiagnostics.log(
-                    "PERSIST-SAVE-RETRY seat=\(configuration.playerID.rawValue) seq=\(archive.commitSequence)"
+                    "PERSIST-SAVE-RETRY seat=\(configuration.playerID.rawValue) seq=\(archive.commitSequence) error=\(error)"
                 )
                 // 分片退避:新档案入队(代际变化)立即唤醒,退避封顶 2 秒。
                 let generation = persistenceGeneration

@@ -108,6 +108,14 @@ final class SessionViewStore {
     private var didConnect = false
     private var didDisconnect = false
 
+    /// 单机/本机会话没有 LAN 连接生命周期(createRoom/joinRoom 不会发生),
+    /// 开局即视为已连接:否则 consume() 的 `didConnect &&` 分支永远不触发,
+    /// syncStatus 卡在 .connecting,submission.blocker 遮罩会挡掉全部触摸。
+    func markLocalSessionConnected() {
+        didConnect = true
+        if syncStatus == .connecting { syncStatus = .synchronized }
+    }
+
     private(set) var roomID: GameCore.RoomID
     private(set) var localPlayerID: GameCore.PlayerID
     private(set) var playerNames: [GameCore.PlayerID: String] = [:]
